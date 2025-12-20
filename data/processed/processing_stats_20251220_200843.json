@@ -1,0 +1,25 @@
+{
+  "total_chunks": 8692,
+  "total_tokens": 3450919,
+  "avg_tokens_per_chunk": 397.0224344224574,
+  "by_source": {
+    "documentation": 572,
+    "github": 8120
+  },
+  "by_category": {
+    "stylus": 7196,
+    "arbitrum_sdk": 451,
+    "orbit_sdk": 1012,
+    "arbitrum_docs": 33
+  },
+  "by_language": {
+    "unknown": 186,
+    "toml": 161,
+    "rs": 3371,
+    "js": 24,
+    "ts": 1898,
+    "json": 137,
+    "sol": 2343
+  },
+  "processed_at": "2025-12-20T12:08:43.644136"
+}

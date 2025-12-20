@@ -40,8 +40,7 @@ env/
 # Data (large files)
 data/raw/*
 !data/raw/.gitkeep
-data/processed/*
-!data/processed/.gitkeep
+# Processed data is committed (small enough)
 
 # Chroma DB
 chroma_db/

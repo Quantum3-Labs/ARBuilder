@@ -61,9 +61,9 @@ ArbBuilder/
 ├── scripts/
 │   └── run_benchmarks.py # Benchmark runner
 ├── data/
-│   ├── raw/              # Raw scraped data (87MB)
-│   ├── processed/        # Cleaned and chunked data (8,692 chunks)
-│   └── chroma_db/        # ChromaDB vector store
+│   ├── raw/              # Raw scraped data (not committed, run scraper)
+│   ├── processed/        # Pre-processed chunks (8,692 chunks, committed)
+│   └── chroma_db/        # ChromaDB vector store (generated locally)
 ├── environment.yml       # Conda environment specification
 ├── pyproject.toml        # Project metadata and dependencies
 └── .env                  # Environment variables (not committed)
@@ -98,11 +98,37 @@ DEFAULT_MODEL=deepseek/deepseek-v3.2
 DEFAULT_EMBEDDING=google/gemini-embedding-001
 ```
 
+### 3. Setup Data
+
+The repository includes **pre-processed chunks** (8,692 chunks, 16MB) in `data/processed/`. You can use these directly.
+
+To regenerate the vector database:
+
+```bash
+# Ingest processed chunks into ChromaDB
+python -m src.embeddings.vectordb
+```
+
+#### Optional: Scrape Raw Data
+
+If you want to refresh the raw data (documentation + code repos):
+
+```bash
+# Run full pipeline (web scraping + GitHub cloning)
+python -m scraper.run
+
+# Then preprocess the raw data
+python -m src.preprocessing.processor
+
+# And re-ingest into ChromaDB
+python -m src.embeddings.vectordb --reset
+```
+
 ## Usage
 
-### Data Scraping
+### Data Scraping (Optional)
 
-Run the full data collection pipeline:
+Run the full data collection pipeline to refresh raw data:
 
 ```bash
 # Activate environment
