@@ -1,0 +1,20 @@
+name: arbbuilder
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+    - crawl4ai
+    - chromadb
+    - openai
+    - python-dotenv
+    - aiohttp
+    - beautifulsoup4
+    - markdownify
+    - tiktoken
+    - pydantic
+    - rich
+    - httpx
+    - tenacity

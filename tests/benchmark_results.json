@@ -1,0 +1,122 @@
+[
+  {
+    "query": "How do I create a new Stylus project?",
+    "category": "stylus",
+    "difficulty": "basic",
+    "recall": 0.8,
+    "mrr": 0.2,
+    "p@5": 0.2
+  },
+  {
+    "query": "What is the Stylus SDK?",
+    "category": "stylus",
+    "difficulty": "basic",
+    "recall": 0.75,
+    "mrr": 1.0,
+    "p@5": 0.6
+  },
+  {
+    "query": "How do I deploy a Stylus contract?",
+    "category": "stylus",
+    "difficulty": "basic",
+    "recall": 1.0,
+    "mrr": 1.0,
+    "p@5": 1.0
+  },
+  {
+    "query": "Show me an example of an ERC20 token in Stylus",
+    "category": "stylus",
+    "difficulty": "intermediate",
+    "recall": 1.0,
+    "mrr": 1.0,
+    "p@5": 1.0
+  },
+  {
+    "query": "How do I use storage in Stylus contracts?",
+    "category": "stylus",
+    "difficulty": "intermediate",
+    "recall": 0.75,
+    "mrr": 0.1111111111111111,
+    "p@5": 0.0
+  },
+  {
+    "query": "What is the entrypoint macro in Stylus?",
+    "category": "stylus",
+    "difficulty": "intermediate",
+    "recall": 1.0,
+    "mrr": 0.3333333333333333,
+    "p@5": 0.2
+  },
+  {
+    "query": "How does Stylus achieve gas efficiency compared to Solidity?",
+    "category": "stylus",
+    "difficulty": "advanced",
+    "recall": 1.0,
+    "mrr": 0.2,
+    "p@5": 0.2
+  },
+  {
+    "query": "Can Stylus contracts interact with Solidity contracts?",
+    "category": "stylus",
+    "difficulty": "advanced",
+    "recall": 0.8,
+    "mrr": 0.25,
+    "p@5": 0.2
+  },
+  {
+    "query": "What are the limitations of Stylus?",
+    "category": "stylus",
+    "difficulty": "advanced",
+    "recall": 0.0,
+    "mrr": 0.0,
+    "p@5": 0.0
+  },
+  {
+    "query": "How do I bridge ETH from Ethereum to Arbitrum?",
+    "category": "arbitrum_sdk",
+    "difficulty": "basic",
+    "recall": 1.0,
+    "mrr": 1.0,
+    "p@5": 1.0
+  },
+  {
+    "query": "What is the EthBridger class?",
+    "category": "arbitrum_sdk",
+    "difficulty": "intermediate",
+    "recall": 1.0,
+    "mrr": 1.0,
+    "p@5": 0.8
+  },
+  {
+    "query": "How do I send a message from L1 to L2?",
+    "category": "arbitrum_sdk",
+    "difficulty": "intermediate",
+    "recall": 1.0,
+    "mrr": 1.0,
+    "p@5": 1.0
+  },
+  {
+    "query": "How do I deploy an Orbit chain?",
+    "category": "orbit_sdk",
+    "difficulty": "advanced",
+    "recall": 1.0,
+    "mrr": 1.0,
+    "p@5": 1.0
+  },
+  {
+    "query": "What is a custom gas token in Orbit?",
+    "category": "orbit_sdk",
+    "difficulty": "advanced",
+    "recall": 1.0,
+    "mrr": 1.0,
+    "p@5": 1.0
+  },
+  {
+    "query": "How do I use OpenZeppelin contracts with Stylus?",
+    "category": "stylus",
+    "difficulty": "intermediate",
+    "recall": 0.6,
+    "mrr": 1.0,
+    "p@5": 1.0
+  }
+]
