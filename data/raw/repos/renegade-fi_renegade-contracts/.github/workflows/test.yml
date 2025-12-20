@@ -1,0 +1,92 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+env:
+  FOUNDRY_PROFILE: ci
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 1
+  CARGO_NET_RETRY: 10
+  RUSTUP_MAX_RETRIES: 10
+
+jobs:
+  check:
+    strategy:
+      fail-fast: true
+
+    name: Forge Tests
+    runs-on: build-runner
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.3.5
+
+      - name: Install Huff
+        uses: huff-language/huff-toolchain@v3
+        with:
+          version: nightly
+      
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: nightly-2024-12-01
+          components: rustfmt, clippy
+  
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            test/rust-reference-impls/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Cache Foundry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.foundry/cache
+            ~/.foundry/out
+          key: ${{ runner.os }}-foundry-${{ hashFiles('**/foundry.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-foundry-
+
+      - name: Show Forge version
+        run: |
+          forge --version
+      
+      - name: Show Huff version
+        run: |
+          huffc --version
+      
+      - name: Build Rust reference implementations (debug only)
+        timeout-minutes: 30
+        run: |
+          cd test/rust-reference-impls
+          # Only build the specific binaries that tests use
+          echo "Building required debug binaries: verifier, transcript, poseidon, merkle..."
+          cargo build --bin verifier --bin transcript --bin poseidon --bin merkle -v
+
+      - name: Run Forge build
+        run: |
+          forge build --sizes
+        id: build
+
+      - name: Run Forge tests
+        run: |
+          forge test --ffi -vvv
+        id: test

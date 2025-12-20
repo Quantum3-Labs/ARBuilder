@@ -1,0 +1,28 @@
+[package]
+name = "vkeys-codegen"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# === Renegade === #
+reference-impl-common = { package = "common", path = "../../test/rust-reference-impls/common" }
+renegade-circuits-v1 = { package = "circuits", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-circuit-types-v1 = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-constants-v1 = { package = "constants", git = "https://github.com/renegade-fi/renegade.git" }
+
+renegade-circuits-v2 = { package = "circuits", path = "/Users/joeykraut/work/renegade/circuits" }
+renegade-circuit-types-v2 = { package = "circuit-types", path = "/Users/joeykraut/work/renegade/circuit-types" }
+renegade-constants-v2 = { package = "constants", path = "/Users/joeykraut/work/renegade/constants" }
+
+# === EVM === #
+alloy = "0.14"
+alloy-sol-types = "1.0.0"
+
+# === Misc === #
+anyhow = "1.0"
+clap = { version = "4.4", features = ["derive"] }
+ethers = { version = "2.0", features = ["abigen"] }
+lazy_static = "1.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+hex = "0.4"

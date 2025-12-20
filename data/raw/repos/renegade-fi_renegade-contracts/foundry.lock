@@ -1,0 +1,29 @@
+{
+  "lib/UniswapX": {
+    "rev": "df1dbfe2439c3c648ab5e3089953780ab7fc40b7"
+  },
+  "lib/forge-std": {
+    "rev": "ee93fdc45d1e5e4dee883afe0103109881a83549"
+  },
+  "lib/foundry-huff": {
+    "rev": "7d1ce15ccf92bd68458c7e28e0ae847b64b4fc74"
+  },
+  "lib/openzeppelin-contracts": {
+    "rev": "13d9086d0b55229ca1b9d5f4c158b0ba75682b5c"
+  },
+  "lib/permit2": {
+    "rev": "cc56ad0f3439c502c246fc5cfcc3db92bb8b7219"
+  },
+  "lib/solady": {
+    "tag": {
+      "name": "v0.1.26",
+      "rev": "acd959aa4bd04720d640bf4e6a5c71037510cc4b"
+    }
+  },
+  "lib/solidity-bn254": {
+    "rev": "36277c28be3ca2501b26b80c77c3bb5f9e32886b"
+  },
+  "lib/solmate": {
+    "rev": "c93f7716c9909175d45f6ef80a34a650e2d24e56"
+  }
+}

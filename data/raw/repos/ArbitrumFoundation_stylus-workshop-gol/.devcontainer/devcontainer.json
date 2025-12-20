@@ -1,0 +1,36 @@
+{
+  "name": "Arbitrum Stylus Workshop",
+  "image": "ghcr.io/hummusonrails/devcontainer-stylus-workshops-base:bookworm",
+
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+
+  "postAttachCommand": "npm install -g pnpm && pnpm install -r",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  },
+
+  "forwardPorts": [
+    3000,
+    8547
+  ],
+
+  "remoteEnv": {
+    "RUSTUP_HOME": "/usr/local/rustup",
+    "CARGO_HOME": "/usr/local/cargo",
+    "PATH": "/usr/local/cargo/bin:/usr/local/rustup/bin:/home/vscode/.foundry/bin:/home/vscode/.cargo/bin:${env:PATH}"
+  },
+
+  "remoteUser": "vscode"
+}

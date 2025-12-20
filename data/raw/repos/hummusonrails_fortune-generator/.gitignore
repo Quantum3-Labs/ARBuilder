@@ -1,0 +1,49 @@
+# Node modules
+fortune-frontend/node_modules/
+
+# Build output
+fortune-frontend/dist/
+
+# Logs
+fortune-frontend/logs/
+fortune-frontend/npm-debug.log*
+fortune-frontend/yarn-debug.log*
+fortune-frontend/yarn-error.log*
+
+# Dependency directories
+fortune-frontend/bower_components/
+
+# Optional npm cache directory
+fortune-frontend/.npm/
+
+# Optional eslint cache
+fortune-frontend/.eslintcache
+
+# Optional REPL history
+fortune-frontend/.node_repl_history
+
+# dotenv environment variables file
+fortune-frontend/.env
+fortune-frontend/.env.local
+fortune-frontend/.env.development.local
+fortune-frontend/.env.test.local
+fortune-frontend/.env.production.local
+
+# Vite cache
+fortune-frontend/.vite
+
+# Editor directories and files
+fortune-frontend/.idea/
+fortune-frontend/.vscode/
+fortune-frontend/*.sublime-project
+fortune-frontend/*.sublime-workspace
+fortune-frontend/.DS_Store
+.DS_Store
+
+# Smart Contract ignore files
+fortune-contract/target
+fortune-contract/.env
+fortune-contract/private_key
+
+# Mac system files
+fortune-contract/.DS_Store

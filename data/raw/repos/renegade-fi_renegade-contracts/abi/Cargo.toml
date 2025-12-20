@@ -1,0 +1,51 @@
+[package]
+name = "abi"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+v1 = []
+v2 = []
+transfer-auth = ["alloy/rand"]
+relayer-types = [
+    "dep:ark-bn254",
+    "dep:ark-ec",
+    "dep:ark-ff",
+    "dep:jf-primitives",
+    "dep:num-bigint",
+]
+v1-relayer-types = [
+    "relayer-types",
+    "dep:renegade-circuit-types",
+    "dep:renegade-circuits",
+    "dep:renegade-common",
+    "dep:renegade-constants",
+]
+v2-relayer-types = [
+    "relayer-types",
+    "dep:renegade-circuit-types-v2",
+    "dep:renegade-circuits-v2",
+    "dep:renegade-constants-v2",
+    "dep:renegade-crypto-v2",
+]
+v2-auth-helpers = ["alloy/rand"]
+
+[dependencies]
+alloy = { version = "1.0.1", features = ["essentials"] }
+
+# === Relayer Deps === #
+ark-bn254 = { version = "0.4.0", optional = true }
+ark-ec = { version = "0.4.0", optional = true }
+ark-ff = { version = "0.4.0", optional = true }
+num-bigint = { version = "0.4", optional = true }
+jf-primitives = { git = "https://github.com/renegade-fi/mpc-jellyfish.git", optional = true }
+
+renegade-circuits = { package = "circuits", git = "https://github.com/renegade-fi/renegade", optional = true }
+renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade", optional = true }
+renegade-common = { package = "common", git = "https://github.com/renegade-fi/renegade", optional = true }
+renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade", optional = true }
+
+renegade-circuits-v2 = { package = "circuits", path = "/Users/joeykraut/work/renegade/circuits", optional = true }
+renegade-circuit-types-v2 = { package = "circuit-types", path = "/Users/joeykraut/work/renegade/circuit-types", optional = true }
+renegade-constants-v2 = { package = "constants", path = "/Users/joeykraut/work/renegade/constants", optional = true }
+renegade-crypto-v2 = { package = "renegade-crypto", path = "/Users/joeykraut/work/renegade/renegade-crypto", optional = true }

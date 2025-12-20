@@ -1,0 +1,32 @@
+[
+  {
+    "type": "function",
+    "name": "mint",
+    "inputs": [],
+    "outputs": [
+      { "name": "", "type": "uint256", "internalType": "uint256" }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "tokenURI",
+    "inputs": [
+      { "name": "tokenId", "type": "uint256", "internalType": "uint256" }
+    ],
+    "outputs": [
+      { "name": "", "type": "string", "internalType": "string" }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "event",
+    "name": "Transfer",
+    "inputs": [
+      { "name": "from", "type": "address", "indexed": true, "internalType": "address" },
+      { "name": "to", "type": "address", "indexed": true, "internalType": "address" },
+      { "name": "tokenId", "type": "uint256", "indexed": true, "internalType": "uint256" }
+    ],
+    "anonymous": false
+  }
+]

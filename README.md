@@ -61,8 +61,8 @@ ArbBuilder/
 ├── scripts/
 │   └── run_benchmarks.py # Benchmark runner
 ├── data/
-│   ├── raw/              # Raw scraped data (not committed, run scraper)
-│   ├── processed/        # Pre-processed chunks (8,692 chunks, committed)
+│   ├── raw/              # Raw scraped data (73 pages + 17 repos)
+│   ├── processed/        # Pre-processed chunks (8,692 chunks)
 │   └── chroma_db/        # ChromaDB vector store (generated locally)
 ├── environment.yml       # Conda environment specification
 ├── pyproject.toml        # Project metadata and dependencies
@@ -100,18 +100,20 @@ DEFAULT_EMBEDDING=google/gemini-embedding-001
 
 ### 3. Setup Data
 
-The repository includes **pre-processed chunks** (8,692 chunks, 16MB) in `data/processed/`. You can use these directly.
+The repository includes all data needed:
+- **Raw data** (`data/raw/`): 73 markdown pages + 17 GitHub repos
+- **Processed chunks** (`data/processed/`): 8,692 chunks ready for embedding
 
-To regenerate the vector database:
+To generate the vector database:
 
 ```bash
 # Ingest processed chunks into ChromaDB
 python -m src.embeddings.vectordb
 ```
 
-#### Optional: Scrape Raw Data
+#### Optional: Refresh Data
 
-If you want to refresh the raw data (documentation + code repos):
+If you want to re-scrape the latest documentation and code:
 
 ```bash
 # Run full pipeline (web scraping + GitHub cloning)

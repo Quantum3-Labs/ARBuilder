@@ -1,0 +1,20 @@
+{
+  "name": "contracts-stylus",
+  "scripts": {
+    "check": "cargo stylus check --endpoint=\"${STYLUS_RPC_URL:-http://localhost:8547}\"",
+    "estimate-gas": "cargo stylus deploy --endpoint=\"${STYLUS_RPC_URL:-http://localhost:8547}\" --private-key=\"${DEPLOY_PRIVATE_KEY:-0xb6b15c8cb491557369f3c7d2c287b053eb229daa9c22138887752191c9520659}\" --estimate-gas",
+    "deploy:local": "cargo stylus deploy --endpoint=\"${STYLUS_RPC_URL:-http://localhost:8547}\" --private-key=\"${DEPLOY_PRIVATE_KEY:-0xb6b15c8cb491557369f3c7d2c287b053eb229daa9c22138887752191c9520659}\"",
+    "build": "cargo build --release --target wasm32-unknown-unknown",
+    "build:wasm": "cargo build --release --target wasm32-unknown-unknown -Z build-std=std,panic_abort",
+    "test:integration": "cargo test --test integration_test",
+    "test:integration:debug": "cargo test --test integration_test -- --nocapture",
+    "test": "cargo test --lib",
+    "nonce": "cast nonce 0x3f1Eae7D46d88F08fc2F8ed27FCb2AB183EB2d0E --rpc-url http://localhost:8547",
+    "export-abi": "cargo stylus export-abi",
+    "nitro-node": "if [ -x ../nitro-devnode/run-dev-node.sh ]; then (cd ../nitro-devnode && ./run-dev-node.sh); else echo '[ERROR] Nitro devnode not found. Please ensure ../nitro-devnode exists and run-dev-node.sh is present.'; fi",
+    "fund-accounts": "node -e \"require('child_process').execFileSync(require('path').resolve(__dirname, '../../scripts/funds.sh'), { stdio: 'inherit' })\""
+  },
+  "dependencies": {
+    "ethers": "^6.14.1"
+  }
+}

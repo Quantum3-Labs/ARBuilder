@@ -1,0 +1,66 @@
+
+/// @dev Absorb elements from calldata into the sponge state
+/// @dev Behavior is undefined if the array is empty
+#define macro POSEIDON_SPONGE_ABSORB() = takes(5) returns(5) {
+    // Takes    [state[0], state[1], state[2], len(inputs), *nextElem]
+    // Returns  [state'[0], state'[1], state'[2], len(inputs), *nextElem]
+
+    // Jump to the last input if only one element needs to be absorbed
+    dup4 0x1 eq lastInput jumpi
+    // Absorb the first two inputs 
+    ABSORB_NEXT_TWO()                       // [state[0], state[1], state[2], len(inputs), *nextElem]
+    loopStart:
+    // If we have one or zero elements left, the loop is done
+    dup4 0x00 eq allAbsorbed jumpi          // [state[0], state[1], state[2], len(inputs), *nextElem]
+
+    // Run the permutation
+    POSEIDON_PERM()                         // [state'[0], state'[1], state'[2], len(inputs), *nextElem]
+    dup4 0x01 eq lastInput jumpi            // [state'[0], state'[1], state'[2], len(inputs), *nextElem] 
+
+    // Absorb the next two elements then restart the loop
+    ABSORB_NEXT_TWO()                       // [state'[0], state'[1], state'[2], len(inputs), *nextElem]
+    loopStart jump
+    
+    // Take care of a remaining input for odd-length input arrays
+    lastInput:                              // [state[0], state[1], state[2], len(inputs), *nextElem]
+    dup5 calldataload                       // [elem1, state[0], state[1], state[2], len(inputs), *nextElem]
+    dup3 PUSH_PRIME() swap2 addmod          // [state'[1], state[0], state[1], state[2], len(inputs), *nextElem]
+    swap2 pop                               // [state[0], state'[1], state[2], len(input), *nextElem]
+
+    allAbsorbed:                            // [state[0], state[1], state[2], len(input), *nextElem]
+}
+
+/// @dev Absorb two inputs into the state, adding them to the existing state without permutation
+#define fn ABSORB_NEXT_TWO() = takes(5) returns(5) {
+    // Takes    [state[0], state[1], state[2], len(inputs), *nextElem]
+    // Returns  [state'[0], state'[1], state'[2], len(inputs) - 2, *nextElem + 64]
+
+    // Decrement the number of inputs left 
+    0x2 dup5 sub swap4 pop                   // [state[0], state[1], state[2], len(inputs) - 2, *nextElem]
+    
+    // Load in the next two elements from the inputs and increment the data pointer
+    dup5 dup1 calldataload swap1 0x20 add       // [*nextElem + 32, elem1, state[0], state[1], state[2], len(inputs) - 2, *nextElem]
+    dup1 calldataload swap1 0x20 add            // [*nextElem + 64, elem2, elem1, state[0], state[1], state[2], len(inputs) - 2, *nextElem]
+    swap7 pop                                   // [elem2, elem1, state[0], state[1], state[2], len(inputs) - 2, *nextElem + 64]
+
+    // Add elem2 to state[2]
+    dup5 PUSH_PRIME() swap2 addmod              // [state'[2], elem1, state[0], state[1], state[2], len(inputs) - 2, *nextElem + 64]
+    swap4 pop                                   // [elem1, state[0], state[1], state'[2], len(inputs) - 2, *nextElem + 64]
+    
+    // Add elem1 to state[1]
+    dup3 PUSH_PRIME() swap2 addmod              // [state'[1], state[0], state[1], state'[2], len(inputs) - 2, *nextElem + 64]
+    swap2 pop                                   // [state[0], state'[1], state'[2], len(inputs) - 2, *nextElem + 64]
+}
+
+/// @dev Squeeze a scalar from a poseidon sponge
+#define macro POSEIDON_SPONGE_SQUEEZE() = takes(3) returns(4) {
+    // Takes    [state[0], state[1], state[2]]
+    // Returns  [squeezed, state[0], state[1], state[2]]
+
+    // 1. Apply the permutation when the squeeze state starts
+    POSEIDON_PERM()         // [state'[0], state'[1], state'[2]]
+
+    // We do not squeeze from the first `CAPACITY` state elements, in our
+    // case, `CAPACITY = 1`, so we return the second element after permutation
+    dup2                    // [state'[1], state'[0], state'[1], state'[2]]
+}

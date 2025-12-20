@@ -1,0 +1,7 @@
+# Ignore test files
+test/**
+
+# Ignore generated files
+src/libraries/merkle/MerkleZeros.sol
+src/darkpool/v1/libraries/VerificationKeys.sol
+

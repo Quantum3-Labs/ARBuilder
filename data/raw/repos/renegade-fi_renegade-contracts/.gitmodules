@@ -1,0 +1,24 @@
+[submodule "lib/forge-std"]
+	path = lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
+[submodule "lib/foundry-huff"]
+	path = lib/foundry-huff
+	url = https://github.com/huff-language/foundry-huff
+[submodule "lib/openzeppelin-contracts"]
+	path = lib/openzeppelin-contracts
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts
+[submodule "lib/solidity-bn254"]
+	path = lib/solidity-bn254
+	url = https://github.com/joeykraut/solidity-bn254
+[submodule "lib/permit2"]
+	path = lib/permit2
+	url = https://github.com/Uniswap/permit2
+[submodule "lib/solmate"]
+	path = lib/solmate
+	url = https://github.com/transmissions11/solmate
+[submodule "lib/UniswapX"]
+	path = lib/UniswapX
+	url = https://github.com/Uniswap/UniswapX
+[submodule "lib/solady"]
+	path = lib/solady
+	url = https://github.com/vectorized/solady

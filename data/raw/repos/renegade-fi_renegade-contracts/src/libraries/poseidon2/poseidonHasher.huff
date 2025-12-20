@@ -1,0 +1,306 @@
+/// @title Poseidon2
+/// @author @joeykraut
+/// @notice A Poseidon2 implementation in Huff. See https://eprint.iacr.org/2023/323
+/// for more details. Inspired by https://github.com/zemse/poseidon2-evm/tree/main
+
+#include "../poseidon2/poseidonUtils.huff"
+#include "../poseidon2/poseidonPerm.huff"
+#include "../poseidon2/poseidonSponge.huff"
+
+// --- Interface --- //
+
+/// @notice Hash an input with the given sister leaves in a Merkle tree
+/// @param input The input to hash
+/// @param idx The index of the input in the Merkle tree
+/// @param sisterNodes An array of sister leaves to hash with
+/// @return The intermediate hashes of the input and sister leaves, with the root at the start
+#define function merkleHash(uint256 idx, uint256 input, uint256[] sisterNodes) nonpayable returns(uint256)
+
+/// @notice Hash a series of inputs into a sponge and squeeze the first output
+/// @param inputs The inputs to hash
+/// @return The first output of the sponge
+#define function spongeHash(uint256[] inputs) nonpayable returns(uint256)
+
+/// @notice Hash a series of inputs in a resumable fashion beginning with the given seed
+/// @dev A resumable commitment resets the hasher state in between each newly hashed element.
+/// This allows for the circuits to compute a partial commitment and for the contracts to "resume"
+/// the commitment with the remaining field elements.
+#define function computeResumableCommitment(uint256[] elements) nonpayable returns (uint256)
+
+// --- Constants --- //
+
+/// @notice The depth of the Merkle tree
+#define constant MERKLE_DEPTH = 0x20 // 32
+
+/// @dev The capacity of the sponge
+#define constant SPONGE_CAPACITY = 0x01
+/// @dev The rate of the sponge 
+#define constant SPONGE_RATE = 0x02 
+
+/// @dev The revert code for the `sisterNodes` array length mismatch
+#define constant SISTER_LEAVES_LENGTH_MISMATCH = 0x01
+
+// --- Entrypoint --- //
+
+/// @notice Entrypoint for the Poseidon2 Merkle hash
+#define macro MAIN() = takes(0) returns(0) {
+    // Load the selector
+    0x00 calldataload 0xe0 shr          // [selector]
+    dup1 __FUNC_SIG(merkleHash) eq doMerkleHash jumpi
+    dup1 __FUNC_SIG(spongeHash) eq doSpongeHash jumpi
+    dup1 __FUNC_SIG(computeResumableCommitment) eq doResumableCommitment jumpi
+    invalidSelector jump 
+
+    doMerkleHash:
+        MERKLE_HASH()
+    doSpongeHash:
+        SPONGE_HASH()
+    doResumableCommitment:
+        COMPUTE_RESUMABLE_COMMITMENT()
+    invalidSelector:
+    0x00 revert
+}
+
+// ----------
+// | Merkle |
+// ----------
+
+/// @dev Merkle hash the inputs
+/// @return The Merkle hash of the inputs
+#define macro MERKLE_HASH() = takes(0) returns(0) {
+    // Push the data pointer of the return array onto the stack
+    // The helpers below expect the data pointer to trail the inputs
+    0x40                                // [*returnArr]
+
+    // Load the inputs from calldata
+    0x04 calldataload                   // [idx, *returnArr]
+    0x24 calldataload                   // [input, idx, *returnArr]
+
+    // Load the data offset from the array start, then convert it to a data pointer 
+    0x44 calldataload                   // [dataOffset, input, idx, *returnArr]
+
+    // Load the length of the sister leaves array
+    0x04 add dup1 calldataload          // [len(sisterNodes), dataOffset, input, idx, *returnArr]
+    swap1 0x20 add swap1                // [len(sisterNodes), *sisterNodes, input, idx, *returnArr]
+    
+    // Setup the return value
+    // 1. Store the data offset at position 0x00
+    // Offset is always 32 bytes in our case
+    0x20 0x00 mstore                    // [len(sisterNodes), *sisterNodes, input, idx, *returnArr]
+
+    // 2. Store the length of the return array at position 0x20
+    // Length is always the number of sisterNodes plus one for the root
+    dup1 0x01 add                       // [len(sisterNodes) + 1, len(sisterNodes), *sisterNodes, input, idx, *returnArr]
+    0x20 mstore                         // [len(sisterNodes), *sisterNodes, input, idx, *returnArr]
+
+    // 3. Store the leaf as the first output 
+    swap4 dup3 dup2                     // [*returnArr, input, *returnArr, *sisterNodes, input, idx, len(sisterNodes)] 
+    mstore                              // [*returnArr, *sisterNodes, input, idx, *len(sisterNodes)]
+    0x20 add swap4                      // [len(sisterNodes), *sisterNodes, input, idx, *nextReturnArr]
+
+    // --- Loop Start --- //
+
+    // 4. Iteratively hash up the tree and store intermediate values in the array
+    loopStart:
+
+    // Loop terminating condition
+    dup1 0x00 eq loopEnd jumpi          // [counter, *sisterNodes, input, idx, *nextReturnArr]
+    swap4                               // [*nextReturnArr, *sisterNodes, input, idx, counter]
+
+    // Hash the next Merkle level
+    HASH_AND_STORE_MERKLE_LEVEL()       // [*nextReturnArr, *nextSister, hash, nextIdx, counter]
+
+    // Decrement the counter and repeat
+    swap4                               // [counter, *nextSister, hash, nextIdx, *nextReturnArr]
+    0x01 swap1 sub                      // [counter-1, *nextSister, hash, nextIdx, *nextReturnArr]
+
+    // Jump back
+    loopStart jump
+
+    loopEnd:                            // [counter, *sisterNodes, input, idx, *nextReturnArr]
+    // The return data is only the array 
+    // We store 32 bytes for the data offset, 32 bytes for the array length, and
+    // 32 * [len(sisterNodes) + 1] for the array data
+    // Load in the array size 
+    0x20 mload                          // [dataLength, ...]
+    0x20 mul                            // [32 * dataLength, ...]
+    0x40 add                            // [64 + 32 * dataLength, ...]
+    0x00 return
+}
+
+/// @dev Hash the next level of the Merkle tree and store the result in the output array
+/// @param Takes [*returnArr, *sister, input, idx]
+/// @return [*nextReturnArr, *nextSister, hash, nextIdx]
+#define macro HASH_AND_STORE_MERKLE_LEVEL() = takes(4) returns(4) {
+    // Takes [*returnArr, *sister, input, idx]
+    // Hash the input with the sister leaves
+    swap3                             // [idx, *sister, input, *returnArr]
+    HASH_MERKLE_LEVEL()               // [*nextSister, hash, nextIdx, *returnArr]
+    swap1 swap2 swap3                 // [*returnArr, *nextSister, hash, nextIdx]
+
+    // Store the hash in the output array
+    dup3 dup2                       // [*returnArr, hash, *returnArr, *nextSister, hash, nextIdx]
+    mstore                          // [*returnArr, *nextSister, hash, nextIdx]
+    0x20 add                        // [*nextReturnArr, *nextSister, hash, nextIdx]
+}
+
+/// @dev Hash the next level in the Merkle tree using the sister node in the given calldata location
+/// @param Takes [idx, *sister, input]
+/// @dev The *nextSister returned is the next sister node in the next level of the Merkle tree
+/// @dev The idx returned is the index in the next level of the Merkle tree
+/// @return [*nextSister, hash, nextIdx]
+#define macro HASH_MERKLE_LEVEL() = takes(3) returns(3) {
+    // Takes [idx, *sister, input]
+    // Compute the next sister node location then move to the back of the resident stack
+    dup2 0x20 add                       // [*nextSister, idx, *sister, input]
+    swap3 swap2                         // [*sister, idx, input, *nextSister]
+    calldataload                        // [sister, idx, input, *nextSister]
+
+    // Compute the next index then move it to the back of the resident stack
+    dup2 0x01 shr                       // [nextIdx, sister, idx, input, *nextSister]
+    swap4 swap3                         // [input, sister, idx, *nextSister, nextIdx]
+
+    // Hash the input with the sister node
+    HASH_TWO_LEAVES()                   // [hash, *nextSister, nextIdx]
+    swap1                               // [*nextSister, hash, nextIdx]
+}
+
+/// @dev Hash the given input with the given sister leaf as if inserting into the given index 
+/// @param Takes [input, sister, idx]
+/// @return [hash]
+#define macro HASH_TWO_LEAVES() = takes(3) returns(1) {
+    // Takes [input, sister, idx]
+    // Reorder the inputs if the lowest order bit is 1, so that the input is the RHS
+    swap2 LOWEST_BIT()               // [idx_0, sister, input]
+    noReorder jumpi                  // [sister, input]
+    
+    // Swap the inputs then fallthrough
+    swap1                           // [input, sister]
+    noReorder:
+        // Hash the input with the sister leaf
+        POSEIDON_TWO_TO_ONE()       // [hash]
+}
+
+// ----------
+// | Sponge |
+// ----------
+
+/// @dev Sponge hash the given inputs in calldata
+/// @param inputs A uint256 array of inputs to absorb
+/// @return The first squeezed scalar from the Poseidon sponge
+#define macro SPONGE_HASH() = takes(0) returns(0) {
+    // Load the inputs from calldata
+    0x04 calldataload                           // [dataOffset]
+    0x04 add dup1 calldataload                  // [len(inputs), *arr]
+    dup2 0x20 add swap2 pop                     // [len(inputs), *nextElem]
+
+    // Load the initially zero'd sponge state
+    push0 push0 push0                           // [state[0], state[1], state[2], len(inputs), *nextElem]
+
+    POSEIDON_SPONGE_ABSORB()                    // [state'[0], state'[1], state'[2]]
+    POSEIDON_SPONGE_SQUEEZE()                   // [state'[1], state'[0], state'[1], state'[2]]
+    RETURN_FIRST()
+}
+
+// ------------------------
+// | Resumable Commitment |
+// ------------------------
+
+/// @dev Hash the given inputs into a resumable commitment seeded by the first input
+/// @param seed A uint256 to seed the resumable commitment
+/// @param inputs A uint256 array to hash into the commitment
+/// @return The full commitment resumed from the seed
+#define macro COMPUTE_RESUMABLE_COMMITMENT() = takes(0) returns(0) {
+    // Load the inputs from calldata and setup the stack for the loop
+    0x04 calldataload                           // [&inputData]
+    0x04 add dup1 calldataload                  // [len(inputs), &inputs]
+    dup1 0x00 eq emptyInput jumpi               // [len(inputs), &inputs]
+    0x01 swap1 sub                              // [len(inputs) - 1, &inputs] 
+    swap1 0x20 add dup1 calldataload            // [inputs[0], &inputs, len(inputs) - 1]
+    swap1 0x20 add                              // [&inputs[1], inputs[0], len(inputs) - 1] 
+
+    // Loop body
+    loopStart:
+
+    dup3 0x00 eq loopEnd jumpi                  // [&elem[i], seed, len(inputs)]
+    dup1 calldataload                           // [elem[i], &elem[i], seed, len(inputs)]
+    swap1 0x20 add swap2                        // [seed, elem[i], &elem[i+1], len(inputs)]
+    POSEIDON_TWO_TO_ONE()                       // [hash, &elem[i+1], len(inputs)]
+    swap2 0x01 swap1 sub swap2                  // [hash, &elem[i+1], len(inputs) - 1]
+    swap1 loopStart jump                        // [&elem[i+1], hash, len(inputs) - 1]
+
+    // Loop end
+    loopEnd:                                    // [&elem[n], hash, 0]
+    RETURN_SECOND()
+
+    // Empty input
+    emptyInput:
+    0x00 RETURN_FIRST()
+
+}
+
+// -----------
+// | Helpers |
+// -----------
+
+/// @dev Push the lowest order bit of the input onto the stack
+#define macro LOWEST_BIT(input) = takes(1) returns(1) {
+    // Takes [input]
+    PUSH_ONE() and      // [input_0]
+}
+
+/// @dev Push the constant 0x01 onto the stack
+#define macro PUSH_ONE() = returns(0) {
+    0x01
+}
+
+/// @dev Return the first value on the stack
+#define macro RETURN_FIRST() = returns(0) {
+    0x00 mstore
+    0x20 0x00 return
+}
+
+/// @dev Return the second value on the stack
+#define macro RETURN_SECOND() = returns(0) {
+    dup2 0x00 mstore
+    0x20 0x00 return
+}
+
+/// @dev Return the third value on the stack
+#define macro RETURN_THIRD() = returns(0) {
+    dup3 0x00 mstore
+    0x20 0x00 return
+}
+
+/// @dev Return the fourth value on the stack
+#define macro RETURN_FOURTH() = returns(0) {
+    dup4 0x00 mstore
+    0x20 0x00 return
+}
+
+/// @dev Return the fifth value on the stack
+#define macro RETURN_FIFTH() = returns(0) {
+    dup5 0x00 mstore
+    0x20 0x00 return
+}
+
+/// @notice Write a zero return array to memory then return
+#define macro RETURN_ZERO_ARRAY() = takes(0) returns(0) {
+    // First 32 bytes: array length (number of elements)
+    0x20 0x00 mstore                 // Store offset to data (32) at position 0x00
+    0x01 0x20 mstore                 // Store length of 1 at position 0x20
+    0x00 0x40 mstore                 // Store value of 0 at position 0x40
+
+    // Return the array (offset + length + data)
+    0x60 0x00 return                 // Return 96 bytes (32 for offset + 32 for length + 32 for data)
+}
+
+/// @notice Return an array consisting of the first element on the stack
+#define macro RETURN_FIRST_ARRAY() = takes(0) returns(0) {
+    0x20 0x00 mstore                // Store data offset (0x20) at position 0x00
+    0x01 0x20 mstore                // Store length 1 at position 0x20
+    0x40 mstore                     // Store the top stack element at position 0x40
+
+    // Return the array (offset + length + data)
+    0x60 0x00 return                 // Return 96 bytes (32 for offset + 32 for length + 32 for data)
+}

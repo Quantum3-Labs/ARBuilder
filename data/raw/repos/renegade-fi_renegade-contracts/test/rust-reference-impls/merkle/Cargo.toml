@@ -1,0 +1,19 @@
+[package]
+name = "merkle"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ark-crypto-primitives = { version = "0.4", features = [
+    "crh",
+    "merkle_tree",
+    "sponge",
+] }
+clap = { version = "4.5.1", features = ["derive"] }
+itertools = "0.14"
+num-bigint = { workspace = true }
+rand = "0.8"
+
+renegade-constants = { workspace = true }
+renegade-crypto = { workspace = true }
+common = { workspace = true }

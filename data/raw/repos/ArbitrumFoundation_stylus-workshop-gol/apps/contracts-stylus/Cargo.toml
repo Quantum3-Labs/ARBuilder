@@ -1,0 +1,53 @@
+[package]
+name = "game_of_life_contract"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/ArbitrumFoundation/stylus-workshop"
+repository = "https://github.com/ArbitrumFoundation/stylus-workshop"
+keywords = ["arbitrum", "ethereum", "stylus", "alloy"]
+description = "Stylus workshop example"
+
+[dependencies]
+stylus-sdk = { version = "=0.9.0", default-features = false }
+mini-alloc = { version = "=0.4.2", default-features = false }
+openzeppelin-stylus = { git = "https://github.com/OpenZeppelin/rust-contracts-stylus", tag = "v0.2.0", default-features = false }
+
+alloy-primitives = { version = "=0.8.20", default-features = false, features = ["tiny-keccak"] }
+alloy-sol-types = { version = "=0.8.20", default-features = false }
+
+[dev-dependencies]
+motsu = "0.2.1"
+
+alloy = { version = "=0.7.3", features = [
+  "contract",
+  "network",
+  "providers",
+  "provider-http",
+  "rpc-client",
+  "rpc-types-eth",
+  "signer-local",
+  "getrandom",
+] }
+
+[features]
+export-abi = ["stylus-sdk/export-abi", "openzeppelin-stylus/export-abi"]
+
+[[bin]]
+name = "genft"
+path = "src/main.rs"
+
+[lib]
+crate-type = ["lib", "cdylib"]
+path = "src/lib.rs"
+
+[profile.release]
+codegen-units = 1
+panic = "abort"
+opt-level = "z"
+strip = true
+lto = true
+debug = false
+rpath = false
+debug-assertions = false
+incremental = false

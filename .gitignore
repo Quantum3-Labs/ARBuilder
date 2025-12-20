@@ -37,10 +37,8 @@ env/
 *.swo
 *~
 
-# Data (large files)
-data/raw/*
-!data/raw/.gitkeep
-# Processed data is committed (small enough)
+# Data - raw and processed are committed
+# Only chroma_db is excluded (generated locally)
 
 # Chroma DB
 chroma_db/

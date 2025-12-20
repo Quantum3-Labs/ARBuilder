@@ -1,0 +1,23 @@
+#!/usr/bin/env -S rc -e
+
+SPN_SUPERPOSITION_URL=https://testnet-rpc.superposition.so
+SPN_SUPERPOSITION_KEY=`{QEP superposition}
+
+counter=`{forge create \
+	--json \
+	--broadcast \
+	--rpc-url $SPN_SUPERPOSITION_URL \
+	--private-key $SPN_SUPERPOSITION_KEY \
+	src/Counter.sol:Counter \
+		| jq -r .deployedTo}
+
+token=`{forge create \
+	--json \
+	--broadcast \
+	--rpc-url $SPN_SUPERPOSITION_URL \
+	--private-key $SPN_SUPERPOSITION_KEY \
+	src/Counter.sol:Token \
+		| jq -r .deployedTo}
+
+echo counter=$counter
+echo token=$token

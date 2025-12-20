@@ -1,0 +1,37 @@
+{
+  "name": "contracts-solidity",
+  "description": "Foundry-based smart contracts",
+  "version": "0.1.0",
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.1"
+  },
+  "devDependencies": {
+    "@prb/test": "^0.6.4",
+    "forge-std": "github:foundry-rs/forge-std#v1.7.5",
+    "prettier": "^3.0.0",
+    "solhint": "^3.6.2"
+  },
+  "keywords": [
+    "blockchain",
+    "ethereum",
+    "forge",
+    "foundry",
+    "smart-contracts",
+    "solidity",
+    "template"
+  ],
+  "private": true,
+  "scripts": {
+    "clean": "rm -rf cache out",
+    "build": "forge build",
+    "nitro-node": "if [ -x ../nitro-devnode/run-dev-node.sh ]; then (cd ../nitro-devnode && ./run-dev-node.sh); else echo '[ERROR] Nitro devnode not found. Please ensure ../nitro-devnode exists and run-dev-node.sh is present.'; fi",
+    "fund-accounts": "node -e \"require('child_process').execFileSync(require('path').resolve(__dirname, '../../scripts/funds.sh'), { stdio: 'inherit' })\"",
+    "anvil": "anvil --chain-id 1337",
+    "abi:nft": "jq '.abi' ./out/NFT.sol/NFT.json",
+    "deploy:local": "forge create src/NFT.sol:NFT --broadcast --from 0x3f1Eae7D46d88F08fc2F8ed27FCb2AB183EB2d0E  --private-key 0xb6b15c8cb491557369f3c7d2c287b053eb229daa9c22138887752191c9520659  --chain 412346 --rpc-url  http://localhost:8547  --constructor-args 0x3f1Eae7D46d88F08fc2F8ed27FCb2AB183EB2d0E",
+    "deploy:local-with-stylus": "forge create src/StylusNFT.sol:NFT --broadcast --from 0x3f1Eae7D46d88F08fc2F8ed27FCb2AB183EB2d0E  --private-key 0xb6b15c8cb491557369f3c7d2c287b053eb229daa9c22138887752191c9520659  --chain 412346 --rpc-url  http://localhost:8547  --constructor-args 0x3f1Eae7D46d88F08fc2F8ed27FCb2AB183EB2d0E",
+    "test": "forge test",
+    "test:watch": "forge test -vvv --watch",
+    "test:coverage": "forge coverage"
+  }
+}

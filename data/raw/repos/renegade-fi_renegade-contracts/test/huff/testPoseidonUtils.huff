@@ -1,0 +1,176 @@
+/// @title Test Poseidon Utils
+/// @author @joeykraut
+/// @notice Test the utils for the Poseidon2 permutation
+
+#include "../../src/libraries/poseidon2/poseidonUtils.huff"
+#include "../../src/libraries/poseidon2/poseidonPerm.huff"
+
+/// @dev Test the SBOX function applied to a single input
+#define function testSboxSingle(uint256) nonpayable returns(uint256) 
+/// @dev Test the ADD_RC function applied to a single input
+#define function testAddRc(uint256) nonpayable returns(uint256) 
+/// @dev Test the internal MDS function applied to a trio of inputs
+#define function testInternalMds(uint256, uint256, uint256) nonpayable returns(uint256, uint256, uint256)
+/// @dev Test the external MDS function applied to a trio of inputs
+#define function testExternalMds(uint256, uint256, uint256) nonpayable returns(uint256, uint256, uint256) 
+/// @dev Test the external round function applied to a trio of inputs
+#define function testExternalRound(uint256, uint256, uint256) nonpayable returns(uint256, uint256, uint256)
+/// @dev Test the internal round function applied to a trio of inputs
+#define function testInternalRound(uint256, uint256, uint256) nonpayable returns(uint256, uint256, uint256)
+/// @dev Test the full hash function applied to two inputs
+#define function testFullHash(uint256, uint256) nonpayable returns(uint256)
+
+/// @dev The first test round constant
+#define constant TEST_RC1 = 0x1337
+/// @dev The second test round constant
+#define constant TEST_RC2 = 0x1338
+/// @dev The third test round constant
+#define constant TEST_RC3 = 0x1339
+
+
+/// @dev Entrypoint to the poseidon test suite
+#define macro MAIN() = takes(0) returns(0) {
+    // Get the function selector
+    0x0 calldataload 0xe0 shr // [SELECTOR]
+    dup1 __FUNC_SIG(testSboxSingle)     eq testSboxSingle       jumpi
+    dup1 __FUNC_SIG(testAddRc)          eq testAddRc            jumpi
+    dup1 __FUNC_SIG(testInternalMds)    eq testInternalMds      jumpi
+    dup1 __FUNC_SIG(testExternalMds)    eq testExternalMds      jumpi
+    dup1 __FUNC_SIG(testExternalRound)  eq testExternalRound    jumpi
+    dup1 __FUNC_SIG(testInternalRound)  eq testInternalRound    jumpi
+    dup1 __FUNC_SIG(testFullHash)       eq testFullHash         jumpi
+    // Revert if the function selector is not valid
+    0x1 0x0 mstore
+    0x1 0x0 revert
+
+    testSboxSingle:
+        TEST_SBOX_SINGLE()
+    testAddRc:
+        TEST_ADD_RC()
+    testInternalMds:
+        TEST_INTERNAL_MDS()
+    testExternalMds:
+        TEST_EXTERNAL_MDS()
+    testExternalRound:
+        TEST_EXTERNAL_ROUND()
+    testInternalRound:
+        TEST_INTERNAL_ROUND(TEST_RC1)
+    testFullHash:
+        TEST_FULL_HASH()
+}
+
+// --- Test Cases --- //
+
+/// @notice Test the sbox function applied to a single input
+#define macro TEST_SBOX_SINGLE() = takes(0) returns(0) {
+    // Get the input from calldata 
+    PUSH_PRIME()
+    0x04 calldataload
+
+    // Call the sbox function
+    SBOX()
+
+    // Return the result
+    RETURN_FIRST()
+}
+
+/// @notice Test the add round constant function applied to a single input
+#define macro TEST_ADD_RC() = takes(0) returns(0) {
+    // Get the input from calldata 
+    PUSH_PRIME()
+    0x04 calldataload
+
+    // Call the add round constant function
+    ADD_RC(TEST_RC1)
+
+    // Return the result
+    RETURN_FIRST()
+}
+
+/// @notice Test the internal MDS function applied to a trio of inputs
+#define macro TEST_INTERNAL_MDS() = takes(0) returns(0) {
+    // Get the input from calldata 
+    0x44 calldataload
+    0x24 calldataload
+    0x04 calldataload               // [state[0], state[1], state[2]]
+
+    // Call the internal MDS function
+    INTERNAL_MDS()
+
+    // Return the result
+    RETURN_FIRST_THREE()
+}
+
+/// @notice Test the external MDS function applied to a trio of inputs
+#define macro TEST_EXTERNAL_MDS() = takes(0) returns(0) {
+    // Get the input from calldata 
+    0x44 calldataload
+    0x24 calldataload
+    0x04 calldataload               // [state[0], state[1], state[2]]
+
+    // Call the internal MDS function
+    EXTERNAL_MDS()
+
+    // Return the result
+    RETURN_FIRST_THREE()
+}
+
+/// @notice Test the external round function applied to a trio of inputs
+#define macro TEST_EXTERNAL_ROUND() = takes(0) returns(0) {
+    // Get the input from calldata 
+    0x44 calldataload
+    0x24 calldataload
+    0x04 calldataload               // [state[0], state[1], state[2]]
+
+    // Apply the external round function 
+    EXTERNAL_ROUND(TEST_RC1, TEST_RC2, TEST_RC3)
+
+    // Return the result
+    RETURN_FIRST_THREE()
+}
+
+/// @notice Test the internal round function applied to a trio of inputs
+#define macro TEST_INTERNAL_ROUND() = takes(0) returns(0) {
+    // Get the input from calldata 
+    0x44 calldataload
+    0x24 calldataload
+    0x04 calldataload               // [state[0], state[1], state[2]]
+
+    // Call the internal round function
+    INTERNAL_ROUND(TEST_RC1)
+
+    // Return the result
+    RETURN_FIRST_THREE()
+}
+
+/// @notice Test the full hash function applied to two inputs
+#define macro TEST_FULL_HASH() = takes(0) returns(0) {
+    // Get the input from calldata 
+    0x24 calldataload
+    0x04 calldataload               // [state[0], state[1]]
+
+    // Call the full hash function
+    POSEIDON_TWO_TO_ONE()
+
+    // Return the result
+    RETURN_FIRST()
+}
+
+// --- Helpers --- //
+
+/// @dev Return the first value on the stack
+#define macro RETURN_FIRST() = returns(0) {
+    0x00 mstore
+    0x20 0x00 return
+}
+
+/// @dev Return the first three values on the stack
+#define macro RETURN_FIRST_THREE() = returns(0) {
+    // Store the values
+    0x00 mstore
+    0x20 mstore
+    0x40 mstore
+
+    // Return the values
+    0x60 0x00 return
+}

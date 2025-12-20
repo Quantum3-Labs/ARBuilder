@@ -1,0 +1,170 @@
+name: test
+# This is the main CI workflow that runs the test suite on all pushes to main
+# and all pull requests. It runs the following jobs:
+# - required: runs the test suite on ubuntu with stable and beta rust
+# toolchains.
+# - os-check: runs the test suite on mac and windows.
+# - coverage: runs the test suite and collects coverage information.
+# See `check.yml` for information about how the concurrency cancellation and
+# workflow triggering works.
+permissions:
+  contents: read
+on:
+  push:
+    branches: [main, v*]
+    paths-ignore:
+      - "**.md"
+      - "**.adoc"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "**.adoc"
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+env:
+  CARGO_TERM_COLOR: always
+jobs:
+  required:
+    runs-on: ubuntu-latest
+    name: ubuntu / ${{ matrix.toolchain }}
+    strategy:
+      matrix:
+        # Run on stable and beta to ensure that tests won't break on the next
+        # version of the rust toolchain.
+        toolchain: [stable, beta]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Install rust ${{ matrix.toolchain }}
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          rustflags: ""
+
+      - name: "Install nextest"
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: Cargo generate-lockfile
+        # Enable this ci template to run regardless of whether the lockfile is
+        # checked in or not.
+        if: hashFiles('Cargo.lock') == ''
+        run: cargo generate-lockfile
+
+        # https://twitter.com/jonhoo/status/1571290371124260865
+      - name: Run unit tests
+        run: cargo nextest run --locked --all-targets -p openzeppelin-stylus -p openzeppelin-stylus-proc -p openzeppelin-crypto --features ruint
+
+        # https://github.com/rust-lang/cargo/issues/6669
+      - name: Run doc tests
+        run: cargo test --locked --doc
+  os-check:
+    # Run cargo test on MacOS and Windows.
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.os }} / stable
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest]
+        # Windows fails because of `stylus-proc`.
+        # os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Install rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          rustflags: ""
+
+      - name: "Install nextest"
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: Cargo generate-lockfile
+        if: hashFiles('Cargo.lock') == ''
+        run: cargo generate-lockfile
+
+      - name: Run unit tests
+        run: cargo nextest run --locked --all-targets -p openzeppelin-stylus -p openzeppelin-stylus-proc -p openzeppelin-crypto --features ruint
+
+  coverage:
+    # Use llvm-cov to build and collect coverage and outputs in a format that
+    # is compatible with codecov.io.
+    #
+    # Note that codecov as of v4 requires that CODECOV_TOKEN from
+    #
+    #   https://app.codecov.io/gh/<user or org>/<project>/settings
+    #
+    # is set in two places on your repo:
+    #
+    # - https://github.com/jonhoo/guardian/settings/secrets/actions
+    # - https://github.com/jonhoo/guardian/settings/secrets/dependabot
+    #
+    # (the former is needed for codecov uploads to work with Dependabot PRs)
+    #
+    # PRs coming from forks of your repo will not have access to the token, but
+    # for those, codecov allows uploading coverage reports without a token.
+    # it's all a little weird and inconvenient. see
+    #
+    #   https://github.com/codecov/feedback/issues/112
+    #
+    # for lots of more discussion.
+    runs-on: ubuntu-latest
+    name: ubuntu / nightly / coverage
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Install rust
+        # We run in nightly to make use of the `#[coverage(off)]` attribute (see _contracts/src/lib.rs_)
+        # We'll return to stable release after the tracking issue is merged (and the feature is stable)
+        # See: https://github.com/rust-lang/rust/issues/84605
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: nightly-2025-08-01
+          components: llvm-tools-preview
+          rustflags: ""
+
+      - name: Cargo install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: "Install nextest"
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: Cargo generate-lockfile
+        if: hashFiles('Cargo.lock') == ''
+        run: cargo generate-lockfile
+
+      - name: Cargo llvm-cov
+        run: cargo llvm-cov --locked --lcov --output-path lcov.info -p openzeppelin-stylus -p openzeppelin-stylus-proc -p openzeppelin-crypto
+
+      - name: Record Rust version
+        run: echo "RUST=$(rustc --version)" >> "$GITHUB_ENV"
+
+      - name: Prepare report for Codecov
+        run: cargo nextest run --profile ci --locked --all-targets -p openzeppelin-stylus -p openzeppelin-stylus-proc -p openzeppelin-crypto --features ruint
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/test-results-action@v1
+        with:
+          files: target/nextest/ci/junit.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload to codecov.io
+        uses: codecov/codecov-action@v5
+        with:
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          env_vars: OS,RUST

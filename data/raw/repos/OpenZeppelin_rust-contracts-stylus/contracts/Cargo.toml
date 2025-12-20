@@ -1,0 +1,34 @@
+[package]
+name = "openzeppelin-stylus"
+description = "OpenZeppelin Contracts for Stylus"
+edition.workspace = true
+categories = ["cryptography::cryptocurrencies", "no-std", "wasm"]
+keywords = ["arbitrum", "ethereum", "stylus", "smart-contracts", "standards"]
+license.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+alloy-primitives.workspace = true
+alloy-sol-types.workspace = true
+alloy-sol-macro.workspace = true
+alloy-sol-macro-expander.workspace = true
+alloy-sol-macro-input.workspace = true
+stylus-sdk.workspace = true
+keccak-const.workspace = true
+openzeppelin-stylus-proc.workspace = true
+
+[dev-dependencies]
+alloy-primitives = { workspace = true, features = ["arbitrary"] }
+alloy-signer.workspace = true
+motsu.workspace = true
+
+[features]
+reentrant = ["stylus-sdk/reentrant"]
+export-abi = ["stylus-sdk/export-abi"]
+
+[lib]
+crate-type = ["lib"]
+
+[lints]
+workspace = true

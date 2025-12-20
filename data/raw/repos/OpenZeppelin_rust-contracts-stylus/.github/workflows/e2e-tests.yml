@@ -1,0 +1,41 @@
+# This workflow runs our end-to-end tests suite.
+#
+# It roughly follows these steps:
+# - Install rust
+# - Install `cargo-stylus`
+# - Spin up `nitro-testnode`
+#
+# Contract deployments and account funding happen on a per-test basis.
+name: e2e
+permissions:
+  contents: read
+on:
+  push:
+    branches: [main, v*]
+  pull_request:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+env:
+  CARGO_TERM_COLOR: always
+jobs:
+  required:
+    name: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-key: "e2e-tests"
+          rustflags: ""
+
+      - name: Install cargo-stylus
+        run: cargo install --locked --force cargo-stylus@0.6.3
+
+      - name: Setup nitro node
+        run: ./scripts/nitro-testnode.sh -d -i
+
+      - name: run integration tests
+        run: ./scripts/e2e-tests.sh

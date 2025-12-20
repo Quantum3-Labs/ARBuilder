@@ -1,0 +1,72 @@
+---
+url: https://docs.superposition.so/superposition-mainnet/developers/build-on-superposition-using-thirdweb
+title: Build on Superposition using Thirdweb | Superposition
+category: orbit_sdk
+subcategory: docs
+scraped_at: 2025-12-20T10:42:11.768511
+---
+
+[![](https://docs.superposition.so/~gitbook/image?url=https%3A%2F%2F4196461559-files.gitbook.io%2F%7E%2Ffiles%2Fv0%2Fb%2Fgitbook-x-prod.appspot.com%2Fo%2Fspaces%252FYG4cy6lsYDv5fGVs1u1l%252Ficon%252Flu3GN04cVH6Iw66IyUkY%252FROUNDED%2520EARS.png%3Falt%3Dmedia%26token%3Da03ac097-f7c2-4408-a5fb-89f3321092be&width=32&dpr=4&quality=100&sign=26c97299&sv=2)![](https://docs.superposition.so/~gitbook/image?url=https%3A%2F%2F4196461559-files.gitbook.io%2F%7E%2Ffiles%2Fv0%2Fb%2Fgitbook-x-prod.appspot.com%2Fo%2Fspaces%252FYG4cy6lsYDv5fGVs1u1l%252Ficon%252Flu3GN04cVH6Iw66IyUkY%252FROUNDED%2520EARS.png%3Falt%3Dmedia%26token%3Da03ac097-f7c2-4408-a5fb-89f3321092be&width=32&dpr=4&quality=100&sign=26c97299&sv=2)Superposition](https://docs.superposition.so/)
+`Ctrl``k`
+  * [🔲Super Hub](https://docs.superposition.so/)
+  * Introduction
+    * [🐱Introducing Superposition](https://docs.superposition.so/introduction/introducing-superposition)
+    * [📦Understanding Superposition](https://docs.superposition.so/introduction/understanding-superposition)
+    * [🐾The Laws of Superposition](https://docs.superposition.so/introduction/the-laws-of-superposition)
+    * [🛠️Roadmaps](https://docs.superposition.so/introduction/roadmaps)
+  * 🐈Superposition Mainnet
+    * [ℹ️ Mainnet Network Details](https://docs.superposition.so/superposition-mainnet/mainnet-network-details)
+    * [🖥️ Using Superposition Mainnet](https://docs.superposition.so/superposition-mainnet/using-superposition-mainnet)
+    * [🌉 Bridging to Superposition Mainnet](https://docs.superposition.so/superposition-mainnet/bridging-to-superposition-mainnet)
+    * [🛤️Super Layer](https://docs.superposition.so/superposition-mainnet/super-layer)
+    * [👷Developers](https://docs.superposition.so/superposition-mainnet/developers)
+      * [](https://docs.superposition.so/superposition-mainnet/developers/build-on-superposition-using-thirdweb)
+        * [Overview](https://docs.superposition.so/superposition-mainnet/developers/build-on-superposition-using-thirdweb/overview)
+        * [Wallets](https://docs.superposition.so/superposition-mainnet/developers/build-on-superposition-using-thirdweb/wallets)
+        * [Contracts](https://docs.superposition.so/superposition-mainnet/developers/build-on-superposition-using-thirdweb/contracts)
+        * [Infrastructure](https://docs.superposition.so/superposition-mainnet/developers/build-on-superposition-using-thirdweb/infrastructure)
+        * [SDKs](https://docs.superposition.so/superposition-mainnet/developers/build-on-superposition-using-thirdweb/sdks)
+        * [Engine](https://docs.superposition.so/superposition-mainnet/developers/build-on-superposition-using-thirdweb/engine)
+      * [Free Startup Credits!](https://docs.superposition.so/superposition-mainnet/developers/free-startup-credits)
+      * [📈Incentives : Intent Based Yield Distribution](https://docs.superposition.so/superposition-mainnet/developers/incentives-intent-based-yield-distribution)
+    * [3️⃣Arbitrum Layer 3](https://docs.superposition.so/superposition-mainnet/arbitrum-layer-3)
+  * ✨Native dApps
+    * [🚰Faucet](https://docs.superposition.so/native-dapps/faucet)
+    * [🔍Block Explorer](https://docs.superposition.so/native-dapps/block-explorer)
+    * [🐈‍⬛Longtail AMM](https://docs.superposition.so/native-dapps/longtail-amm)
+    * [](https://docs.superposition.so/native-dapps/9lives)
+    * [📧Meow Domains](https://docs.superposition.so/native-dapps/meow-domains)
+    * [🌈Bridge](https://docs.superposition.so/native-dapps/bridge)
+  * Partnerships
+    * [🤝Partnering with us](https://docs.superposition.so/partnerships/partnering-with-us)
+    * [👐Join us](https://docs.superposition.so/partnerships/join-us)
+  * Other Docs and Links
+    * [🔗Official Links](https://docs.superposition.so/other-docs-and-links/official-links)
+    * [🧑‍🤝‍🧑Community Hub](https://docs.superposition.so/other-docs-and-links/community-hub)
+
+
+Copy
+  1. [🐈Superposition Mainnet](https://docs.superposition.so/superposition-mainnet)
+  2. [👷Developers](https://docs.superposition.so/superposition-mainnet/developers)
+
+
+### 
+[](https://docs.superposition.so/superposition-mainnet/developers/build-on-superposition-using-thirdweb#build-on-superposition)
+Build on Superposition
+[](https://docs.superposition.so/superposition-mainnet/developers/build-on-superposition-using-thirdweb/overview)
+Overview
+[](https://docs.superposition.so/superposition-mainnet/developers/build-on-superposition-using-thirdweb/wallets)
+Wallets
+[](https://docs.superposition.so/superposition-mainnet/developers/build-on-superposition-using-thirdweb/infrastructure)
+Infrastructure
+[](https://docs.superposition.so/superposition-mainnet/developers/build-on-superposition-using-thirdweb/engine)
+Engine
+[](https://docs.superposition.so/superposition-mainnet/developers/build-on-superposition-using-thirdweb/contracts)
+Contracts
+[](https://docs.superposition.so/superposition-mainnet/developers/build-on-superposition-using-thirdweb/sdks)
+SDKs
+[PreviousDevelopers](https://docs.superposition.so/superposition-mainnet/developers)[NextOverview](https://docs.superposition.so/superposition-mainnet/developers/build-on-superposition-using-thirdweb/overview)
+Last updated 1 year ago
+Was this helpful?
+Was this helpful?
+

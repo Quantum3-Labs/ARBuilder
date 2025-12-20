@@ -1,0 +1,15 @@
+{
+  "extends": "solhint:recommended",
+  "rules": {
+    "no-inline-assembly": "off",
+    "no-console": "off",
+    "import-path-check": "off",
+    "gas-indexed-events": "off",
+    "func-visibility": [
+      "warn",
+      {
+        "ignoreConstructors": true
+      }
+    ]
+  }
+}

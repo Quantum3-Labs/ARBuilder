@@ -1,0 +1,54 @@
+[lint]
+exclude_lints = ["incorrect-shift"]
+
+[fmt]
+line_length = 120
+tab_width = 4
+bracket_spacing = true
+int_types = "long"
+multiline_func_header = "all"
+quote_style = "double"
+number_underscore = "thousands"
+wrap_comments = true
+ignore = [
+    "src/darkpool/v1/libraries/VerificationKeys.sol",
+    "src/darkpool/v2/libraries/VerificationKeys.sol",
+    "src/libraries/merkle/MerkleZeros.sol",
+]
+
+[profile.default]
+evm_version = "cancun"
+src = "src"
+out = "out"
+libs = ["lib"]
+via_ir = true
+optimizer = true
+optimizer_runs = 100_000
+sparse_mode = true
+# The darkpool is a large contract so we limit the optimizer runs
+# Todo: if more space is needed, decrease the number of runs
+additional_compiler_profiles = [
+    { name = "darkpool", optimizer_runs = 3000 },
+    { name = "darkpoolv2", optimizer_runs = 10 },
+]
+compilation_restrictions = [
+    { paths = "src/darkpool/v1/contracts/Darkpool.sol", optimizer_runs = 3000, version = "0.8.24" },
+    { paths = "src/darkpool/v2/contracts/DarkpoolV2.sol", optimizer_runs = 10, version = "0.8.24" },
+]
+
+fs_permissions = [
+    { access = "read-write", path = "./deployments.json" },
+    { access = "read-write", path = "./deployments.devnet.json" },
+    { access = "read-write", path = "./deployments.testnet.json" },
+    { access = "read-write", path = "./deployments.mainnet.json" },
+]
+
+[profile.ci]
+evm_version = "cancun"
+src = "src"
+out = "out"
+libs = ["lib"]
+remappings = ["forge-std/=lib/forge-std/src/"]
+via_ir = true
+optimizer = true
+optimizer_runs = 100_000

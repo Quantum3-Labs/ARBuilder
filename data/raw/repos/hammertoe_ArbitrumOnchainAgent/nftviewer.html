@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NFT Viewer - Arbitrum Sepolia</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script>
+        const { useState, useEffect, useCallback } = React;
+
+        // Helper function to preload image
+        const preloadImage = (src) => {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(src);
+                img.onerror = reject;
+                img.src = src;
+            });
+        };
+
+        // Minimal ERC721 ABI for tokenURI function plus our event
+        const minABI = [
+            {
+                "inputs": [{"internalType": "uint256","name": "tokenId","type": "uint256"}],
+                "name": "tokenURI",
+                "outputs": [{"internalType": "string","name": "","type": "string"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "anonymous": false,
+                "inputs": [],
+                "name": "TrainingCompleted",
+                "type": "event"
+            }
+        ];
+
+        const NFTViewer = () => {
+            const [address, setAddress] = useState('');
+            const [tokenId, setTokenId] = useState('');
+            const [nftImage, setNftImage] = useState('');
+            const [error, setError] = useState('');
+            const [loading, setLoading] = useState(false);
+            const [lastTraining, setLastTraining] = useState(null);
+
+            const fetchNFT = useCallback(async () => {
+                if (loading) return; // Prevent concurrent fetches
+                if (!address || !tokenId) return; // Ensure we have required inputs
+                
+                setLoading(true);
+                setError('');
+                
+                try {
+                    // Convert tokenId to a valid BigNumber string
+                    const tokenIdBN = ethers.BigNumber.from(tokenId).toString();
+                    
+                    // Connect to Arbitrum Sepolia
+                    const provider = new ethers.providers.JsonRpcProvider('https://sepolia-rollup.arbitrum.io/rpc');
+                    const contract = new ethers.Contract(address, minABI, provider);
+
+                    // Fetch token URI
+                    const uri = await contract.tokenURI(tokenIdBN);
+                    
+                    // Handle data URI
+                    if (uri.startsWith('data:application/json;base64,')) {
+                        const json = atob(uri.split(',')[1]);
+                        const metadata = JSON.parse(json);
+                        if (metadata.image) {
+                            await preloadImage(metadata.image);
+                            setNftImage(metadata.image);
+                        }
+                    }
+                } catch (err) {
+                    setError('Error fetching NFT: ' + err.message);
+                } finally {
+                    setLoading(false);
+                }
+            }, [address, tokenId, loading]);
+
+            useEffect(() => {
+                if (!address) return;
+
+                const provider = new ethers.providers.JsonRpcProvider('https://sepolia-rollup.arbitrum.io/rpc');
+                const contract = new ethers.Contract(address, minABI, provider);
+
+                const handleTrainingCompleted = async () => {
+                    console.log('Training completed');
+                    setLastTraining({
+                        timestamp: new Date().toLocaleTimeString()
+                    });
+                    // Add slight delay to ensure contract state is updated
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    // Only fetch if we have both address and tokenId
+                    if (address && tokenId) {
+                        await fetchNFT();
+                    }
+                };
+
+                contract.on('TrainingCompleted', handleTrainingCompleted);
+
+                return () => {
+                    contract.removeListener('TrainingCompleted', handleTrainingCompleted);
+                };
+            }, [address, tokenId, fetchNFT]);
+
+            return React.createElement('div', { className: 'p-4 max-w-2xl mx-auto' }, [
+                React.createElement('h1', { className: 'text-2xl font-bold mb-4', key: 'title' }, 
+                    'NFT Viewer - Arbitrum Sepolia'
+                ),
+                React.createElement('div', { className: 'space-y-4', key: 'container' }, [
+                    React.createElement('div', { key: 'address-container' }, [
+                        React.createElement('label', { 
+                            className: 'block text-sm font-medium mb-1',
+                            key: 'address-label'
+                        }, 'Contract Address:'),
+                        React.createElement('input', {
+                            type: 'text',
+                            value: address,
+                            onChange: (e) => setAddress(e.target.value),
+                            className: 'w-full p-2 border rounded',
+                            placeholder: '0x...',
+                            key: 'address-input'
+                        })
+                    ]),
+                    React.createElement('div', { key: 'tokenId-container' }, [
+                        React.createElement('label', {
+                            className: 'block text-sm font-medium mb-1',
+                            key: 'tokenId-label'
+                        }, 'Token ID:'),
+                        React.createElement('input', {
+                            type: 'text',
+                            value: tokenId,
+                            onChange: (e) => setTokenId(e.target.value),
+                            className: 'w-full p-2 border rounded',
+                            placeholder: '0',
+                            key: 'tokenId-input'
+                        })
+                    ]),
+                    React.createElement('button', {
+                        onClick: fetchNFT,
+                        disabled: loading,
+                        className: 'w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 disabled:bg-gray-300',
+                        key: 'fetch-button'
+                    }, loading ? 'Loading...' : 'View NFT'),
+                    lastTraining && React.createElement('div', {
+                        className: 'mt-2 p-2 bg-green-100 rounded',
+                        key: 'training-info'
+                    }, `Training completed at ${lastTraining.timestamp}`),
+                    error && React.createElement('div', {
+                        className: 'text-red-500 mt-2',
+                        key: 'error'
+                    }, error),
+                    nftImage && React.createElement('div', {
+                        className: 'mt-4 relative',
+                        key: 'image-container'
+                    }, [
+                        React.createElement('img', {
+                            src: nftImage,
+                            alt: 'NFT',
+                            className: 'max-w-full border rounded',
+                            key: 'nft-image'
+                        }),
+                        loading && React.createElement('div', {
+                            className: 'absolute inset-0 bg-white bg-opacity-50 flex items-center justify-center',
+                            key: 'loading-overlay'
+                        }, 'Updating...')
+                    ])
+                ])
+            ]);
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(NFTViewer));
+    </script>
+</body>
+</html>

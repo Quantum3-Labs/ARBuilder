@@ -1,0 +1,88 @@
+name: Checker Script CI
+
+on:
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  run-checker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Cache rust toolchain
+        uses: actions/cache@v3
+        with:
+          path: ~/.rustup
+          key: ${{ runner.os }}-rustup-${{ hashFiles('**/rust-toolchain.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-rustup-
+
+      - name: Ensure only rustup manages Rust
+        run: |
+          sudo apt-get remove --purge cargo rustc || true
+          brew uninstall --force rust || true
+          sudo rm -rf /usr/local/bin/rustc /usr/local/bin/cargo || true
+
+      - name: Install rustup
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          source $HOME/.cargo/env
+
+      - name: Install Rust toolchain and wasm32 target per directory
+        run: |
+          for dir in example_code/applications/* example_code/basic_examples/*; do
+            if [[ -d "$dir" && -f "$dir/rust-toolchain.toml" ]]; then
+              toolchain_version=$(grep '^channel' "$dir/rust-toolchain.toml" | cut -d '"' -f 2)
+              rustup toolchain install "$toolchain_version"
+              rustup override set "$toolchain_version" --path "$dir"
+              rustup target add wasm32-unknown-unknown --toolchain "$toolchain_version"
+            fi
+          done
+
+      - name: Cache cargo-stylus binary
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/bin/cargo-stylus
+          key: ${{ runner.os }}-cargo-stylus-${{ hashFiles('**/Cargo.toml') }}
+
+      - name: Install cargo-stylus
+        run: |
+          if [ ! -f ~/.cargo/bin/cargo-stylus ]; then
+            cargo install cargo-stylus
+          fi
+
+      - name: Make checker.sh executable
+        run: chmod +x ./checker.sh
+
+      - name: Run checker script (no SDK bump)
+        run: ./checker.sh --no-update
+
+      - name: Ensure /tmp/check_results.log exists
+        run: |
+          if [ ! -f /tmp/check_results.log ]; then
+            echo "/tmp/check_results.log not found! Failing the check."
+            exit 1
+          fi
+
+      - name: Check for issues in the log
+        run: |
+          if grep -q "FAILED" /tmp/check_results.log; then
+            echo "Checker script failed! Fix the issues before merging."
+            exit 1
+          else
+            echo "Checker script passed! Ready to merge."
+          fi

@@ -1,0 +1,31 @@
+[package]
+name = "common"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# === Arkworks === #
+ark-bn254 = "0.4.0"
+ark-ff = "0.4.0"
+ark-ec = "0.4.0"
+ark-serialize = "0.4.0"
+
+# === Cryptography === #
+tiny-keccak = { version = "2.0", features = ["keccak"] }
+
+# === EVM === #
+alloy = { workspace = true }
+alloy-sol-types = { workspace = true }
+
+# === Renegade === #
+mpc-plonk = { workspace = true }
+mpc-relation = { workspace = true }
+renegade-circuit-types = { workspace = true }
+renegade-constants = { workspace = true }
+renegade-crypto = { workspace = true }
+
+# === Misc === #
+itertools = "0.14"
+num-bigint = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

@@ -1,0 +1,28 @@
+**/deployments.json
+**/deployments.*.json 
+
+# Workspace 
+.vscode
+.cursor
+**/.DS_Store
+codegen/**/*.huff
+
+# Compiler files
+cache/
+out/
+**/target
+**/Cargo.lock
+**/rustc-ice*
+
+# Ignores development broadcast logs
+!/broadcast
+/broadcast/*/31337/
+/broadcast/**/dry-run/
+broadcast
+
+# Docs
+docs/
+
+# Dotenv file
+.env
+

@@ -1,0 +1,260 @@
+export const metadata = {
+  title: 'Using the CLI • Stylus by Example',
+  description:
+    "How to use cargo stylus and Foundry's cast CLI tool to effectively deploy and query your Arbitrum Stylus Rust smart contract",
+};
+
+{/* Begin Content */}
+
+# Using the CLI
+
+In this example, we'll cover a typical workflow for deploying a Rust smart contract to a local Stylus dev node and how to manually test your smart contract with some handy CLI tools. This guide assumes you have already followed [the instructions from Arbitrum docs](https://docs.arbitrum.io/stylus/stylus-quickstart) to get your environment set up.
+
+## Requirements
+
+- [Rust Lang](https://www.rust-lang.org/tools/install)
+- [VS Code](https://code.visualstudio.com/) (or IDE of your choice)
+- [Cargo Stylus](https://github.com/OffchainLabs/cargo-stylus)
+- [Foundry](https://book.getfoundry.sh/getting-started/installation)
+- [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/)
+- [Arbitrum Nitro Dev Node](https://docs.arbitrum.io/run-arbitrum-node/run-nitro-dev-node) (up and running)
+
+## Deploying and Testing the Counter Contract
+
+We'll be using [Cargo Stylus](https://github.com/OffchainLabs/cargo-stylus) to set up and deploy our smart contract and [Foundry's Cast CLI tool](https://book.getfoundry.sh/cast/) to call and send transactions to our deployed smart contract.
+
+### ~/projects
+
+```bash
+❯ cargo stylus new counter
+Cloning into 'counter'...
+Cloning into '.'...
+remote: Enumerating objects: 23, done.
+remote: Counting objects: 100% (23/23), done.
+remote: Compressing objects: 100% (18/18), done.
+remote: Total 23 (delta 0), reused 12 (delta 0), pack-reused 0 (from 0)
+Receiving objects: 100% (23/23), 370.10 KiB | 2.52 MiB/s, done.
+Initialized Stylus project at: /Users/your_name/projects/counter
+```
+
+Open the newly created `counter` folder in VS Code. Take a look at `src/lib.rs`, important focal points below:
+
+### src/lib.rs
+
+```rust
+sol_storage! {
+    #[entrypoint]
+    pub struct Counter {
+        uint256 number;
+    }
+}
+
+/// Define an implementation of the generated Counter struct, defining a set_number
+/// and increment method using the features of the Stylus SDK.
+#[external]
+impl Counter {
+    /// Gets the number from storage.
+    pub fn number(&self) -> U256 {
+        self.number.get()
+    }
+
+    /// Sets a number in storage to a user-specified value.
+    pub fn set_number(&mut self, new_number: U256) {
+        self.number.set(new_number);
+    }
+
+    /// Sets a number in storage to a user-specified value.
+    pub fn mul_number(&mut self, new_number: U256) {
+        self.number.set(new_number * self.number.get());
+    }
+
+    /// Sets a number in storage to a user-specified value.
+    pub fn add_number(&mut self, new_number: U256) {
+        self.number.set(new_number + self.number.get());
+    }
+
+    /// Increments `number` and updates its value in storage.
+    pub fn increment(&mut self) {
+        let number = self.number.get();
+        self.set_number(number + U256::from(1));
+    }
+}
+```
+
+It's not necessary to fully understand this code for this example. For now, just note that there are 6 external methods available on this smart contract: `number`, `set_number`, `mul_number`, `add_number`, `increment`, and `add_from_msg_value`. These functions form the public API for the contract. Their functionality is fairly self explanatory, they allow you to fetch the current count, set the counter to some arbitrary value, multiply or add some value to the count, or increment the current value by one.
+
+Let's go ahead and deploy the contract to our [Arbitrum Nitro Dev Node](https://docs.arbitrum.io/run-arbitrum-node/run-nitro-dev-node). When you set up your local dev node, two addresses are funded with "local ETH". We'll use the local dev address `0x3f1Eae7D46d88F08fc2F8ed27FCb2AB183EB2d0E` with the private key `0xb6b15c8cb491557369f3c7d2c287b053eb229daa9c22138887752191c9520659` for this example.
+
+First, we'll set up a `.env` file with a few variables to avoid repetitive typing in the console:
+
+### ~/projects/counter/.env
+
+```txt
+RPC=http://localhost:8547
+PRIVATE_KEY=0xb6b15c8cb491557369f3c7d2c287b053eb229daa9c22138887752191c9520659
+CONTRACT=
+```
+
+Then type:
+
+### ~/projects/counter
+
+```bash
+source .env
+```
+
+To load the environment variables into your terminal. Ensure they've been loaded by typing:
+
+### ~/projects/counter
+
+```bash
+echo $RPC
+```
+
+Which should print `http://localhost:8547`. Now, from the terminal, with current directory set to the `counter` folder:
+
+### ~/projects/counter
+
+```bash
+cargo stylus deploy -e $RPC --no-verify --private-key $PRIVATE_KEY
+```
+
+After a minute or so, the counter project will be compiled into a single WASM file, then that file will be compressed before being deployed and then 'activated' onchain. Your terminal should display something like this:
+
+### ~/projects/counter
+
+```bash
+stripped custom section from user wasm to remove any sensitive data
+contract size: 6.4 KB (6363 bytes)
+wasm size: 19.5 KB (19507 bytes)
+File used for deployment hash: ./Cargo.lock
+File used for deployment hash: ./Cargo.toml
+File used for deployment hash: ./examples/counter.rs
+File used for deployment hash: ./rust-toolchain.toml
+File used for deployment hash: ./src/lib.rs
+File used for deployment hash: ./src/main.rs
+project metadata hash computed on deployment: "685e3cd6d6f8eeb9d74f9765b9871e81b67df06608b4f14343baeebc0c7cdc8e"
+stripped custom section from user wasm to remove any sensitive data
+contract size: 6.4 KB (6363 bytes)
+wasm data fee: 0.000073 ETH (originally 0.000061 ETH with 20% bump)
+deployed code at address: 0x525c2aba45f66987217323e8a05ea400c65d06dc
+deployment tx hash: 0x9d2f2847454e7e62c9a952fd2881c4651dea1b0847f883087bfd19496a95bf7b
+contract activated and ready onchain with tx hash: 0x73b1dad7f67d59cca0fe8b558457ad592339d552c852f27d447cce7f084b9565
+```
+
+Note the `deployed code at address 0x525c...06dc` statement. The address your contract gets deployed to will likely differ, so take note of that address. Select it and copy it to your clipboard.
+
+Open up `.env` file again and paste in the contract address, as in:
+
+### ~/projects/counter/.env
+
+```txt
+RPC=http://localhost:8547
+PRIVATE_KEY=0xb6b15c8cb491557369f3c7d2c287b053eb229daa9c22138887752191c9520659
+CONTRACT=0x525c2aba45f66987217323e8a05ea400c65d06dc
+```
+
+Update your local variables again:
+
+### ~/projects/counter
+
+```bash
+source .env
+```
+
+We'll now use `cast`, which was installed as part of our Foundry CLI suite, to `call` the contract. Later we'll `send` a transaction to the contract. The difference between `call` and `send` is that `call` costs no gas, so it can only be used to invoke read-only functions.
+
+### ~/projects/counter
+
+```bash
+cast call --rpc-url $RPC --private-key $PRIVATE_KEY $CONTRACT "number()(uint256)"
+```
+
+Which should return:
+
+```bash
+0
+```
+
+Let's break down the above `call`. We are passing two flags to it. `--rpc-url` corresponds to the RPC URL of the Stylus chain we deployed on. `--private-key` is the provided private key used for development purposes. It corresponds to the address `0x3f1eae7d46d88f08fc2f8ed27fcb2ab183eb2d0e`.
+
+Technically, we do not need to include a private key to `call` a contract, since there is no need for any gas to `call` read-only functions. However, it tends to be more convenient to leave it in there for simple switching between `call` and `send`. It's usually quicker to press the up key on your terminal to recall your last command and then edit it by navigating to the word or words you need to change.
+
+After the private key, we include the contract address, which on my machine was `0x525c2aba45f66987217323e8a05ea400c65d06dc` (but will likely differ on yours). We are using the local variable `$CONTRACT` sourced from the `.env` file to reference this. So we are letting `cast` know we wish to call our newly deployed contract. We now need to tell `cast` how to interpret the API function that we're invoking. We do that with the function's Solidity-style signature. The `"number()(uint256)"` argument says that we wish to call the `number` external function, it takes no arguments and it returns a 256-bit integer as denoted in the second pair of parentheses. The `uint256` syntax comes from the types listed in the [Solidity docs](https://docs.soliditylang.org/en/v0.8.19/types.html).
+
+The result was `0`, which is what we expect a new counter to be initialized to. Let's try incrementing it! This time, we'll invoke the `send` command.
+
+### ~/projects/counter
+
+```bash
+cast send --rpc-url $RPC --private-key $PRIVATE_KEY $CONTRACT "increment()"
+```
+
+Which will display something like:
+
+```bash
+blockHash            0x106c91060a25409ccb0c8ad63b9663311c7c13f04004733e962dd9eb906f298b
+blockNumber          10
+contractAddress
+cumulativeGasUsed    56458
+effectiveGasPrice    100000000
+from                 0x3f1Eae7D46d88F08fc2F8ed27FCb2AB183EB2d0E
+gasUsed              56458
+logs                 []
+logsBloom            0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+root
+status               1 (success)
+transactionHash      0x1d079985f73fcc8f654c6bcab46a1e04ac65736449ac1a25e3babcad912e1959
+transactionIndex     1
+type                 2
+blobGasPrice
+blobGasUsed
+to                   0x525c2aBA45F66987217323E8a05EA400C65D06DC
+gasUsedForL1         0
+l1BlockNumber        0
+timeboosted          false
+```
+
+Nice! Our transaction went through successfully and we even received a `transactionHash` and detailed logs in the CLI.
+
+Let's now check to see if our counter was properly incremented by calling the `number()` again method like we did in the last step.
+
+### ~/projects/counter
+
+```bash
+cast call --rpc-url $RPC --private-key $PRIVATE_KEY $CONTRACT "number()(uint256)"
+```
+
+Which now shows:
+
+```bash
+1
+```
+
+Great! Our counter now displays a value of `1`! We successfully changed our contract's state.
+
+To demonstrate passing arguments to `cast`, let's try setting the counter to 5 by invoking the `set_number` function. Note, that instead of calling `set_number` we instead call `setNumber`, which is the Solidity-compatible camel casing for external functions (as opposed to Rust's snake casing standard). By using Solidity ABI standards for external methods, we can more easily maintain cross-contract compatiblity between Rust and Solidity smart contracts.
+
+### ~/projects/counter
+
+```bash
+cast send --rpc-url $RPC --private-key $PRIVATE_KEY $CONTRACT "setNumber(uint256)()" 5
+```
+
+It will return transaction metadata similar to our first `send` invocation.
+
+Note how we passed in the number `5` as the argument to `setNumber(uint256)()`. `cast` was expecting a single 256-bit integer to be passed in. Now, let's check our work:
+
+### ~/projects/counter
+
+```bash
+cast call --rpc-url $RPC --private-key $PRIVATE_KEY $CONTRACT "number()(uint256)"
+```
+
+It will show:
+
+```bash
+5
+```
+
+It worked perfect! Our counter now has the value `5`. If we `increment()` again, it will be increased to `6`. Using `cast` can help you easily test the functionality of your contracts in your local environment. For more information, see [Foundry's Cast documentation](https://book.getfoundry.sh/cast/).

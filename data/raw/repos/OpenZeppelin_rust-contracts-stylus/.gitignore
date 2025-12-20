@@ -1,0 +1,15 @@
+**/target
+
+.env
+
+**/node_modules/
+
+docs/build/
+
+**/.DS_Store
+
+**/nitro-testnode
+
+lcov.info
+
+lcov.infos

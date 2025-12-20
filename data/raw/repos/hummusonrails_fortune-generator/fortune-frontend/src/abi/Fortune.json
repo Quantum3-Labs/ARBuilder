@@ -1,0 +1,101 @@
+[
+    {
+      "inputs": [
+        { "internalType": "uint32", "name": "fortune", "type": "uint32" }
+      ],
+      "name": "mintFortune",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        { "internalType": "uint64", "name": "index", "type": "uint64" }
+      ],
+      "name": "getFortune",
+      "outputs": [
+        { "internalType": "uint32", "name": "", "type": "uint32" }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "generateFortune",
+      "outputs": [
+        { "internalType": "uint32", "name": "", "type": "uint32" }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "totalMintedValue",
+      "outputs": [
+        { "internalType": "uint64", "name": "", "type": "uint64" }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        { "internalType": "uint64", "name": "total", "type": "uint64" }
+      ],
+      "name": "setTotalMinted",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        { "internalType": "uint32", "name": "fortune", "type": "uint32" }
+      ],
+      "name": "setFortuneList",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        { "internalType": "uint64", "name": "index", "type": "uint64" },
+        { "internalType": "address", "name": "owner", "type": "address" }
+      ],
+      "name": "setOwner",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        { "internalType": "address", "name": "_address", "type": "address" }
+      ],
+      "name": "balances",
+      "outputs": [
+        { "internalType": "uint64", "name": "", "type": "uint64" }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        { "internalType": "address", "name": "_address", "type": "address" },
+        { "internalType": "uint64", "name": "balance", "type": "uint64" }
+      ],
+      "name": "setBalances",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        { "internalType": "uint64", "name": "total", "type": "uint64" }
+      ],
+      "name": "pseudoRandom",
+      "outputs": [
+        { "internalType": "uint64", "name": "", "type": "uint64" }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ]
+  

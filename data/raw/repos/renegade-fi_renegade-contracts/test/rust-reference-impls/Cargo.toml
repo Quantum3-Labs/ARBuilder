@@ -1,0 +1,20 @@
+[workspace]
+members = ["common", "merkle", "poseidon", "transcript", "verifier"]
+
+[workspace.dependencies]
+# === EVM Dependencies === #
+alloy = "1.0.1"
+alloy-sol-types = "1.0.1"
+
+# === Renegade Dependencies === #
+common = { path = "common" }
+renegade-circuits = { package = "circuits", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-circuit-types = { package = "circuit-types", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-circuit-macros = { package = "circuit-macros", git = "https://github.com/renegade-fi/renegade.git" }
+renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git", default-features = false }
+renegade-crypto = { git = "https://github.com/renegade-fi/renegade.git" }
+mpc-plonk = { git = "https://github.com/renegade-fi/mpc-jellyfish.git" }
+mpc-relation = { git = "https://github.com/renegade-fi/mpc-jellyfish.git" }
+
+# === Misc Dependencies === #
+num-bigint = "0.4"

@@ -1,0 +1,9 @@
+[package]
+name = "poseidon"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+renegade-constants.workspace = true
+renegade-crypto.workspace = true
+num-bigint.workspace = true

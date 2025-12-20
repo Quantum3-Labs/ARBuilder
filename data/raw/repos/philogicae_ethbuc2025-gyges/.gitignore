@@ -1,0 +1,11 @@
+# Env
+.env
+
+# Subfolders
+nitro-devnode
+
+# Temp files
+**/*.txt
+
+# Others
+.vscode

@@ -1,0 +1,20 @@
+{
+  "name": "stylus-workshop",
+  "version": "0.0.1",
+  "description": "Stylus Workshop",
+  "main": "index.js",
+  "engines": {
+    "node": "v20"
+  },
+  "scripts": {
+    "postinstall": "[ ! -d \"apps/nitro-devnode\" ] && git clone https://github.com/OffchainLabs/nitro-devnode.git apps/nitro-devnode || true"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "npm-run-all2": "^6.1.2",
+    "prettier": "^3.0.3"
+  },
+  "private": true
+}

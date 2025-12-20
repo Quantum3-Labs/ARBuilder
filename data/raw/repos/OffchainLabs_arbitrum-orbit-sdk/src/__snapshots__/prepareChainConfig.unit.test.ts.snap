@@ -1,0 +1,69 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`creates chain config with custom params 1`] = `
+{
+  "arbitrum": {
+    "AllowDebugPrecompiles": false,
+    "DataAvailabilityCommittee": true,
+    "EnableArbOS": true,
+    "GenesisBlockNum": 0,
+    "InitialArbOSVersion": 20,
+    "InitialChainOwner": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+    "MaxCodeSize": 40960,
+    "MaxInitCodeSize": 81920,
+  },
+  "berlinBlock": 0,
+  "byzantiumBlock": 0,
+  "chainId": 69420,
+  "clique": {
+    "epoch": 0,
+    "period": 0,
+  },
+  "constantinopleBlock": 0,
+  "daoForkBlock": null,
+  "daoForkSupport": true,
+  "eip150Block": 0,
+  "eip150Hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+  "eip155Block": 0,
+  "eip158Block": 0,
+  "homesteadBlock": 0,
+  "istanbulBlock": 0,
+  "londonBlock": 0,
+  "muirGlacierBlock": 0,
+  "petersburgBlock": 0,
+}
+`;
+
+exports[`creates chain config with defaults 1`] = `
+{
+  "arbitrum": {
+    "AllowDebugPrecompiles": false,
+    "DataAvailabilityCommittee": false,
+    "EnableArbOS": true,
+    "GenesisBlockNum": 0,
+    "InitialArbOSVersion": 40,
+    "InitialChainOwner": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+    "MaxCodeSize": 24576,
+    "MaxInitCodeSize": 49152,
+  },
+  "berlinBlock": 0,
+  "byzantiumBlock": 0,
+  "chainId": 69420,
+  "clique": {
+    "epoch": 0,
+    "period": 0,
+  },
+  "constantinopleBlock": 0,
+  "daoForkBlock": null,
+  "daoForkSupport": true,
+  "eip150Block": 0,
+  "eip150Hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+  "eip155Block": 0,
+  "eip158Block": 0,
+  "homesteadBlock": 0,
+  "istanbulBlock": 0,
+  "londonBlock": 0,
+  "muirGlacierBlock": 0,
+  "petersburgBlock": 0,
+}
+`;

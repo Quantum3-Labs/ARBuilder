@@ -1,0 +1,15 @@
+[package]
+name = "merkle-zeros-codegen"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# === Renegade === #
+renegade-crypto = { git = "https://github.com/renegade-fi/renegade.git" }
+renegade-constants = { package = "constants", git = "https://github.com/renegade-fi/renegade.git", default-features = false }
+common = { path = "../../test/rust-reference-impls/common" }
+
+# === Misc === #
+clap = { version = "4.5.1", features = ["derive"] }
+anyhow = "1.0"
+tiny-keccak = { version = "2.0", features = ["keccak"] }

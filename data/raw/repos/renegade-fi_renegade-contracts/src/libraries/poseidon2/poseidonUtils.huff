@@ -1,0 +1,165 @@
+/// Helpers for Poseidon2 round functions
+
+/// @dev The scalar field modulus of BN254
+#define constant PRIME = 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001 
+
+/// @dev Absorb two elements into a 2-1 poseidon sponge, permute, then return the first output
+/// Implicitly this is a 2-1 sponge with rate 2 and capacity 1 -- for a width-3 sponge state
+#define macro POSEIDON_TWO_TO_ONE() = takes(2) returns(1) {
+    // Takes [a, b]
+
+    // The initial 2-1 sponge state is [0, a, b]
+    push0                   // [0, a, b]
+    POSEIDON_PERM()         // [state'[0], state'[1], state'[2]]
+
+    // We return the first element past the state capacity, in this case state'[1]
+    // Cleanup the stack before doing so
+    pop                     // [state'[1], state'[2]]
+    swap1 pop               // [state'[1]]
+}
+
+/// @dev Apply an external round to the state  
+/// @param Takes [a, b, c]
+/// @return [a', b', c']
+#define macro EXTERNAL_ROUND(RC1, RC2, RC3) = takes(3) returns(3) {
+    // Add the round constants to the state and apply the sbox to individual elements
+    PUSH_PRIME() dup4       // [c, PRIME, a, b, c]
+    ADD_RC(<RC3>)           // [c + RC3, a, b, c]
+    PUSH_PRIME() swap1      // [c + RC3, PRIME, a, b, c]
+    SBOX()                  // [(c + RC3)^5, a, b, c]
+
+    PUSH_PRIME() dup4       // [b, PRIME, (c + RC3)^5, a, b, c]
+    ADD_RC(<RC2>)           // [b + RC2, (c + RC3)^5, a, b, c]
+    PUSH_PRIME() swap1      // [b + RC2, PRIME, (c + RC3)^5, a, b, c]
+    SBOX()                  // [(b + RC2)^5, (c + RC3)^5, a, b, c]
+
+    PUSH_PRIME() dup4       // [a, PRIME, (b + RC2)^5, (c + RC3)^5, a, b, c]
+    ADD_RC(<RC1>)           // [a + RC1, (b + RC2)^5, (c + RC3)^5, a, b, c]
+    PUSH_PRIME() swap1      // [a + RC1, PRIME, (b + RC2)^5, (c + RC3)^5, a, b, c] 
+    SBOX()                  // [(a + RC1)^5, (b + RC2)^5, (c + RC3)^5, a, b, c]
+    
+    // Pop the old state off the stack
+    swap3 pop swap3 pop swap3 pop // [a', b', c']
+
+    // Multiply the intermediate state by the external round MDS matrix
+    EXTERNAL_MDS()
+}
+
+/// @dev Apply an internal round to the state
+/// In an internal round, the round constant is only added to the first element,
+/// and the sbox is applied to the first element only
+/// @param Takes [a, b, c]
+/// @return [a', b', c']
+#define macro INTERNAL_ROUND(RC1) = takes(3) returns(7) {
+    // Add the round constant to the first element
+    PUSH_PRIME() swap1      // [a, PRIME, b, c]
+    ADD_RC(<RC1>)           // [a + RC1, b, c]
+    PUSH_PRIME() swap1      // [a + RC1, PRIME, b, c]
+    SBOX()                  // [(a + RC1)^5, b, c]
+
+    // Apply the internal MDS matrix
+    INTERNAL_MDS()
+}
+
+// --- Core Permutation Methods --- //
+
+/// @dev Add the round constant to the element on top of the stack
+#define macro ADD_RC(RC) = takes(2) returns(1) {
+    // Takes [x, PRIME]
+    <RC> addmod       // [x + RC mod PRIME]
+}
+
+/// @dev Apply the sbox function to the element on top of the stack,
+/// which is replaced by its fifth power mod p
+/// I.e. transforms the stack [x, ...] -> [x^5 mod p, ...]
+#define macro SBOX() = takes(2) returns(1) {
+    // Takes [x, PRIME]
+    // Prelude: setup primes on the stack in the order they'll be used
+    dup2 dup1       // [PRIME, PRIME, x, PRIME]
+    dup3            // [x, PRIME, PRIME, x, PRIME]
+    dup1            // [x, x, PRIME, PRIME, x, PRIME]
+
+    // Compute x^2 (mod p)
+    mulmod          // [x^2 mod p, PRIME, x, PRIME]
+
+    // Compute x^4 (mod p)
+    dup1            // [x^2 mod p, x^2 mod p, PRIME, x, PRIME]
+    mulmod          // [x^4 mod p, x, PRIME]
+    
+    // Compute x^5 (mod p)
+    mulmod          // [x^5 mod p]
+}
+
+/// @dev Apply the internal MDS matrix to the sponge state
+/// For t = 3, this is the matrix:
+///     [2, 1, 1]
+///     [1, 2, 1]
+///     [1, 1, 3]
+///
+/// This can be done efficiently by adding the sum to each element as in the
+/// external MDS case but adding an additional copy of the final state
+/// element
+/// @param Takes [state[0], state[1], state[2]]
+/// @return [state'[0], state'[1], state'[2]]
+#define macro INTERNAL_MDS() = takes(3) returns(3) {
+    // Takes [state[0], state[1], state[2]]
+    SUM_FIRST_THREE()                   // [sum, state[0], state[1], state[2]]
+
+    // Double the last state element and add the sum to each element
+    PUSH_PRIME() dup2 PUSH_PRIME()      // [PRIME, sum, PRIME, sum, state[0], state[1], state[2]] 
+    dup7 dup1 addmod                    // [state[2] * 2, sum, PRIME, sum, state[0], state[1], state[2]] 
+    addmod                              // [state'[2], sum, state[0], state[1], state[2]]           
+    swap4 pop                           // [sum, state[0], state[1], state'[2]]
+
+    PUSH_PRIME() dup2                   // [sum, PRIME, sum, state[0], state[1], state'[2]]
+    dup5 addmod                         // [state'[1], sum, state[0], state[1], state'[2]]
+    swap3 pop                           // [sum, state[0], state'[1], state'[2]]
+
+    PUSH_PRIME() swap2                  // [state[0], sum, PRIME, state'[1], state'[2]]
+    addmod                              // [state'[0], state'[1], state'[2]]
+}
+
+/// @dev Apply the external MDS matrix to the sponge state
+/// For t = 3, this is the circulant matrix `circ(2, 1, 1)`
+///
+/// This is equivalent to doubling each element then adding the other two to
+/// it, or more efficiently: adding the sum of the elements to each
+/// individual element. This efficient structure is borrowed from:
+///     https://github.com/HorizenLabs/poseidon2/blob/main/plain_implementations/src/poseidon2/poseidon2.rs#L129-L137
+/// @param Takes [state[0], state[1], state[2]]
+/// @return [state'[0], state'[1], state'[2]]
+#define macro EXTERNAL_MDS() = takes(3) returns(3) {
+    // Takes [state[0], state[1], state[2]]
+    SUM_FIRST_THREE()               // [sum, state[0], state[1], state[2]]
+
+    // Add the sum to each element
+    PUSH_PRIME() dup2               // [sum, PRIME, sum, state[0], state[1], state[2]] 
+    dup6 addmod                     // [state'[2], sum, state[0], state[1], state[2]] 
+    swap4 pop                       // [sum, state[0], state[1], state'[2]]
+
+    PUSH_PRIME() dup2               // [sum, PRIME, sum, state[0], state[1], state'[2]]
+    dup5 addmod                     // [state'[1], sum, state[0], state[1], state'[2]]
+    swap3 pop                       // [sum, state[0], state'[1], state'[2]]
+
+    PUSH_PRIME() swap2              // [state[0], sum, PRIME, state'[1], state'[2]]
+    addmod                          // [state'[0], state'[1], state'[2]]
+}
+
+// --- Helper Macros --- //
+
+/// @dev Push the prime onto the stack
+#define macro PUSH_PRIME() = {
+    [PRIME]
+}
+
+/// @dev Sum the first three elements of the stack modulo the prime
+#define macro SUM_FIRST_THREE() = takes(3) returns(4) {
+    // Takes [a, b, c]
+    PUSH_PRIME()            // [PRIME, a, b, c]
+    dup4 dup4 dup4          // [a, b, c, PRIME, a, b, c]
+
+    // Compute the sum of the elements (mod p)
+    PUSH_PRIME() swap2      // [b, a, PRIME, c, PRIME, a, b, c]
+    addmod                  // [a + b mod p, c, PRIME, a, b, c]
+    addmod                  // [sum, a, b, c]
+}

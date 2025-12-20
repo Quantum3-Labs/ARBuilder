@@ -1,0 +1,18 @@
+#!/usr/bin/env -S rc -e
+
+SPN_SUPERPOSITION_URL=https://testnet-rpc.superposition.so
+SPN_SUPERPOSITION_KEY=`{QEP superposition}
+
+make
+
+contract_1=`{./deploy.sh contract-1.wasm}
+contract_2=`{./deploy.sh contract-2.wasm}
+
+forge create \
+	--json \
+	--broadcast \
+	--rpc-url $SPN_SUPERPOSITION_URL \
+	--private-key $SPN_SUPERPOSITION_KEY \
+	src/Proxy.sol:Proxy \
+	--constructor-args $contract_1 $contract_2 \
+		| jq -r .deployedTo
