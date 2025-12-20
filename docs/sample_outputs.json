@@ -1,0 +1,125 @@
+{
+  "description": "Sample inputs and outputs for ARBuilder MCP tools. These serve as reference documentation for expected tool behavior.",
+  "tools": {
+    "get_stylus_context": {
+      "description": "Retrieves relevant documentation, code examples, and patterns from the Stylus knowledge base using hybrid search (BM25 + vector embeddings).",
+      "input": {
+        "query": "ERC20 token implementation in Stylus",
+        "n_results": 3,
+        "content_type": "code",
+        "rerank": true
+      },
+      "output": {
+        "contexts": [
+          {
+            "content": "use stylus_sdk::{alloy_primitives::U256, prelude::*, storage::StorageMap};\n\nsol_storage! {\n    #[entrypoint]\n    pub struct Erc20 {\n        mapping(address => uint256) balances;\n        mapping(address => mapping(address => uint256)) allowances;\n        uint256 total_supply;\n    }\n}",
+            "source": "arbitrum-docs/stylus/erc20-example.md",
+            "content_type": "code",
+            "relevance_score": 0.92
+          },
+          {
+            "content": "The Stylus SDK provides storage primitives that map directly to Solidity types. For ERC20, use `StorageMap` for balances and allowances, and `StorageU256` for total supply.",
+            "source": "arbitrum-docs/stylus/storage-patterns.md",
+            "content_type": "documentation",
+            "relevance_score": 0.85
+          },
+          {
+            "content": "#[public]\nimpl Erc20 {\n    pub fn transfer(&mut self, to: Address, amount: U256) -> Result<bool, Vec<u8>> {\n        let sender = msg::sender();\n        let sender_balance = self.balances.get(sender);\n        if sender_balance < amount {\n            return Err(b\"insufficient balance\".to_vec());\n        }\n        self.balances.insert(sender, sender_balance - amount);\n        self.balances.insert(to, self.balances.get(to) + amount);\n        Ok(true)\n    }\n}",
+            "source": "repos/stylus-erc20/src/lib.rs",
+            "content_type": "code",
+            "relevance_score": 0.88
+          }
+        ],
+        "total_results": 3,
+        "query": "ERC20 token implementation in Stylus"
+      }
+    },
+    "generate_stylus_code": {
+      "description": "Generates Stylus smart contract code based on natural language descriptions, using RAG context for accurate patterns.",
+      "input": {
+        "prompt": "Create a simple counter contract with increment and decrement functions",
+        "context_query": "counter contract storage Stylus",
+        "contract_type": "utility",
+        "include_tests": false,
+        "temperature": 0.2
+      },
+      "output": {
+        "code": "#![cfg_attr(not(feature = \"export-abi\"), no_main)]\nextern crate alloc;\n\nuse stylus_sdk::{alloy_primitives::U256, prelude::*, storage::StorageU256};\n\nsol_storage! {\n    #[entrypoint]\n    pub struct Counter {\n        uint256 count;\n    }\n}\n\n#[public]\nimpl Counter {\n    /// Gets the current count value\n    pub fn get_count(&self) -> U256 {\n        self.count.get()\n    }\n\n    /// Increments the counter by 1\n    pub fn increment(&mut self) {\n        let current = self.count.get();\n        self.count.set(current + U256::from(1));\n    }\n\n    /// Decrements the counter by 1, reverts if count is 0\n    pub fn decrement(&mut self) -> Result<(), Vec<u8>> {\n        let current = self.count.get();\n        if current == U256::ZERO {\n            return Err(b\"Counter: cannot decrement below zero\".to_vec());\n        }\n        self.count.set(current - U256::from(1));\n        Ok(())\n    }\n}",
+        "explanation": "This counter contract uses the Stylus SDK with:\n- `sol_storage!` macro for EVM-compatible storage layout\n- `#[entrypoint]` attribute to mark the main contract struct\n- `StorageU256` for the count value (maps to Solidity uint256)\n- `#[public]` to expose functions as external contract methods\n- Error handling via `Result<(), Vec<u8>>` for the decrement function",
+        "dependencies": [
+          "stylus-sdk = \"0.6.0\"",
+          "alloy-primitives = \"0.7.6\""
+        ],
+        "warnings": [],
+        "context_used": [
+          "arbitrum-docs/stylus/quickstart.md",
+          "repos/stylus-counter/src/lib.rs"
+        ]
+      }
+    },
+    "ask_stylus": {
+      "description": "Answers questions about Stylus development, debugging, and best practices with context-aware responses.",
+      "input": {
+        "question": "How do I handle errors in Stylus contracts?",
+        "code_context": null,
+        "question_type": "general"
+      },
+      "output": {
+        "answer": "In Stylus contracts, error handling follows Rust conventions with some EVM-specific considerations:\n\n1. **Return Result types**: Use `Result<T, Vec<u8>>` for functions that can fail. The `Vec<u8>` contains the revert data.\n\n2. **Custom error messages**: Return descriptive byte strings that can be decoded by clients:\n   ```rust\n   if balance < amount {\n       return Err(b\"insufficient balance\".to_vec());\n   }\n   ```\n\n3. **Solidity-compatible errors**: For interoperability, encode errors using ABI encoding:\n   ```rust\n   use stylus_sdk::alloy_sol_types::sol;\n   sol! {\n       error InsufficientBalance(uint256 available, uint256 required);\n   }\n   ```\n\n4. **Panic handling**: Panics are converted to reverts automatically, but explicit error handling is preferred for gas efficiency.\n\n5. **Assert vs Require**: Unlike Solidity, Stylus doesn't have built-in require/assert. Use Rust's `if` statements with early returns.",
+        "code_examples": [
+          {
+            "title": "Basic error handling",
+            "code": "pub fn transfer(&mut self, to: Address, amount: U256) -> Result<bool, Vec<u8>> {\n    let sender = msg::sender();\n    let balance = self.balances.get(sender);\n    \n    if balance < amount {\n        return Err(b\"ERC20: insufficient balance\".to_vec());\n    }\n    \n    // ... transfer logic\n    Ok(true)\n}"
+          },
+          {
+            "title": "Custom Solidity-compatible error",
+            "code": "sol! {\n    error TransferFailed(address from, address to, uint256 amount);\n}\n\npub fn safe_transfer(&mut self, to: Address, amount: U256) -> Result<(), Vec<u8>> {\n    if !self.do_transfer(to, amount) {\n        return Err(TransferFailed { from: msg::sender(), to, amount }.encode());\n    }\n    Ok(())\n}"
+          }
+        ],
+        "references": [
+          "arbitrum-docs/stylus/error-handling.md",
+          "stylus-sdk/docs/errors.md"
+        ],
+        "follow_up_questions": [
+          "How do I decode Stylus errors in a frontend application?",
+          "What's the gas cost difference between panic and explicit errors?",
+          "How do I emit events alongside errors?"
+        ]
+      }
+    },
+    "generate_tests": {
+      "description": "Generates test suites for Stylus contracts, supporting both Rust native tests and Foundry integration tests.",
+      "input": {
+        "contract_code": "#[public]\nimpl Counter {\n    pub fn get_count(&self) -> U256 { self.count.get() }\n    pub fn increment(&mut self) { self.count.set(self.count.get() + U256::from(1)); }\n    pub fn decrement(&mut self) -> Result<(), Vec<u8>> { ... }\n}",
+        "test_framework": "rust_native",
+        "test_types": ["unit"],
+        "coverage_focus": null
+      },
+      "output": {
+        "tests": "#[cfg(test)]\nmod tests {\n    use super::*;\n\n    fn setup() -> Counter {\n        Counter::default()\n    }\n\n    #[test]\n    fn test_get_count_initial_zero() {\n        let contract = setup();\n        assert_eq!(contract.get_count(), U256::ZERO);\n    }\n\n    #[test]\n    fn test_increment_success() {\n        let mut contract = setup();\n        contract.increment();\n        assert_eq!(contract.get_count(), U256::from(1));\n    }\n\n    #[test]\n    fn test_increment_multiple() {\n        let mut contract = setup();\n        contract.increment();\n        contract.increment();\n        contract.increment();\n        assert_eq!(contract.get_count(), U256::from(3));\n    }\n\n    #[test]\n    fn test_decrement_success() {\n        let mut contract = setup();\n        contract.increment();\n        assert!(contract.decrement().is_ok());\n        assert_eq!(contract.get_count(), U256::ZERO);\n    }\n\n    #[test]\n    fn test_decrement_underflow_error() {\n        let mut contract = setup();\n        let result = contract.decrement();\n        assert!(result.is_err());\n    }\n}",
+        "test_summary": {
+          "total_tests": 5,
+          "unit_tests": 5,
+          "integration_tests": 0,
+          "fuzz_tests": 0
+        },
+        "coverage_estimate": {
+          "functions_covered": ["get_count", "increment", "decrement"],
+          "functions_not_covered": [],
+          "edge_cases": ["Initial state", "Multiple increments", "Underflow prevention"]
+        },
+        "setup_instructions": "# Running Rust Tests\n\n1. Ensure your Cargo.toml has test dependencies:\n```toml\n[dev-dependencies]\nalloy-primitives = \"0.7.6\"\n```\n\n2. Run tests:\n```bash\ncargo test\n```\n\n3. Run with output:\n```bash\ncargo test -- --nocapture\n```\n\n4. Run specific test:\n```bash\ncargo test test_increment_success\n```\n"
+      }
+    }
+  },
+  "benchmark_metrics": {
+    "description": "Performance metrics from benchmark runs. See tests/benchmark_results.json for detailed query-level results.",
+    "summary": {
+      "average_recall": 0.85,
+      "average_mrr": 0.67,
+      "average_p_at_5": 0.55,
+      "total_queries_tested": 15,
+      "categories": ["stylus", "arbitrum_sdk", "orbit_sdk"]
+    }
+  }
+}
