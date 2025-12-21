@@ -3,9 +3,15 @@ Arbitrum Network Configurations.
 
 This resource provides network configurations for all Arbitrum networks
 that Stylus contracts can be deployed to.
+
+Last updated: December 2025
+Sources:
+- https://docs.arbitrum.io/build-decentralized-apps/reference/node-providers
+- https://docs.arbitrum.io/for-devs/dev-tools-and-resources/chain-info
 """
 
 NETWORK_CONFIGS = {
+    "last_updated": "2025-12",
     "networks": {
         "arbitrum_sepolia": {
             "name": "Arbitrum Sepolia",
@@ -14,6 +20,7 @@ NETWORK_CONFIGS = {
             "parent_chain": "Ethereum Sepolia",
             "rpc_endpoints": {
                 "primary": "https://sepolia-rollup.arbitrum.io/rpc",
+                "sequencer": "https://sepolia-rollup-sequencer.arbitrum.io/rpc",
                 "alternatives": [
                     "https://arbitrum-sepolia.blockpi.network/v1/rpc/public",
                     "https://arbitrum-sepolia.public.blastapi.io",
@@ -35,6 +42,12 @@ NETWORK_CONFIGS = {
             },
             "stylus_support": True,
             "recommended_for": ["development", "testing", "staging"],
+            "notes": [
+                "Official testnet for Arbitrum One and Nova",
+                "EVM-equivalent execution on Nitro optimistic rollup",
+                "Fast blocks (~0.3-0.5 seconds)",
+                "Same gas model and tooling as Arbitrum One",
+            ],
         },
         "arbitrum_one": {
             "name": "Arbitrum One",
@@ -43,6 +56,7 @@ NETWORK_CONFIGS = {
             "parent_chain": "Ethereum Mainnet",
             "rpc_endpoints": {
                 "primary": "https://arb1.arbitrum.io/rpc",
+                "sequencer": "https://arb1-sequencer.arbitrum.io/rpc",
                 "alternatives": [
                     "https://arbitrum.llamarpc.com",
                     "https://arbitrum-one.public.blastapi.io",
@@ -77,6 +91,7 @@ NETWORK_CONFIGS = {
             "parent_chain": "Ethereum Mainnet",
             "rpc_endpoints": {
                 "primary": "https://nova.arbitrum.io/rpc",
+                "sequencer": "https://nova-sequencer.arbitrum.io/rpc",
                 "alternatives": [
                     "https://arbitrum-nova.public.blastapi.io",
                 ],
@@ -100,6 +115,19 @@ NETWORK_CONFIGS = {
             ],
         },
     },
+    "sequencer_notes": {
+        "description": "Sequencer endpoints only support specific methods",
+        "supported_methods": [
+            "eth_sendRawTransaction",
+            "eth_sendRawTransactionConditional",
+        ],
+        "usage": "Use sequencer endpoints for faster transaction submission",
+    },
+    "public_rpc_limitations": [
+        "No WebSocket support on public RPCs",
+        "Rate limits may apply (use paid providers for production)",
+        "For guaranteed service levels, use third-party providers",
+    ],
     "orbit_chains": {
         "description": "Custom L3 chains built on Arbitrum using Orbit",
         "examples": [
@@ -160,7 +188,8 @@ NETWORK_CONFIGS = {
         {"method": "eth_chainId", "description": "Get chain ID", "example": "cast chain-id --rpc-url <RPC>"},
         {"method": "eth_blockNumber", "description": "Get latest block", "example": "cast block-number --rpc-url <RPC>"},
         {"method": "eth_getBalance", "description": "Get account balance", "example": "cast balance <ADDRESS> --rpc-url <RPC>"},
-        {"method": "eth_call", "description": "Call contract function", "example": "cast call <ADDRESS> 'fn()' --rpc-url <RPC>"},
+        {"method": "eth_call", "description": "Call contract function (read)", "example": "cast call <ADDRESS> 'fn()' --rpc-url <RPC>"},
         {"method": "eth_sendRawTransaction", "description": "Send signed transaction", "example": "cast send <ADDRESS> 'fn()' --private-key <KEY> --rpc-url <RPC>"},
+        {"method": "eth_getTransactionReceipt", "description": "Get transaction receipt", "example": "cast receipt <TX_HASH> --rpc-url <RPC>"},
     ],
 }

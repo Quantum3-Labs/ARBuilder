@@ -3,6 +3,11 @@ Stylus Development Workflows.
 
 These workflows provide step-by-step guidance for common Stylus development tasks.
 The AI IDE uses these to guide users through build, deploy, and test processes.
+
+Last updated: December 2025
+Sources:
+- https://docs.arbitrum.io/stylus/stylus-quickstart
+- https://docs.arbitrum.io/stylus/cli-tools-overview
 """
 
 BUILD_WORKFLOW = {
@@ -10,8 +15,10 @@ BUILD_WORKFLOW = {
     "description": "Complete workflow for building a Stylus smart contract",
     "prerequisites": [
         {"check": "rustup --version", "install": "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"},
-        {"check": "rustup target list | grep wasm32-unknown-unknown", "install": "rustup target add wasm32-unknown-unknown"},
-        {"check": "cargo stylus --version", "install": "cargo install cargo-stylus"},
+        {"check": "rustup default", "install": "rustup default 1.81", "note": "Rust 1.81 recommended, 1.82+ may have issues"},
+        {"check": "rustup target list --installed | grep wasm32-unknown-unknown", "install": "rustup target add wasm32-unknown-unknown --toolchain 1.81"},
+        {"check": "cargo stylus --version", "install": "cargo install --force cargo-stylus"},
+        {"check": "docker --version", "install": "Install Docker from docker.com", "note": "Required for reproducible builds"},
     ],
     "steps": [
         {
@@ -69,9 +76,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-stylus-sdk = "0.6.0"
-alloy-primitives = "0.7.6"
-alloy-sol-types = "0.7.6"
+stylus-sdk = "0.8.4"
+alloy-primitives = "0.8.14"
+alloy-sol-types = "0.8.14"
+
+[dev-dependencies]
+stylus-sdk = { version = "0.8.4", features = ["stylus-test"] }
 
 [features]
 export-abi = ["stylus-sdk/export-abi"]
@@ -223,7 +233,13 @@ TEST_WORKFLOW = {
         "unit_tests": {
             "description": "Test individual functions in isolation",
             "location": "src/lib.rs or separate test files",
-            "framework": "Rust native #[test]",
+            "framework": "Rust native #[test] with stylus-test",
+        },
+        "stylus_test": {
+            "description": "Stylus SDK native testing framework (SDK 0.8.0+)",
+            "location": "src/lib.rs with #[cfg(test)]",
+            "framework": "stylus_sdk::testing",
+            "setup": 'stylus-sdk = { version = "0.8.4", features = ["stylus-test"] }',
         },
         "integration_tests": {
             "description": "Test contract interactions end-to-end",
@@ -321,6 +337,7 @@ contract StylusContractTest is Test {
     },
     "debugging": {
         "replay_transaction": "cargo stylus replay --tx <HASH> --endpoint <RPC>",
+        "trace_transaction": "cargo stylus trace --tx <HASH> --endpoint <RPC> --use-native-tracer",
         "trace_call": "cast call --trace <ADDRESS> 'function()' --rpc-url <RPC>",
         "decode_error": "cast 4byte-decode <ERROR_SELECTOR>",
     },
