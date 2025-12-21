@@ -46,7 +46,10 @@ ArbBuilder/
 │   │   ├── vectordb.py   # ChromaDB wrapper with hybrid search
 │   │   └── reranker.py   # BM25, LLM, and hybrid reranking
 │   ├── mcp/              # MCP server for IDE integration
-│   │   └── tools/        # MCP tool implementations
+│   │   ├── server.py     # MCP server (tools, resources, prompts)
+│   │   ├── tools/        # MCP tool implementations (5 tools)
+│   │   ├── resources/    # Static knowledge (CLI, workflows, networks)
+│   │   └── prompts/      # Workflow templates
 │   └── rag/              # RAG pipeline (TBD)
 ├── tests/
 │   ├── mcp_tools/        # MCP tool test cases and benchmarks
@@ -166,52 +169,79 @@ The scraper collects data from:
 **Orbit SDK (M4)**
 - [arbitrum-orbit-sdk](https://github.com/OffchainLabs/arbitrum-orbit-sdk)
 
-## MCP Tools
+## MCP Capabilities
 
-ARBuilder provides 4 MCP tools for Cursor/VS Code integration:
+ARBuilder exposes a full MCP server with **5 tools**, **5 resources**, and **5 prompts** for Cursor/VS Code integration.
 
-### 1. `get_stylus_context`
-Retrieves relevant documentation and code examples from the RAG database.
+### Tools
 
-```json
-{
-  "query": "How to create an ERC20 token",
-  "n_results": 5,
-  "content_type": "all"
-}
-```
+| Tool | Description |
+|------|-------------|
+| `get_stylus_context` | RAG retrieval for docs and code examples |
+| `generate_stylus_code` | Generate Stylus contracts from prompts |
+| `ask_stylus` | Q&A, debugging, concept explanations |
+| `generate_tests` | Generate unit/integration/fuzz tests |
+| `get_workflow` | Build/deploy/test workflow guidance |
 
-### 2. `generate_stylus_code`
-Generates Stylus/Rust smart contract code based on requirements.
+#### Example: Get Build/Deploy Workflow
 
 ```json
 {
-  "prompt": "Create a counter contract with increment and get functions",
-  "contract_type": "custom",
-  "include_tests": false
+  "workflow_type": "deploy",
+  "network": "arbitrum_sepolia",
+  "include_troubleshooting": true
 }
 ```
 
-### 3. `ask_stylus`
-Answers questions, explains concepts, and helps debug Stylus code.
+Returns step-by-step commands:
+```bash
+# Check balance
+cast balance YOUR_ADDRESS --rpc-url https://sepolia-rollup.arbitrum.io/rpc
 
-```json
-{
-  "question": "What is the sol_storage! macro?",
-  "question_type": "concept"
-}
+# Deploy contract
+cargo stylus deploy --private-key-path=./key.txt --endpoint=https://sepolia-rollup.arbitrum.io/rpc
 ```
 
-### 4. `generate_tests`
-Generates test cases for Stylus smart contracts.
+### Resources (Knowledge Injection)
 
-```json
-{
-  "contract_code": "...",
-  "test_framework": "rust_native",
-  "test_types": ["unit"]
-}
+MCP Resources provide static knowledge that AI IDEs can load automatically:
+
+| Resource URI | Description |
+|--------------|-------------|
+| `stylus://cli/commands` | Complete cargo-stylus CLI reference |
+| `stylus://workflows/build` | Step-by-step build workflow |
+| `stylus://workflows/deploy` | Deployment workflow with network configs |
+| `stylus://workflows/test` | Testing workflow (unit, integration, fuzz) |
+| `stylus://config/networks` | Arbitrum network configurations |
+
+### Prompts (Workflow Templates)
+
+MCP Prompts provide reusable templates for common workflows:
+
+| Prompt | Description | Arguments |
+|--------|-------------|-----------|
+| `build-contract` | Build workflow guidance | `project_path`, `release_mode` |
+| `deploy-contract` | Deploy workflow guidance | `network`, `key_method` |
+| `debug-error` | Error diagnosis workflow | `error_message`, `context` |
+| `optimize-gas` | Gas optimization workflow | `contract_code`, `focus` |
+| `generate-contract` | Contract generation workflow | `description`, `contract_type` |
+
+### How It Works
+
 ```
+User: "Deploy my contract to Arbitrum Sepolia"
+    ↓
+AI IDE calls get_workflow(workflow_type="deploy", network="arbitrum_sepolia")
+    ↓
+Returns structured commands + troubleshooting
+    ↓
+AI IDE presents commands to user (user executes locally)
+```
+
+The MCP server provides **knowledge about commands**, not command execution. This ensures:
+- User controls what runs on their machine
+- No security risks from remote execution
+- AI IDE knows exact commands without hardcoding
 
 See [docs/mcp_tools_spec.md](docs/mcp_tools_spec.md) for full specification.
 

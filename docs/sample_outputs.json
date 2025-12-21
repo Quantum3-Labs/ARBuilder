@@ -110,6 +110,58 @@
         },
         "setup_instructions": "# Running Rust Tests\n\n1. Ensure your Cargo.toml has test dependencies:\n```toml\n[dev-dependencies]\nalloy-primitives = \"0.7.6\"\n```\n\n2. Run tests:\n```bash\ncargo test\n```\n\n3. Run with output:\n```bash\ncargo test -- --nocapture\n```\n\n4. Run specific test:\n```bash\ncargo test test_increment_success\n```\n"
       }
+    },
+    "get_workflow": {
+      "description": "Returns structured workflow information for build, deploy, and test operations. Provides step-by-step commands that the AI IDE can present to users.",
+      "input": {
+        "workflow_type": "deploy",
+        "network": "arbitrum_sepolia",
+        "include_troubleshooting": true
+      },
+      "output": {
+        "workflow_type": "deploy",
+        "network": "arbitrum_sepolia",
+        "deploy": {
+          "name": "Deploy Stylus Contract",
+          "description": "Complete workflow for deploying a Stylus contract to Arbitrum",
+          "target_network": {
+            "name": "Arbitrum Sepolia",
+            "type": "testnet",
+            "chain_id": 421614,
+            "rpc_endpoints": {
+              "primary": "https://sepolia-rollup.arbitrum.io/rpc"
+            },
+            "explorer": {
+              "url": "https://sepolia.arbiscan.io"
+            }
+          },
+          "quick_commands": {
+            "prepare_key": "echo 'YOUR_PRIVATE_KEY' > key.txt && chmod 600 key.txt",
+            "check_balance": "cast balance YOUR_ADDRESS --rpc-url https://sepolia-rollup.arbitrum.io/rpc",
+            "estimate_gas": "cargo stylus deploy --estimate-gas --private-key-path=./key.txt --endpoint=https://sepolia-rollup.arbitrum.io/rpc",
+            "deploy": "cargo stylus deploy --private-key-path=./key.txt --endpoint=https://sepolia-rollup.arbitrum.io/rpc",
+            "verify": "cargo stylus verify --deployment-tx TX_HASH --endpoint=https://sepolia-rollup.arbitrum.io/rpc",
+            "call_contract": "cast call CONTRACT_ADDRESS 'functionName()' --rpc-url https://sepolia-rollup.arbitrum.io/rpc",
+            "send_tx": "cast send CONTRACT_ADDRESS 'functionName()' --private-key-path=./key.txt --rpc-url https://sepolia-rollup.arbitrum.io/rpc"
+          },
+          "security_checklist": [
+            "Private key NOT in git repository",
+            "key.txt has 600 permissions",
+            "Contract tested on testnet first",
+            "Sufficient ETH for gas fees"
+          ],
+          "common_issues": {
+            "insufficient_funds": {
+              "error": "insufficient funds for gas",
+              "solution": "Add ETH to wallet. Use faucet for testnet."
+            },
+            "nonce_too_low": {
+              "error": "nonce too low",
+              "solution": "Wait for pending transactions or use higher nonce"
+            }
+          }
+        }
+      }
     }
   },
   "benchmark_metrics": {
