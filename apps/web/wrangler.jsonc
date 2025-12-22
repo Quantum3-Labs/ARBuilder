@@ -1,0 +1,56 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "arbbuilder",
+	"main": ".open-next/worker.js",
+	"compatibility_date": "2025-12-01",
+	"compatibility_flags": [
+		"nodejs_compat",
+		"global_fetch_strictly_public"
+	],
+	"assets": {
+		"binding": "ASSETS",
+		"directory": ".open-next/assets"
+	},
+	"images": {
+		"binding": "IMAGES"
+	},
+	"services": [
+		{
+			"binding": "WORKER_SELF_REFERENCE",
+			"service": "arbbuilder"
+		}
+	],
+	"observability": {
+		"enabled": true
+	},
+
+	// D1 Database for users, API keys, and usage logs
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "arbbuilder",
+			"database_id": "placeholder-will-be-created"
+		}
+	],
+
+	// Vectorize for RAG embeddings (BGE-M3, 1024 dimensions)
+	"vectorize": [
+		{
+			"binding": "VECTORIZE",
+			"index_name": "arbbuilder"
+		}
+	],
+
+	// Workers AI for embeddings and reranking
+	"ai": {
+		"binding": "AI"
+	},
+
+	// KV for caching
+	"kv_namespaces": [
+		{
+			"binding": "KV",
+			"id": "placeholder-will-be-created"
+		}
+	]
+}

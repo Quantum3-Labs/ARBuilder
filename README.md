@@ -129,6 +129,75 @@ python -m src.preprocessing.processor
 python -m src.embeddings.vectordb --reset
 ```
 
+## Quick Start (IDE Integration)
+
+### Option A: Self-Hosted (Full Control)
+
+Run ARBuilder locally with your own API keys. No rate limits.
+
+**Step 1: Configure your IDE**
+
+Add the following to your MCP configuration file:
+
+**Cursor** (`~/.cursor/mcp.json`):
+```json
+{
+  "mcpServers": {
+    "arbbuilder": {
+      "command": "python",
+      "args": ["-m", "src.mcp.server"],
+      "cwd": "/path/to/ArbBuilder",
+      "env": {
+        "OPENROUTER_API_KEY": "your-api-key"
+      }
+    }
+  }
+}
+```
+
+**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+```json
+{
+  "mcpServers": {
+    "arbbuilder": {
+      "command": "python",
+      "args": ["-m", "src.mcp.server"],
+      "cwd": "/path/to/ArbBuilder",
+      "env": {
+        "OPENROUTER_API_KEY": "your-api-key"
+      }
+    }
+  }
+}
+```
+
+**Step 2: Restart your IDE**
+
+After saving the configuration, restart Cursor or Claude Desktop. The ARBuilder tools will be available to the AI assistant.
+
+**Step 3: Start building!**
+
+Ask your AI assistant:
+- "Generate an ERC20 token contract in Stylus"
+- "How do I deploy a contract to Arbitrum Sepolia?"
+- "Write tests for my counter contract"
+
+### Option B: Hosted Service (Zero Setup)
+
+Use our hosted API - no local setup required. Coming soon at [arbbuilder.pages.dev](https://arbbuilder.pages.dev).
+
+```json
+{
+  "mcpServers": {
+    "arbbuilder": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://arbbuilder.pages.dev/mcp",
+               "--header", "Authorization: Bearer YOUR_API_KEY"]
+    }
+  }
+}
+```
+
 ## Usage
 
 ### Data Scraping (Optional)
@@ -245,11 +314,68 @@ The MCP server provides **knowledge about commands**, not command execution. Thi
 
 See [docs/mcp_tools_spec.md](docs/mcp_tools_spec.md) for full specification.
 
+## User Guide
+
+### Generating Stylus Contracts
+
+Ask your AI assistant to generate contracts:
+
+```
+User: "Create an ERC20 token called MyToken with 1 million supply"
+
+AI uses: generate_stylus_code tool
+Returns: Complete Rust contract with proper imports, storage, and methods
+```
+
+### Getting Context and Examples
+
+Search the knowledge base for documentation and code examples:
+
+```
+User: "Show me how to implement a mapping in Stylus"
+
+AI uses: get_stylus_context tool
+Returns: Relevant documentation and code snippets from official examples
+```
+
+### Q&A and Debugging
+
+Ask questions about Stylus development:
+
+```
+User: "Why am I getting 'storage not initialized' error?"
+
+AI uses: ask_stylus tool
+Returns: Explanation with solution based on documentation context
+```
+
+### Generating Tests
+
+Create test suites for your contracts:
+
+```
+User: "Write unit tests for this counter contract: [paste code]"
+
+AI uses: generate_tests tool
+Returns: Comprehensive test module with edge cases
+```
+
+### Build/Deploy Workflows
+
+Get step-by-step deployment guidance:
+
+```
+User: "How do I deploy to Arbitrum Sepolia?"
+
+AI uses: get_workflow tool
+Returns: Commands for checking balance, deploying, and verifying
+```
+
 ## Milestones
 
 | Milestone | Description | Status |
 |-----------|-------------|--------|
-| M1 | Stylus Smart Contract Builder | In Progress |
+| M1 | Stylus Smart Contract Builder | ✅ Complete |
 | M2 | Arbitrum SDK Integration | Planned |
 | M3 | Full dApp Builder | Planned |
 | M4 | Orbit Chain Integration | Planned |
