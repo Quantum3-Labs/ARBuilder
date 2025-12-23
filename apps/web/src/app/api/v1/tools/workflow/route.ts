@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getWorkflow, type GetWorkflowInput } from "@/lib/tools/getWorkflow";
 
-export const runtime = "edge";
 
 export async function POST(request: NextRequest) {
   try {

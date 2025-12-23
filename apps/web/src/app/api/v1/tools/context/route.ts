@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getStylusContext, type GetStylusContextInput } from "@/lib/tools/getStylusContext";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 
-export const runtime = "edge";
 
 export async function POST(request: NextRequest) {
   try {

@@ -3,7 +3,6 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { auth } from "@/auth";
 import { getUsageStats } from "@/lib/apiKeys";
 
-export const runtime = "edge";
 
 // GET /api/usage - Get usage statistics
 export async function GET(request: NextRequest) {

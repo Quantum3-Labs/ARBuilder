@@ -3,7 +3,6 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { auth } from "@/auth";
 import { createApiKey, listApiKeys } from "@/lib/apiKeys";
 
-export const runtime = "edge";
 
 // GET /api/keys - List user's API keys
 export async function GET() {

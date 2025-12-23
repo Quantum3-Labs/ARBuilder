@@ -3,7 +3,6 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { auth } from "@/auth";
 import { revokeApiKey } from "@/lib/apiKeys";
 
-export const runtime = "edge";
 
 // DELETE /api/keys/[id] - Revoke an API key
 export async function DELETE(

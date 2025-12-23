@@ -29,7 +29,7 @@
 		{
 			"binding": "DB",
 			"database_name": "arbbuilder",
-			"database_id": "placeholder-will-be-created"
+			"database_id": "1a6bb2b5-98f9-4578-aa23-b570ce297ca7"
 		}
 	],
 
@@ -50,7 +50,7 @@
 	"kv_namespaces": [
 		{
 			"binding": "KV",
-			"id": "placeholder-will-be-created"
+			"id": "58e7ca1020924439be4d058ac29b2dfa"
 		}
 	]
 }
