@@ -19,7 +19,8 @@
 		"next": "15.5.9",
 		"next-auth": "^5.0.0-beta.30",
 		"react": "19.1.4",
-		"react-dom": "19.1.4"
+		"react-dom": "19.1.4",
+		"resend": "^6.6.0"
 	},
 	"devDependencies": {
 		"@cloudflare/workers-types": "^4.20251223.0",

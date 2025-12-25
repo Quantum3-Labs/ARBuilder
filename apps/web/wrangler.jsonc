@@ -52,5 +52,18 @@
 			"binding": "KV",
 			"id": "58e7ca1020924439be4d058ac29b2dfa"
 		}
-	]
+	],
+
+	// Environment variables (public values)
+	"vars": {
+		"NEXTJS_ENV": "production",
+		"NEXT_PUBLIC_TURNSTILE_SITE_KEY": "0x4AAAAAACIQxZ8Nm_BXUfce",
+		"AUTH_TRUST_HOST": "true"
+	}
+
+	// Secrets to be set via `wrangler secret put`:
+	// - AUTH_SECRET
+	// - RESEND_API_KEY
+	// - TURNSTILE_SECRET_KEY
+	// - OPENROUTER_API_KEY
 }

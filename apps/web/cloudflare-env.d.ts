@@ -21,10 +21,9 @@ declare namespace Cloudflare {
     // Environment variables
     NEXTJS_ENV: string;
     AUTH_SECRET: string;
-    AUTH_GITHUB_ID: string;
-    AUTH_GITHUB_SECRET: string;
-    AUTH_GOOGLE_ID: string;
-    AUTH_GOOGLE_SECRET: string;
+    RESEND_API_KEY: string;
+    TURNSTILE_SITE_KEY: string;
+    TURNSTILE_SECRET_KEY: string;
     OPENROUTER_API_KEY: string;
 
     // Auto-generated bindings
@@ -40,10 +39,10 @@ declare namespace NodeJS {
   interface ProcessEnv {
     NEXTJS_ENV?: string;
     AUTH_SECRET?: string;
-    AUTH_GITHUB_ID?: string;
-    AUTH_GITHUB_SECRET?: string;
-    AUTH_GOOGLE_ID?: string;
-    AUTH_GOOGLE_SECRET?: string;
+    RESEND_API_KEY?: string;
+    TURNSTILE_SITE_KEY?: string;
+    TURNSTILE_SECRET_KEY?: string;
     OPENROUTER_API_KEY?: string;
+    NEXT_PUBLIC_TURNSTILE_SITE_KEY?: string;
   }
 }

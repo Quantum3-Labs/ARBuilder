@@ -1,7 +1,8 @@
 /**
  * Vectorize client utilities for RAG operations.
  *
- * Uses Cloudflare Vectorize with BGE-M3 embeddings (1024 dimensions).
+ * Uses Cloudflare Vectorize with BGE-Large embeddings (1024 dimensions).
+ * Supports metadata filtering for efficient content type queries.
  */
 
 export interface SearchResult {
@@ -19,23 +20,47 @@ export interface VectorizeMetadata {
   chunk_index?: number;
 }
 
+export interface SearchOptions {
+  topK?: number;
+  contentType?: "code" | "documentation" | "all";
+}
+
 /**
  * Search for similar documents in Vectorize.
+ * Supports metadata filtering by source field for efficient queries.
+ *
+ * Source mapping:
+ * - "documentation" → official docs (source: "documentation")
+ * - "code" → github repos (source: "github")
  */
 export async function searchVectorize(
   vectorize: VectorizeIndex,
   ai: Ai,
   query: string,
-  topK: number = 10
+  options: SearchOptions = {}
 ): Promise<SearchResult[]> {
+  const { topK = 10, contentType = "all" } = options;
+
   // Generate embedding for the query using Workers AI
   const embedding = await generateEmbedding(ai, query);
 
-  // Search Vectorize
-  const results = await vectorize.query(embedding, {
+  // Build query options with optional metadata filter
+  const queryOptions: VectorizeQueryOptions = {
     topK,
     returnMetadata: "all",
-  });
+  };
+
+  // Add metadata filter if content type is specified
+  // Maps contentType to source field values in the data
+  // Requires metadata index on source field
+  if (contentType === "documentation") {
+    queryOptions.filter = { source: "documentation" };
+  } else if (contentType === "code") {
+    queryOptions.filter = { source: "github" };
+  }
+
+  // Search Vectorize
+  const results = await vectorize.query(embedding, queryOptions);
 
   // Map results to our format
   return results.matches.map((match) => {
@@ -51,13 +76,14 @@ export async function searchVectorize(
 }
 
 /**
- * Generate embeddings using Workers AI BGE-M3 model.
+ * Generate embeddings using Workers AI BGE-M3 model (1024 dimensions).
+ * BGE-M3 supports multi-lingual text and longer context.
  */
 export async function generateEmbedding(
   ai: Ai,
   text: string
 ): Promise<number[]> {
-  const response = await ai.run("@cf/baai/bge-base-en-v1.5", {
+  const response = await ai.run("@cf/baai/bge-m3", {
     text: [text],
   });
 
@@ -76,7 +102,7 @@ export async function generateEmbeddings(
   ai: Ai,
   texts: string[]
 ): Promise<number[][]> {
-  const response = await ai.run("@cf/baai/bge-base-en-v1.5", {
+  const response = await ai.run("@cf/baai/bge-m3", {
     text: texts,
   });
 

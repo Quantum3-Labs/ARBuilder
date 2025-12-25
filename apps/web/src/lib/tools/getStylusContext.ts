@@ -3,6 +3,7 @@
  *
  * Retrieves relevant documentation, code examples, and patterns
  * from the Stylus knowledge base using Vectorize + reranking.
+ * Uses metadata filtering for efficient content type queries.
  */
 
 import { searchVectorize, rerankResults, type SearchResult } from "../vectorize";
@@ -37,34 +38,19 @@ export async function getStylusContext(
     rerank = true,
   } = input;
 
-  // Search Vectorize for relevant documents
-  const searchResults = await searchVectorize(
-    vectorize,
-    ai,
-    query,
-    rerank ? nResults * 2 : nResults // Get more if reranking
-  );
-
-  // Filter by content type if specified
-  let filteredResults: SearchResult[];
-  if (contentType !== "all") {
-    filteredResults = searchResults.filter(
-      (r) => r.contentType === contentType
-    );
-    // Fall back to all results if filter returns too few
-    if (filteredResults.length < 3) {
-      filteredResults = searchResults;
-    }
-  } else {
-    filteredResults = searchResults;
-  }
+  // Search Vectorize with metadata filtering (more efficient than post-filtering)
+  // Get more results if reranking to have better candidates
+  const searchResults = await searchVectorize(vectorize, ai, query, {
+    topK: rerank ? nResults * 2 : nResults,
+    contentType,
+  });
 
   // Rerank if enabled
   let finalResults: SearchResult[];
-  if (rerank && filteredResults.length > 0) {
-    finalResults = await rerankResults(ai, query, filteredResults, nResults);
+  if (rerank && searchResults.length > 0) {
+    finalResults = await rerankResults(ai, query, searchResults, nResults);
   } else {
-    finalResults = filteredResults.slice(0, nResults);
+    finalResults = searchResults.slice(0, nResults);
   }
 
   return {

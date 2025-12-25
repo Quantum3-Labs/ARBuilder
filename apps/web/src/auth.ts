@@ -1,39 +1,68 @@
-import NextAuth from "next-auth";
-import GitHub from "next-auth/providers/github";
-import Google from "next-auth/providers/google";
-import { D1Adapter } from "@auth/d1-adapter";
+/**
+ * Custom JWT-based authentication using ECDSA signing.
+ * Replaces Auth.js for better control and reliability.
+ */
 
-// Get the Cloudflare environment from the request context
-function getCloudflareEnv(): Cloudflare.Env {
-  // This will be injected by the Cloudflare runtime
-  return (globalThis as unknown as { process: { env: Cloudflare.Env } }).process?.env ?? {} as Cloudflare.Env;
+import { cookies } from "next/headers";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { verifyJWT } from "@/lib/jwt";
+
+export interface Session {
+  user: {
+    id: string;
+    email: string;
+    name?: string | null;
+  };
 }
 
-export const { handlers, signIn, signOut, auth } = NextAuth(() => {
-  const env = getCloudflareEnv();
+/**
+ * Get the current session from the JWT cookie (server-side).
+ * Note: For client-side session checks, use /api/auth/session
+ * which handles token refresh automatically.
+ */
+export async function auth(): Promise<Session | null> {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("auth-token")?.value;
 
-  return {
-    adapter: D1Adapter(env.DB),
-    providers: [
-      GitHub({
-        clientId: env.AUTH_GITHUB_ID,
-        clientSecret: env.AUTH_GITHUB_SECRET,
-      }),
-      Google({
-        clientId: env.AUTH_GOOGLE_ID,
-        clientSecret: env.AUTH_GOOGLE_SECRET,
-      }),
-    ],
-    callbacks: {
-      session({ session, user }) {
-        if (session.user) {
-          session.user.id = user.id;
-        }
-        return session;
+    if (!token) {
+      return null;
+    }
+
+    const { env } = getCloudflareContext();
+    const payload = await verifyJWT(env.DB, token);
+
+    if (!payload || payload.type !== "access") {
+      return null;
+    }
+
+    // Get user from database
+    const user = await env.DB
+      .prepare(`SELECT id, email, name FROM users WHERE id = ?`)
+      .bind(payload.sub)
+      .first<{ id: string; email: string; name: string | null }>();
+
+    if (!user) {
+      return null;
+    }
+
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
       },
-    },
-    pages: {
-      signIn: "/login",
-    },
-  };
-});
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Sign out by clearing auth cookies.
+ */
+export async function signOut(): Promise<void> {
+  const cookieStore = await cookies();
+  cookieStore.delete("auth-token");
+  cookieStore.delete("refresh-token");
+}
