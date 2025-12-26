@@ -201,7 +201,8 @@ export default async function Home() {
   "mcpServers": {
     "arbbuilder": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "https://arbbuilder.whymelabs.com/mcp",
+      "args": ["-y", "mcp-remote",
+               "https://arbbuilder.swmengappdev.workers.dev/mcp",
                "--header", "Authorization: Bearer YOUR_API_KEY"]
     }
   }
