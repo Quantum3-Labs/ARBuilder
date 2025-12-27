@@ -1,0 +1,210 @@
+name: Refresh RAG Knowledge Base
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_full_refresh:
+        description: 'Force full refresh (ignore diff-based optimization)'
+        type: boolean
+        default: false
+      skip_validation:
+        description: 'Skip quality validation after migration'
+        type: boolean
+        default: false
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+
+jobs:
+  scrape:
+    name: Scrape Documentation & Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        run: |
+          pip install -e .
+          pip install crawl4ai playwright
+          playwright install chromium
+
+      - name: Fetch latest SDK version
+        id: sdk-version
+        run: |
+          SDK_VERSION=$(curl -s https://crates.io/api/v1/crates/stylus-sdk | jq -r '.crate.max_stable_version')
+          echo "version=$SDK_VERSION" >> $GITHUB_OUTPUT
+          echo "Latest stylus-sdk version: $SDK_VERSION"
+
+          # Save for later steps
+          mkdir -p .rag-state
+          echo "$SDK_VERSION" > .rag-state/sdk_version
+
+      - name: Run web scraper
+        run: python -m scraper.run --categories stylus arbitrum_sdk orbit_sdk
+        continue-on-error: true
+
+      - name: Run GitHub scraper
+        run: python -m scraper.github_scraper
+        continue-on-error: true
+
+      - name: Upload raw data
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-data
+          path: |
+            data/raw/*.json
+            .rag-state/sdk_version
+          retention-days: 7
+
+  process:
+    name: Process & Chunk Data
+    runs-on: ubuntu-latest
+    needs: scrape
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download raw data
+        uses: actions/download-artifact@v4
+        with:
+          name: raw-data
+          path: data/raw/
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        run: pip install -e .
+
+      - name: Process data
+        run: python -m src.preprocessing.processor
+
+      - name: Upload processed data
+        uses: actions/upload-artifact@v4
+        with:
+          name: processed-data
+          path: |
+            data/processed/*.json
+            .rag-state/
+          retention-days: 7
+
+  migrate:
+    name: Migrate to Vectorize
+    runs-on: ubuntu-latest
+    needs: process
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download processed data
+        uses: actions/download-artifact@v4
+        with:
+          name: processed-data
+          path: ./
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: npm install tsx
+
+      - name: Run diff-based migration
+        env:
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          MIGRATE_URL: https://arbbuilder.whymelabs.com
+        run: |
+          if [ "${{ github.event.inputs.force_full_refresh }}" == "true" ]; then
+            npx tsx scripts/diff-migrate.ts --full
+          else
+            npx tsx scripts/diff-migrate.ts
+          fi
+
+      - name: Upload migration state
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-state
+          path: .rag-state/
+          retention-days: 30
+
+  validate:
+    name: Validate Quality
+    runs-on: ubuntu-latest
+    needs: migrate
+    if: ${{ github.event.inputs.skip_validation != 'true' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download state
+        uses: actions/download-artifact@v4
+        with:
+          name: rag-state
+          path: .rag-state/
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: npm install tsx
+
+      - name: Wait for Vectorize index to update
+        run: sleep 30
+
+      - name: Run quality validation
+        env:
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          API_URL: https://arbbuilder.whymelabs.com
+        run: npx tsx scripts/validate-rag-quality.ts
+
+  summary:
+    name: Generate Summary
+    runs-on: ubuntu-latest
+    needs: [scrape, process, migrate, validate]
+    if: always()
+    steps:
+      - name: Download state
+        uses: actions/download-artifact@v4
+        with:
+          name: rag-state
+          path: .rag-state/
+        continue-on-error: true
+
+      - name: Generate summary
+        run: |
+          echo "## RAG Refresh Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Job Status" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Scrape | ${{ needs.scrape.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Process | ${{ needs.process.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Migrate | ${{ needs.migrate.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Validate | ${{ needs.validate.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f .rag-state/last-refresh.json ]; then
+            echo "### Migration Details" >> $GITHUB_STEP_SUMMARY
+            cat .rag-state/last-refresh.json >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ -f .rag-state/sdk_version ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### SDK Version" >> $GITHUB_STEP_SUMMARY
+            echo "Latest stylus-sdk: $(cat .rag-state/sdk_version)" >> $GITHUB_STEP_SUMMARY
+          fi

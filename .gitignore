@@ -63,3 +63,7 @@ Thumbs.db
 
 # Archive (old proposals)
 archive/
+
+# RAG state (migration tracking, content hashes)
+.rag-state/*
+!.rag-state/.gitkeep

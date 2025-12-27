@@ -2,6 +2,7 @@
 Main data processor for ARBuilder preprocessing pipeline.
 """
 
+import hashlib
 import json
 import os
 from datetime import datetime
@@ -14,6 +15,18 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 
 from .cleaner import TextCleaner
 from .chunker import DocumentChunker, CodeChunker, Chunk
+
+# Import version extractor - handle import error gracefully
+try:
+    from scraper.version_extractor import (
+        get_latest_sdk_version_sync,
+        extract_sdk_version_from_repo,
+        detect_deprecated_patterns,
+        is_version_current,
+    )
+    HAS_VERSION_EXTRACTOR = True
+except ImportError:
+    HAS_VERSION_EXTRACTOR = False
 
 load_dotenv()
 
@@ -53,6 +66,23 @@ class DataProcessor:
             max_tokens=code_max_tokens,
             overlap_lines=code_overlap_lines,
         )
+        # Cache for latest SDK version
+        self._latest_sdk_version: Optional[str] = None
+        # Cache for repo SDK versions
+        self._repo_sdk_versions: dict[str, Optional[str]] = {}
+
+    def _compute_content_hash(self, content: str) -> str:
+        """Compute a short hash of the content for diff detection."""
+        return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
+
+    def _get_latest_sdk_version(self) -> Optional[str]:
+        """Get the latest SDK version, with caching."""
+        if self._latest_sdk_version is None and HAS_VERSION_EXTRACTOR:
+            console.print("[blue]Fetching latest stylus-sdk version from crates.io...[/blue]")
+            self._latest_sdk_version = get_latest_sdk_version_sync()
+            if self._latest_sdk_version:
+                console.print(f"[green]Latest SDK version: {self._latest_sdk_version}[/green]")
+        return self._latest_sdk_version
 
     def process_scraped_docs(
         self,
@@ -104,6 +134,9 @@ class DataProcessor:
                     progress.advance(task)
                     continue
 
+                # Compute content hash for diff detection
+                content_hash = self._compute_content_hash(content)
+
                 # Extract metadata
                 metadata = {
                     "source": "documentation",
@@ -111,7 +144,8 @@ class DataProcessor:
                     "title": item.get("title") or self.text_cleaner.extract_title(content) or "",
                     "category": item.get("category", ""),
                     "subcategory": item.get("subcategory", ""),
-                    "scraped_at": item.get("scraped_at", ""),
+                    "scraped_at": item.get("scraped_at", "") or datetime.utcnow().isoformat(),
+                    "content_hash": content_hash,
                 }
 
                 # Chunk the content
@@ -169,6 +203,15 @@ class DataProcessor:
                 category = repo.get("category", "")
                 subcategory = repo.get("subcategory", "")
 
+                # Try to get SDK version for this repo
+                repo_sdk_version = None
+                if HAS_VERSION_EXTRACTOR and repo_name:
+                    repo_dir = RAW_DATA_DIR / "repos" / repo_name
+                    if repo_dir.exists():
+                        repo_sdk_version = extract_sdk_version_from_repo(repo_dir)
+                        if repo_sdk_version:
+                            self._repo_sdk_versions[repo_name] = repo_sdk_version
+
                 for file_info in repo.get("files", []):
                     content = file_info.get("content", "")
                     file_path = file_info.get("path", "")
@@ -185,6 +228,20 @@ class DataProcessor:
                         progress.advance(task)
                         continue
 
+                    # Detect deprecated patterns in Rust code
+                    deprecated_patterns = []
+                    if HAS_VERSION_EXTRACTOR and extension == ".rs":
+                        deprecated_patterns = detect_deprecated_patterns(content)
+
+                    # Compute content hash for diff detection
+                    content_hash = self._compute_content_hash(content)
+
+                    # Check if repo SDK version is current
+                    latest_sdk = self._get_latest_sdk_version()
+                    is_current = True
+                    if repo_sdk_version and latest_sdk and HAS_VERSION_EXTRACTOR:
+                        is_current = is_version_current(repo_sdk_version, latest_sdk)
+
                     # Metadata for code files
                     metadata = {
                         "source": "github",
@@ -194,6 +251,12 @@ class DataProcessor:
                         "extension": extension,
                         "category": category,
                         "subcategory": subcategory,
+                        # New metadata fields
+                        "sdk_version": repo_sdk_version or "",
+                        "is_current": is_current,
+                        "deprecated_patterns": deprecated_patterns,
+                        "content_hash": content_hash,
+                        "scraped_at": datetime.utcnow().isoformat(),
                     }
 
                     # Handle markdown files differently
@@ -271,6 +334,10 @@ class DataProcessor:
         by_source = {}
         by_category = {}
         by_language = {}
+        by_sdk_version = {}
+        deprecated_count = 0
+        current_count = 0
+        outdated_count = 0
 
         for chunk in chunks:
             # By source
@@ -286,6 +353,21 @@ class DataProcessor:
                 lang = chunk.get("language", "unknown")
                 by_language[lang] = by_language.get(lang, 0) + 1
 
+                # Track SDK versions
+                sdk_version = chunk.get("sdk_version", "")
+                if sdk_version:
+                    by_sdk_version[sdk_version] = by_sdk_version.get(sdk_version, 0) + 1
+
+                # Track current vs outdated
+                if chunk.get("is_current", True):
+                    current_count += 1
+                else:
+                    outdated_count += 1
+
+                # Count chunks with deprecated patterns
+                if chunk.get("deprecated_patterns"):
+                    deprecated_count += 1
+
         return {
             "total_chunks": len(chunks),
             "total_tokens": total_tokens,
@@ -293,6 +375,11 @@ class DataProcessor:
             "by_source": by_source,
             "by_category": by_category,
             "by_language": by_language,
+            "by_sdk_version": by_sdk_version,
+            "latest_sdk_version": self._latest_sdk_version,
+            "current_chunks": current_count,
+            "outdated_chunks": outdated_count,
+            "deprecated_pattern_chunks": deprecated_count,
             "processed_at": datetime.utcnow().isoformat(),
         }
 
@@ -315,6 +402,19 @@ class DataProcessor:
             console.print("\n[bold]By Language:[/bold]")
             for lang, count in sorted(stats["by_language"].items(), key=lambda x: -x[1]):
                 console.print(f"  {lang}: {count:,}")
+
+        # SDK version info
+        if stats.get("latest_sdk_version"):
+            console.print(f"\n[bold]SDK Version Info:[/bold]")
+            console.print(f"  Latest stylus-sdk: {stats['latest_sdk_version']}")
+            console.print(f"  Current chunks: {stats.get('current_chunks', 0):,}")
+            console.print(f"  Outdated chunks: {stats.get('outdated_chunks', 0):,}")
+            console.print(f"  With deprecated patterns: {stats.get('deprecated_pattern_chunks', 0):,}")
+
+            if stats.get("by_sdk_version"):
+                console.print("\n[bold]By SDK Version:[/bold]")
+                for version, count in sorted(stats["by_sdk_version"].items(), key=lambda x: -x[1]):
+                    console.print(f"  {version}: {count:,}")
 
 
 def main():
