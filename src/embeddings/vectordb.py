@@ -21,8 +21,10 @@ load_dotenv()
 
 console = Console()
 
-PROCESSED_DATA_DIR = Path(os.getenv("PROCESSED_DATA_DIR", "data/processed"))
-CHROMA_DB_DIR = Path("chroma_db")
+# Get project root (assuming this file is in src/embeddings/)
+_PROJECT_ROOT = Path(__file__).parent.parent.parent
+PROCESSED_DATA_DIR = Path(os.getenv("PROCESSED_DATA_DIR", _PROJECT_ROOT / "data" / "processed"))
+CHROMA_DB_DIR = _PROJECT_ROOT / "chroma_db"
 
 
 class VectorDB:
@@ -46,6 +48,9 @@ class VectorDB:
         """
         self.collection_name = collection_name
         self.persist_directory = persist_directory or CHROMA_DB_DIR
+        # Ensure absolute path
+        if not self.persist_directory.is_absolute():
+            self.persist_directory = self.persist_directory.resolve()
         self.persist_directory.mkdir(parents=True, exist_ok=True)
 
         # Initialize ChromaDB client

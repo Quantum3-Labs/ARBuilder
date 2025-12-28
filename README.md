@@ -144,11 +144,11 @@ Add the following to your MCP configuration file:
 {
   "mcpServers": {
     "arbbuilder": {
-      "command": "python",
+      "command": "/path/to/miniconda3/envs/arbbuilder/bin/python3",
       "args": ["-m", "src.mcp.server"],
-      "cwd": "/path/to/ArbBuilder",
       "env": {
-        "OPENROUTER_API_KEY": "your-api-key"
+        "OPENROUTER_API_KEY": "your-api-key",
+        "PYTHONPATH":"/path/to/ArbBuilder"
       }
     }
   }

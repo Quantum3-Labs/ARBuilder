@@ -75,6 +75,34 @@ class GetStylusContextTool(BaseTool):
         query = query.strip()
         n_results = max(1, min(20, n_results))
 
+        try:
+            # Check if collection has data
+            collection_count = self.vectordb.collection.count()
+            collection_name = self.vectordb.collection_name
+            persist_dir = str(self.vectordb.persist_directory)
+            persist_dir_abs = str(self.vectordb.persist_directory.resolve())
+            
+            # Check if persist directory exists
+            persist_dir_exists = self.vectordb.persist_directory.exists()
+            cwd = str(Path.cwd())
+            
+            if collection_count == 0:
+                return {
+                    "error": "Collection is empty. Please ingest data first using the ingestion script.",
+                    "contexts": [],
+                    "total_results": 0,
+                    "query": query,
+                    "collection_count": 0,
+                    "collection_name": collection_name,
+                    "persist_directory": persist_dir,
+                    "persist_directory_absolute": persist_dir_abs,
+                    "persist_directory_exists": persist_dir_exists,
+                    "current_working_directory": cwd,
+                    "diagnostic": "If you just ingested data, you may need to restart the MCP server to pick up the new collection.",
+                }
+        except Exception as e:
+            return {"error": f"Retrieval failed: {str(e)}"}
+
         # Build metadata filter
         where_filter = None
         if content_type == "docs":
@@ -133,7 +161,17 @@ class GetStylusContextTool(BaseTool):
         Returns:
             List of context dictionaries.
         """
-        if not raw_results or not raw_results.get("ids") or not raw_results["ids"][0]:
+        # Check if results are empty
+        if not raw_results:
+            return []
+        
+        # ChromaDB returns results as: {"ids": [[id1, id2, ...]], ...}
+        # Check if we have any results
+        if not raw_results.get("ids") or len(raw_results["ids"]) == 0:
+            return []
+        
+        # Check if the first (and only) result list is empty
+        if len(raw_results["ids"][0]) == 0:
             return []
 
         ids = raw_results["ids"][0]
