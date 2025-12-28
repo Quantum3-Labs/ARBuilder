@@ -4,7 +4,9 @@ ChromaDB vector database management for ARBuilder.
 
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from threading import Lock
 from typing import Optional
 
 import chromadb
@@ -65,6 +67,7 @@ class VectorDB:
         self,
         chunks: list[dict],
         batch_size: int = 100,
+        max_workers: int | None = None,
     ) -> int:
         """
         Ingest processed chunks into the vector database.
@@ -72,11 +75,18 @@ class VectorDB:
         Args:
             chunks: List of chunk dictionaries with 'id', 'content', and metadata.
             batch_size: Number of chunks to process per batch.
+            max_workers: Number of parallel workers for embedding/ingest.
+                Defaults to 5 when not provided.
 
         Returns:
             Number of chunks ingested.
         """
         total_ingested = 0
+        batches = [
+            chunks[i:i + batch_size] for i in range(0, len(chunks), batch_size)
+        ]
+        worker_count = max_workers or 5
+        collection_lock = Lock()
 
         with Progress(
             SpinnerColumn(),
@@ -87,9 +97,7 @@ class VectorDB:
         ) as progress:
             task = progress.add_task("Ingesting chunks...", total=len(chunks))
 
-            for i in range(0, len(chunks), batch_size):
-                batch = chunks[i:i + batch_size]
-
+            def process_batch(batch: list[dict]) -> int:
                 # Extract data
                 ids = [chunk["id"] for chunk in batch]
                 documents = [chunk["content"] for chunk in batch]
@@ -103,22 +111,30 @@ class VectorDB:
                     embeddings = self.embedding_client.embed_batch(documents)
                 except Exception as e:
                     console.print(f"[red]Error generating embeddings: {e}[/red]")
-                    progress.advance(task, len(batch))
-                    continue
+                    return 0
 
-                # Add to collection
+                # Add to collection (guarded for thread safety)
                 try:
-                    self.collection.add(
-                        ids=ids,
-                        embeddings=embeddings,
-                        documents=documents,
-                        metadatas=metadatas,
-                    )
-                    total_ingested += len(batch)
+                    with collection_lock:
+                        self.collection.add(
+                            ids=ids,
+                            embeddings=embeddings,
+                            documents=documents,
+                            metadatas=metadatas,
+                        )
                 except Exception as e:
                     console.print(f"[red]Error adding to collection: {e}[/red]")
+                    return 0
 
-                progress.advance(task, len(batch))
+                return len(batch)
+
+            with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                futures = [executor.submit(process_batch, batch) for batch in batches]
+
+                for future in as_completed(futures):
+                    ingested = future.result()
+                    total_ingested += ingested
+                    progress.advance(task, ingested)
 
         return total_ingested
 
