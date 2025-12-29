@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getWorkflow, type GetWorkflowInput } from "@/lib/tools/getWorkflow";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { validateAdminSecret } from "@/lib/auth/validateAdminSecret";
 
 
 export async function POST(request: NextRequest) {
   try {
+    // Get Cloudflare bindings
+    const { env } = getCloudflareContext();
+
+    // Validate admin secret
+    const authError = validateAdminSecret(request, env.AUTH_SECRET);
+    if (authError) return authError;
+
     // Parse request body
     const body = (await request.json()) as GetWorkflowInput;
 
