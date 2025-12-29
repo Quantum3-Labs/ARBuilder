@@ -246,6 +246,28 @@ The scraper collects data from:
 **Orbit SDK (M4)**
 - [arbitrum-orbit-sdk](https://github.com/OffchainLabs/arbitrum-orbit-sdk)
 
+## API Access
+
+### Public MCP Endpoint (Free)
+
+The MCP endpoint at `/mcp` is free to use and designed for IDE integration:
+
+```
+https://arbbuilder.whymelabs.com/mcp
+```
+
+- Requires `arb_` API key from dashboard
+- Usage tracked per API key
+- Rate limited per free tier (100 calls/day)
+
+### Internal Direct API (Testing Only)
+
+Direct API routes at `/api/v1/tools/*` are for **internal testing only**:
+
+- Requires `AUTH_SECRET` in Authorization header
+- Not for public use
+- Used by CI/CD and internal validation scripts
+
 ## MCP Capabilities
 
 ARBuilder exposes a full MCP server with **5 tools**, **5 resources**, and **5 prompts** for Cursor/VS Code integration.
