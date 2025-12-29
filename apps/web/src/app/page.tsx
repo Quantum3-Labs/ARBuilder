@@ -288,7 +288,7 @@ export default async function Home() {
             </div>
             <div className="flex gap-8">
               <a
-                href="https://github.com/Straits-AI/ARBBuilder"
+                href="https://github.com/Quantum3-Labs/ARBuilder"
                 className="text-gray-500 hover:text-gray-900 transition-colors"
                 target="_blank"
                 rel="noopener noreferrer"

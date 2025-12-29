@@ -184,19 +184,27 @@ Ask your AI assistant:
 
 ### Option B: Hosted Service (Zero Setup)
 
-Use our hosted API - no local setup required. Coming soon at [arbbuilder.pages.dev](https://arbbuilder.pages.dev).
+Use our hosted API - no local setup required. Available at [arbbuilder.whymelabs.com](https://arbbuilder.whymelabs.com).
+
+1. Sign up at https://arbbuilder.whymelabs.com and get your API key
+2. Add to your MCP configuration:
 
 ```json
 {
   "mcpServers": {
     "arbbuilder": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "https://arbbuilder.pages.dev/mcp",
+      "args": ["-y", "mcp-remote", "https://arbbuilder.whymelabs.com/mcp",
                "--header", "Authorization: Bearer YOUR_API_KEY"]
     }
   }
 }
 ```
+
+The hosted service includes:
+- 100 API calls/day (free tier)
+- No local setup or Python environment required
+- Always up-to-date with latest Stylus SDK patterns
 
 ## Usage
 

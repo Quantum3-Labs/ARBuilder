@@ -31,8 +31,8 @@ export interface ChatCompletionResponse {
 // Default models
 export const MODELS = {
   CODE_GEN: "deepseek/deepseek-chat",
-  QA: "google/gemini-flash-1.5",
-  FAST: "google/gemini-flash-1.5-8b",
+  QA: "google/gemini-2.5-flash",
+  FAST: "google/gemini-2.5-flash-lite",
 } as const;
 
 /**
