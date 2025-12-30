@@ -448,6 +448,97 @@ black .
 ruff check .
 ```
 
+## Troubleshooting
+
+### Embedding Generation Errors
+
+If you encounter errors like `Error generating embeddings: RetryError` or `KeyError` during vector database ingestion:
+
+**1. Check OpenRouter API Key**
+```bash
+# Verify your .env file has a valid API key
+cat .env | grep OPENROUTER_API_KEY
+```
+
+Ensure:
+- The API key is correctly set (no extra spaces or quotes)
+- Your OpenRouter account has credits
+- The embedding model `google/gemini-embedding-001` is available
+
+**2. Rate Limiting Issues**
+
+If you see `HTTPStatusError` with status 429, you're being rate limited. Solutions:
+
+```bash
+# Run with smaller batch size
+python -m src.embeddings.vectordb --batch-size 25
+
+# Or modify max_workers in vectordb.py to 1 for sequential processing
+```
+
+**3. Enable Debug Logging**
+
+Add this to your script or at the start of your session to see detailed logs:
+
+```python
+import logging
+logging.basicConfig(level=logging.INFO)
+# For more verbose output:
+# logging.basicConfig(level=logging.DEBUG)
+```
+
+### Scraper Errors
+
+**"Execution context was destroyed" errors**
+
+This is a browser navigation issue during scraping. The scraper will automatically retry. If it persists:
+- The page may have heavy JavaScript that interferes with scraping
+- These pages are skipped after retries; the scraper continues with other URLs
+
+**Git clone failures**
+
+If repository cloning fails:
+```bash
+# Check your network connection
+ping github.com
+
+# Try cloning manually to diagnose
+git clone --depth 1 https://github.com/OffchainLabs/stylus-hello-world
+
+# If behind a proxy, configure git
+git config --global http.proxy http://proxy:port
+```
+
+**Timeout errors**
+
+For slow connections, increase timeouts in the scraper config or reduce concurrent requests:
+```bash
+python -m scraper.run --max-concurrent 1
+```
+
+### ChromaDB Issues
+
+**Import errors with opentelemetry**
+
+If you see `TypeError: 'NoneType' object is not subscriptable` when importing chromadb:
+```bash
+# This is usually a conda environment issue
+# Make sure you're in the correct environment
+conda activate arbbuilder
+
+# Or reinstall chromadb
+pip uninstall chromadb
+pip install chromadb
+```
+
+**Database corruption**
+
+If the vector database seems corrupted:
+```bash
+# Reset and re-ingest
+python -m src.embeddings.vectordb --reset
+```
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
