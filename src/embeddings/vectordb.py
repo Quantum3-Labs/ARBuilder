@@ -123,10 +123,27 @@ class VectorDB:
                 # Extract data
                 ids = [chunk["id"] for chunk in batch]
                 documents = [chunk["content"] for chunk in batch]
-                metadatas = [
-                    {k: v for k, v in chunk.items() if k not in ["id", "content"]}
-                    for chunk in batch
-                ]
+
+                # Sanitize metadata - ChromaDB only accepts str, int, float, bool, None
+                def sanitize_metadata(chunk: dict) -> dict:
+                    result = {}
+                    for k, v in chunk.items():
+                        if k in ["id", "content"]:
+                            continue
+                        if isinstance(v, list):
+                            # Convert lists to JSON strings
+                            result[k] = json.dumps(v) if v else ""
+                        elif isinstance(v, dict):
+                            # Convert dicts to JSON strings
+                            result[k] = json.dumps(v)
+                        elif v is None or isinstance(v, (str, int, float, bool)):
+                            result[k] = v
+                        else:
+                            # Convert other types to string
+                            result[k] = str(v)
+                    return result
+
+                metadatas = [sanitize_metadata(chunk) for chunk in batch]
 
                 # Generate embeddings with detailed error handling
                 try:
