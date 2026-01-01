@@ -38,11 +38,18 @@ env/
 *.swo
 *~
 
-# Data - raw and processed are committed
-# Only chroma_db is excluded (generated locally)
+# Data - raw markdown and processed are committed
+# Scraped repos are too large to commit
+data/raw/repos/
+data/raw/github_repos_*.json
+data/processed/processed_chunks_*.json
+data/processed/processing_stats_*.json
 
-# Chroma DB
+# Chroma DB (generated locally)
 chroma_db/
+
+# PDFs and docs
+*.pdf
 
 # Benchmark results
 benchmark_results/

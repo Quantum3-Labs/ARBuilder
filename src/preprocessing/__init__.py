@@ -2,3 +2,4 @@
 from .cleaner import TextCleaner
 from .chunker import DocumentChunker, CodeChunker
 from .processor import DataProcessor
+from .semantic_chunker import SemanticChunker, CodeSemanticChunker, SemanticChunk

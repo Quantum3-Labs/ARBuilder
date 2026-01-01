@@ -270,9 +270,11 @@ Direct API routes at `/api/v1/tools/*` are for **internal testing only**:
 
 ## MCP Capabilities
 
-ARBuilder exposes a full MCP server with **5 tools**, **5 resources**, and **5 prompts** for Cursor/VS Code integration.
+ARBuilder exposes a full MCP server with **9 tools**, **5 resources**, and **5 prompts** for Cursor/VS Code integration.
 
 ### Tools
+
+#### M1: Stylus Smart Contract Tools
 
 | Tool | Description |
 |------|-------------|
@@ -281,6 +283,15 @@ ARBuilder exposes a full MCP server with **5 tools**, **5 resources**, and **5 p
 | `ask_stylus` | Q&A, debugging, concept explanations |
 | `generate_tests` | Generate unit/integration/fuzz tests |
 | `get_workflow` | Build/deploy/test workflow guidance |
+
+#### M3: Full dApp Builder Tools
+
+| Tool | Description |
+|------|-------------|
+| `generate_backend` | Generate NestJS/Express backend with Web3 integration |
+| `generate_frontend` | Generate Next.js frontend with wagmi/viem/RainbowKit |
+| `generate_indexer` | Generate The Graph subgraph for event indexing |
+| `generate_dapp` | Orchestrate full-stack dApp generation |
 
 #### Example: Get Build/Deploy Workflow
 
@@ -407,9 +418,44 @@ Returns: Commands for checking balance, deploying, and verifying
 |-----------|-------------|--------|
 | M1 | Stylus Smart Contract Builder | ✅ Complete |
 | M2 | Arbitrum SDK Integration | Planned |
-| M3 | Full dApp Builder | Planned |
+| M3 | Full dApp Builder | ✅ Complete |
 | M4 | Orbit Chain Integration | Planned |
 | M5 | Unified AI Assistant | Planned |
+
+### M3: Full dApp Builder Features
+
+Generate complete full-stack dApps from natural language:
+
+**Backend (NestJS/Express)**:
+- Web3 service with viem for contract interactions
+- Database integration (PostgreSQL/MongoDB)
+- Authentication and API routes
+- Environment configuration
+
+**Frontend (Next.js)**:
+- Wallet integration via wagmi, viem, RainbowKit
+- DaisyUI or shadcn/ui components
+- Typed contract hooks
+- Network configuration for Arbitrum
+
+**Indexer (The Graph)**:
+- Subgraph manifest generation
+- GraphQL schema definition
+- Event handler mappings
+- Deployment instructions
+
+**Usage**:
+```
+User: "Generate a full-stack NFT marketplace dApp with minting, listing, and buying"
+
+AI uses: generate_dapp tool
+Returns: Complete monorepo with:
+  - contracts/src/lib.rs (Stylus contract)
+  - backend/src/ (NestJS API)
+  - frontend/app/ (Next.js with wallet)
+  - indexer/ (Subgraph for events)
+  - Integration guide
+```
 
 ## Development
 

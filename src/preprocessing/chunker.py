@@ -228,6 +228,18 @@ class CodeChunker:
             r"(?=^(?:export\s+)?class\s+\w+)",  # TS classes
             r"(?=^(?:export\s+)?interface\s+\w+)",  # TS interfaces
             r"(?=^(?:export\s+)?type\s+\w+)",  # TS types
+            r"(?=^(?:export\s+)?const\s+\w+\s*=\s*(?:async\s+)?\()",  # Arrow functions
+        ],
+        ".tsx": [
+            r"(?=^(?:export\s+)?(?:default\s+)?function\s+\w+)",  # React components
+            r"(?=^(?:export\s+)?const\s+\w+\s*[=:]\s*(?:\(\s*\)|React\.FC|FC))",  # FC components
+            r"(?=^(?:export\s+)?const\s+use\w+)",  # Custom hooks
+            r"(?=^(?:export\s+)?interface\s+\w+)",  # TS interfaces
+            r"(?=^(?:export\s+)?type\s+\w+)",  # TS types
+        ],
+        ".jsx": [
+            r"(?=^(?:export\s+)?(?:default\s+)?function\s+\w+)",  # React components
+            r"(?=^(?:export\s+)?const\s+\w+\s*=\s*\()",  # Arrow function components
         ],
         ".js": [
             r"(?=^(?:export\s+)?(?:async\s+)?function\s+\w+)",  # JS functions
@@ -236,7 +248,36 @@ class CodeChunker:
         ".sol": [
             r"(?=^contract\s+\w+)",  # Solidity contracts
             r"(?=^\s*function\s+\w+)",  # Solidity functions
+            r"(?=^interface\s+\w+)",  # Solidity interfaces
+            r"(?=^library\s+\w+)",  # Solidity libraries
         ],
+        ".graphql": [
+            r"(?=^type\s+\w+)",  # GraphQL types
+            r"(?=^input\s+\w+)",  # GraphQL inputs
+            r"(?=^enum\s+\w+)",  # GraphQL enums
+            r"(?=^interface\s+\w+)",  # GraphQL interfaces
+            r"(?=^query\s+\w+)",  # GraphQL queries
+            r"(?=^mutation\s+\w+)",  # GraphQL mutations
+        ],
+        ".yaml": [
+            r"(?=^[a-zA-Z_]+:(?:\s|$))",  # Top-level YAML keys
+        ],
+        ".yml": [
+            r"(?=^[a-zA-Z_]+:(?:\s|$))",  # Top-level YAML keys
+        ],
+    }
+
+    # File type to category mapping for metadata
+    FILE_CATEGORIES = {
+        ".rs": "rust_code",
+        ".ts": "typescript_code",
+        ".tsx": "react_component",
+        ".jsx": "react_component",
+        ".js": "javascript_code",
+        ".sol": "solidity_contract",
+        ".graphql": "graphql_schema",
+        ".yaml": "config_yaml",
+        ".yml": "config_yaml",
     }
 
     def __init__(
@@ -283,6 +324,7 @@ class CodeChunker:
 
         metadata = metadata or {}
         metadata["language"] = extension.lstrip(".")
+        metadata["file_category"] = self.FILE_CATEGORIES.get(extension, "code")
 
         # Try semantic splitting first
         chunks = self._semantic_split(code, extension)

@@ -4,7 +4,7 @@ MCP Server for ARBuilder.
 Exposes Stylus development tools, resources, and prompts via the Model Context Protocol.
 
 MCP Capabilities:
-- Tools: 5 development tools (context, code gen, Q&A, tests, workflows)
+- Tools: 9 development tools (M1: 5 Stylus tools, M3: 4 dApp builder tools)
 - Resources: Static knowledge (CLI commands, network configs, workflows)
 - Prompts: Reusable workflow templates
 """
@@ -14,11 +14,17 @@ import sys
 from typing import Any
 
 from .tools import (
+    # M1: Stylus Tools
     GetStylusContextTool,
     GenerateStylusCodeTool,
     AskStylusTool,
     GenerateTestsTool,
     GetWorkflowTool,
+    # M3: dApp Builder Tools
+    GenerateBackendTool,
+    GenerateFrontendTool,
+    GenerateIndexerTool,
+    GenerateDappTool,
 )
 from .resources import RESOURCES
 from .prompts import PROMPTS
@@ -170,6 +176,188 @@ TOOL_DEFINITIONS = [
             "required": ["workflow_type"],
         },
     },
+    # M3: dApp Builder Tools
+    {
+        "name": "generate_backend",
+        "description": "Generate NestJS or Express backend code with Web3 integration for Arbitrum dApps.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "Description of the backend to generate",
+                },
+                "framework": {
+                    "type": "string",
+                    "enum": ["nestjs", "express"],
+                    "description": "Backend framework to use (default: nestjs)",
+                    "default": "nestjs",
+                },
+                "features": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["auth", "database", "web3", "api"]},
+                    "description": "Features to include (default: [api, web3])",
+                    "default": ["api", "web3"],
+                },
+                "contract_abi": {
+                    "type": "string",
+                    "description": "Optional contract ABI for generating typed interactions",
+                },
+                "database": {
+                    "type": "string",
+                    "enum": ["postgresql", "mongodb", "none"],
+                    "description": "Database to use (default: postgresql)",
+                    "default": "postgresql",
+                },
+            },
+            "required": ["prompt"],
+        },
+    },
+    {
+        "name": "generate_frontend",
+        "description": "Generate Next.js frontend with wallet integration (wagmi, viem, RainbowKit) for Arbitrum dApps.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "Description of the frontend to generate",
+                },
+                "wallet_kit": {
+                    "type": "string",
+                    "enum": ["rainbowkit", "connectkit", "web3modal"],
+                    "description": "Wallet connection kit to use (default: rainbowkit)",
+                    "default": "rainbowkit",
+                },
+                "ui_library": {
+                    "type": "string",
+                    "enum": ["daisyui", "shadcn", "none"],
+                    "description": "UI component library (default: daisyui)",
+                    "default": "daisyui",
+                },
+                "features": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["wallet", "contract-read", "contract-write", "tx-history"]},
+                    "description": "Features to include",
+                    "default": ["wallet", "contract-read"],
+                },
+                "contract_abi": {
+                    "type": "string",
+                    "description": "Optional contract ABI for typed hooks",
+                },
+                "networks": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["arbitrum_one", "arbitrum_sepolia"]},
+                    "description": "Networks to support",
+                    "default": ["arbitrum_one", "arbitrum_sepolia"],
+                },
+                "app_name": {
+                    "type": "string",
+                    "description": "Name of the application",
+                    "default": "My dApp",
+                },
+            },
+            "required": ["prompt"],
+        },
+    },
+    {
+        "name": "generate_indexer",
+        "description": "Generate The Graph subgraph for indexing Arbitrum smart contract events.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "Description of what to index",
+                },
+                "contract_address": {
+                    "type": "string",
+                    "description": "Deployed contract address",
+                },
+                "contract_abi": {
+                    "type": "string",
+                    "description": "Contract ABI with events to index",
+                },
+                "contract_name": {
+                    "type": "string",
+                    "description": "Name of the contract",
+                    "default": "Contract",
+                },
+                "network": {
+                    "type": "string",
+                    "enum": ["arbitrum-one", "arbitrum-sepolia"],
+                    "description": "Network to deploy to (default: arbitrum-one)",
+                    "default": "arbitrum-one",
+                },
+                "entities": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Entity names to track",
+                },
+                "start_block": {
+                    "type": "integer",
+                    "description": "Block number to start indexing from",
+                    "default": 0,
+                },
+            },
+            "required": ["prompt"],
+        },
+    },
+    {
+        "name": "generate_dapp",
+        "description": "Orchestrate full-stack dApp generation combining contract, backend, frontend, and indexer.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "Full dApp description",
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Project name",
+                    "default": "my-dapp",
+                },
+                "include": {
+                    "type": "object",
+                    "properties": {
+                        "contract": {"type": "boolean", "default": True},
+                        "backend": {"type": "boolean", "default": True},
+                        "frontend": {"type": "boolean", "default": True},
+                        "indexer": {"type": "boolean", "default": False},
+                    },
+                    "description": "Components to include in generation",
+                },
+                "contract_type": {
+                    "type": "string",
+                    "enum": ["erc20", "erc721", "erc1155", "custom"],
+                    "description": "Type of contract to generate",
+                    "default": "custom",
+                },
+                "backend_framework": {
+                    "type": "string",
+                    "enum": ["nestjs", "express"],
+                    "default": "nestjs",
+                },
+                "wallet_kit": {
+                    "type": "string",
+                    "enum": ["rainbowkit", "connectkit", "web3modal"],
+                    "default": "rainbowkit",
+                },
+                "ui_library": {
+                    "type": "string",
+                    "enum": ["daisyui", "shadcn"],
+                    "default": "daisyui",
+                },
+                "network": {
+                    "type": "string",
+                    "enum": ["arbitrum-one", "arbitrum-sepolia"],
+                    "default": "arbitrum-sepolia",
+                },
+            },
+            "required": ["prompt"],
+        },
+    },
 ]
 
 
@@ -180,7 +368,7 @@ class MCPServer:
     Handles tool registration, resource access, prompt templates, and execution.
 
     Capabilities:
-    - tools/list, tools/call: 5 development tools
+    - tools/list, tools/call: 9 development tools (M1: 5 Stylus, M3: 4 dApp)
     - resources/list, resources/read: Static knowledge injection
     - prompts/list, prompts/get: Workflow templates
     """
@@ -190,7 +378,7 @@ class MCPServer:
         # Initialize shared context tool
         self.context_tool = GetStylusContextTool()
 
-        # Initialize all tools
+        # Initialize M1 Stylus tools
         self.tools = {
             "get_stylus_context": self.context_tool,
             "generate_stylus_code": GenerateStylusCodeTool(context_tool=self.context_tool),
@@ -198,6 +386,14 @@ class MCPServer:
             "generate_tests": GenerateTestsTool(),
             "get_workflow": GetWorkflowTool(),
         }
+
+        # Initialize M3 dApp builder tools
+        self.tools.update({
+            "generate_backend": GenerateBackendTool(context_tool=self.context_tool),
+            "generate_frontend": GenerateFrontendTool(context_tool=self.context_tool),
+            "generate_indexer": GenerateIndexerTool(context_tool=self.context_tool),
+            "generate_dapp": GenerateDappTool(context_tool=self.context_tool),
+        })
 
         # Resources are static knowledge
         self.resources = RESOURCES
@@ -290,8 +486,20 @@ class MCPServer:
         if tool_name not in self.tools:
             return {"error": f"Unknown tool: {tool_name}"}
 
+        # Validate required parameters
+        tool_def = next((t for t in TOOL_DEFINITIONS if t["name"] == tool_name), None)
+        if tool_def:
+            required_params = tool_def.get("inputSchema", {}).get("required", [])
+            missing_params = [p for p in required_params if p not in arguments]
+            if missing_params:
+                return {"error": f"Missing required parameter(s): {', '.join(missing_params)}"}
+
         tool = self.tools[tool_name]
-        return tool.execute(**arguments)
+        try:
+            return tool.execute(**arguments)
+        except TypeError as e:
+            # Catch any remaining parameter errors
+            return {"error": f"Invalid parameters: {str(e)}"}
 
     def handle_request(self, request: dict) -> dict:
         """
@@ -383,7 +591,7 @@ class MCPServer:
     def run_stdio(self):
         """Run server in stdio mode for MCP."""
         print("ARBuilder MCP Server started", file=sys.stderr)
-        print("Capabilities: 5 tools, 5 resources, 5 prompts", file=sys.stderr)
+        print("Capabilities: 9 tools (M1: 5 Stylus, M3: 4 dApp), 5 resources, 5 prompts", file=sys.stderr)
 
         for line in sys.stdin:
             try:

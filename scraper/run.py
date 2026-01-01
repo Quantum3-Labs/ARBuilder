@@ -64,7 +64,10 @@ Examples:
     parser.add_argument(
         "--categories",
         nargs="+",
-        choices=["stylus", "arbitrum_sdk", "orbit_sdk", "arbitrum_docs"],
+        choices=[
+            "stylus", "arbitrum_sdk", "orbit_sdk", "arbitrum_docs",
+            "dapp_backend", "dapp_frontend", "dapp_indexer", "dapp_oracle",
+        ],
         help="Categories to scrape (default: all)",
     )
     parser.add_argument(

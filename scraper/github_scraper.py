@@ -16,7 +16,16 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from .config import STYLUS_SOURCES, ARBITRUM_SDK_SOURCES, ORBIT_SDK_SOURCES
+from .config import (
+    STYLUS_SOURCES,
+    ARBITRUM_SDK_SOURCES,
+    ORBIT_SDK_SOURCES,
+    DAPP_BACKEND_SOURCES,
+    DAPP_FRONTEND_SOURCES,
+    DAPP_INDEXER_SOURCES,
+    DAPP_ORACLE_SOURCES,
+    M3_SOURCES,
+)
 
 load_dotenv()
 
@@ -27,13 +36,28 @@ REPOS_DIR = RAW_DATA_DIR / "repos"
 
 # File extensions to extract for code context
 CODE_EXTENSIONS = {
-    ".rs",      # Rust (Stylus contracts)
-    ".toml",    # Cargo.toml
-    ".md",      # Documentation
-    ".json",    # Config files
-    ".ts",      # TypeScript (SDK)
-    ".js",      # JavaScript
-    ".sol",     # Solidity (for reference)
+    # Rust (Stylus contracts)
+    ".rs",
+    ".toml",
+    # Documentation
+    ".md",
+    ".mdx",
+    # Config files
+    ".json",
+    # TypeScript/JavaScript (Backend, Frontend, SDK)
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    # Solidity (for reference)
+    ".sol",
+    # Subgraph/Indexer
+    ".yaml",
+    ".yml",
+    ".graphql",
+    ".gql",
+    # CSS/Styling
+    ".css",
 }
 
 # Directories to skip
@@ -140,6 +164,10 @@ async def scrape_all_repos(
         "stylus": STYLUS_SOURCES,
         "arbitrum_sdk": ARBITRUM_SDK_SOURCES,
         "orbit_sdk": ORBIT_SDK_SOURCES,
+        "dapp_backend": DAPP_BACKEND_SOURCES,
+        "dapp_frontend": DAPP_FRONTEND_SOURCES,
+        "dapp_indexer": DAPP_INDEXER_SOURCES,
+        "dapp_oracle": DAPP_ORACLE_SOURCES,
     }
 
     for category, source_dict in sources.items():
@@ -208,7 +236,10 @@ def main():
     parser.add_argument(
         "--categories",
         nargs="+",
-        choices=["stylus", "arbitrum_sdk", "orbit_sdk"],
+        choices=[
+            "stylus", "arbitrum_sdk", "orbit_sdk",
+            "dapp_backend", "dapp_frontend", "dapp_indexer", "dapp_oracle",
+        ],
         help="Categories to scrape (default: all)",
     )
     parser.add_argument(
