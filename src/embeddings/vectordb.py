@@ -15,9 +15,13 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 
-from .embedder import EmbeddingClient
+from .embedder import EmbeddingClient, EmbeddingAPIError
 
 load_dotenv()
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 console = Console()
 
@@ -71,7 +75,7 @@ class VectorDB:
     def ingest_chunks(
         self,
         chunks: list[dict],
-        batch_size: int = 100,
+        batch_size: int = 50,
         max_workers: int | None = None,
     ) -> int:
         """
@@ -79,19 +83,26 @@ class VectorDB:
 
         Args:
             chunks: List of chunk dictionaries with 'id', 'content', and metadata.
-            batch_size: Number of chunks to process per batch.
+            batch_size: Number of chunks to process per batch (default: 50).
             max_workers: Number of parallel workers for embedding/ingest.
-                Defaults to 5 when not provided.
+                Defaults to 2 when not provided (reduced to avoid rate limits).
 
         Returns:
             Number of chunks ingested.
         """
         total_ingested = 0
+        failed_batches = 0
         batches = [
             chunks[i:i + batch_size] for i in range(0, len(chunks), batch_size)
         ]
-        worker_count = max_workers or 5
+        # Reduced default workers from 5 to 2 to avoid rate limiting
+        worker_count = max_workers or 2
         collection_lock = Lock()
+
+        logger.info(
+            f"Starting ingestion: {len(chunks)} chunks in {len(batches)} batches "
+            f"(batch_size={batch_size}, workers={worker_count})"
+        )
 
         with Progress(
             SpinnerColumn(),
@@ -102,7 +113,13 @@ class VectorDB:
         ) as progress:
             task = progress.add_task("Ingesting chunks...", total=len(chunks))
 
-            def process_batch(batch: list[dict]) -> int:
+            def process_batch(batch: list[dict], batch_num: int) -> tuple[int, str | None]:
+                """
+                Process a single batch of chunks.
+
+                Returns:
+                    Tuple of (count ingested, error message if any)
+                """
                 # Extract data
                 ids = [chunk["id"] for chunk in batch]
                 documents = [chunk["content"] for chunk in batch]
@@ -111,12 +128,26 @@ class VectorDB:
                     for chunk in batch
                 ]
 
-                # Generate embeddings
+                # Generate embeddings with detailed error handling
                 try:
                     embeddings = self.embedding_client.embed_batch(documents)
+                except EmbeddingAPIError as e:
+                    error_msg = f"Batch {batch_num}: Embedding API error - {e}"
+                    logger.error(error_msg)
+                    return 0, error_msg
                 except Exception as e:
-                    console.print(f"[red]Error generating embeddings: {e}[/red]")
-                    return 0
+                    error_msg = f"Batch {batch_num}: Unexpected embedding error - {type(e).__name__}: {e}"
+                    logger.error(error_msg)
+                    return 0, error_msg
+
+                # Validate embeddings count
+                if len(embeddings) != len(documents):
+                    error_msg = (
+                        f"Batch {batch_num}: Embedding count mismatch - "
+                        f"expected {len(documents)}, got {len(embeddings)}"
+                    )
+                    logger.error(error_msg)
+                    return 0, error_msg
 
                 # Add to collection (guarded for thread safety)
                 try:
@@ -128,18 +159,48 @@ class VectorDB:
                             metadatas=metadatas,
                         )
                 except Exception as e:
-                    console.print(f"[red]Error adding to collection: {e}[/red]")
-                    return 0
+                    error_msg = f"Batch {batch_num}: ChromaDB error - {type(e).__name__}: {e}"
+                    logger.error(error_msg)
+                    return 0, error_msg
 
-                return len(batch)
+                logger.debug(f"Batch {batch_num} completed: {len(batch)} chunks ingested")
+                return len(batch), None
 
             with ThreadPoolExecutor(max_workers=worker_count) as executor:
-                futures = [executor.submit(process_batch, batch) for batch in batches]
+                # Submit batches with their index for better error reporting
+                futures = {
+                    executor.submit(process_batch, batch, i + 1): i + 1
+                    for i, batch in enumerate(batches)
+                }
 
                 for future in as_completed(futures):
-                    ingested = future.result()
-                    total_ingested += ingested
-                    progress.advance(task, ingested)
+                    batch_num = futures[future]
+                    try:
+                        ingested, error = future.result()
+                        if error:
+                            console.print(f"[red]{error}[/red]")
+                            failed_batches += 1
+                        total_ingested += ingested
+                        progress.advance(task, ingested if ingested > 0 else batch_size)
+                    except Exception as e:
+                        error_msg = f"Batch {batch_num}: Future execution error - {type(e).__name__}: {e}"
+                        logger.error(error_msg)
+                        console.print(f"[red]{error_msg}[/red]")
+                        failed_batches += 1
+                        progress.advance(task, batch_size)
+
+        # Summary logging
+        if failed_batches > 0:
+            console.print(
+                f"[yellow]Warning: {failed_batches}/{len(batches)} batches failed. "
+                f"Check logs for details.[/yellow]"
+            )
+            logger.warning(
+                f"Ingestion completed with errors: {total_ingested}/{len(chunks)} chunks ingested, "
+                f"{failed_batches} batches failed"
+            )
+        else:
+            logger.info(f"Ingestion completed successfully: {total_ingested} chunks ingested")
 
         return total_ingested
 
