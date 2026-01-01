@@ -68,10 +68,8 @@ ARBITRUM_SDK_SOURCES = {
 # =============================================================================
 
 # Backend Framework Sources (NestJS/Express with Web3)
+# Note: arbitrum-tutorials is in ARBITRUM_SDK_SOURCES (M2) - don't duplicate
 DAPP_BACKEND_SOURCES = {
-    "arbitrum_tutorials": [
-        "https://github.com/OffchainLabs/arbitrum-tutorials",
-    ],
     "web3_backend_patterns": [
         "https://github.com/scaffold-eth/scaffold-eth-2",  # Full-stack reference
     ],
@@ -81,14 +79,12 @@ DAPP_BACKEND_SOURCES = {
 }
 
 # Frontend & Wallet Integration Sources
+# Note: arbitrum-token-bridge is in ARBITRUM_SDK_SOURCES (M2) - don't duplicate
 DAPP_FRONTEND_SOURCES = {
     "wallet_libraries": [
         "https://github.com/wevm/wagmi",  # React hooks for Ethereum
         "https://github.com/wevm/viem",  # TypeScript Ethereum library
         "https://github.com/rainbow-me/rainbowkit",  # Wallet connection UI
-    ],
-    "arbitrum_frontends": [
-        "https://github.com/OffchainLabs/arbitrum-token-bridge",  # Official bridge UI
     ],
     "production_dapps": [
         "https://github.com/gmx-io/gmx-interface",  # Arbitrum-native DEX
