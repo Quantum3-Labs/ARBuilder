@@ -472,15 +472,49 @@ class MCPServer:
         for line in sys.stdin:
             try:
                 request = json.loads(line.strip())
-                response = self.handle_request(request)
+                request_id = request.get("id")
+                result = self.handle_request(request)
+
+                # Wrap response in JSON-RPC 2.0 format
+                if "error" in result and isinstance(result.get("error"), str):
+                    # Convert simple error to JSON-RPC error format
+                    response = {
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "error": {
+                            "code": -32600,
+                            "message": result["error"],
+                        },
+                    }
+                else:
+                    response = {
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "result": result,
+                    }
+
                 print(json.dumps(response))
                 sys.stdout.flush()
             except json.JSONDecodeError as e:
-                error_response = {"error": f"Invalid JSON: {str(e)}"}
+                error_response = {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {
+                        "code": -32700,
+                        "message": f"Parse error: {str(e)}",
+                    },
+                }
                 print(json.dumps(error_response))
                 sys.stdout.flush()
             except Exception as e:
-                error_response = {"error": f"Server error: {str(e)}"}
+                error_response = {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {
+                        "code": -32603,
+                        "message": f"Internal error: {str(e)}",
+                    },
+                }
                 print(json.dumps(error_response))
                 sys.stdout.flush()
 
