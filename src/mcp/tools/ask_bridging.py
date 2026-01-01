@@ -53,8 +53,8 @@ BRIDGING_KNOWLEDGE = {
     },
     "l1_to_l2_messaging": {
         "description": "Send arbitrary messages from L1 to L2",
-        "class": "ParentToChildMessageCreator",
-        "mechanism": "Retryable tickets",
+        "class": "InboxTools (for gas estimation) + Inbox contract",
+        "mechanism": "Retryable tickets via createRetryableTicket",
         "time": "~10-15 minutes",
         "use_cases": ["Cross-chain contract calls", "Governance execution"],
     },
@@ -234,7 +234,7 @@ The Arbitrum SDK provides several bridging classes:
 - `Erc20L1L3Bridger` - Bridge tokens from L1 to L3
 
 **Cross-Chain Messaging:**
-- `ParentToChildMessageCreator` - Create L1->L2 retryable tickets
+- `InboxTools` + Inbox contract - Create L1->L2 retryable tickets
 - `ArbSys` precompile - Send L2->L1 messages
 
 **Key Timings:**
@@ -289,10 +289,12 @@ await erc20Bridger.deposit({
 });'''
 
         if "l1_to_l2_messaging" in topics:
-            return '''const messageCreator = new ParentToChildMessageCreator(l1Wallet);
-const ticket = await messageCreator.createRetryableTicket(
-  ticketRequest,
-  l2Provider
-);'''
+            return '''// Use InboxTools for gas estimation
+const inboxTools = new InboxTools(l1Wallet, l2Network);
+const gasParams = await inboxTools.estimateRetryableTicketGasLimit({...});
+
+// Call createRetryableTicket on Inbox contract
+const inbox = new Contract(l2Network.ethBridge.inbox, INBOX_ABI, l1Wallet);
+const tx = await inbox.createRetryableTicket(...);'''
 
         return "// Use generate_bridge_code or generate_messaging_code for full examples"

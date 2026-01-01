@@ -19,7 +19,7 @@ class TestGenerateMessagingCodeTool:
 
         assert "error" not in result
         assert "code" in result
-        assert "ParentToChildMessageCreator" in result["code"]
+        assert "NodeInterface" in result["code"] or "createRetryableTicket" in result["code"]
         assert "retryable" in result["code"].lower()
         assert "gasLimit" in result["code"]
 
@@ -37,7 +37,7 @@ class TestGenerateMessagingCodeTool:
         result = tool.execute(message_type="l2_to_l1_claim")
 
         assert "error" not in result
-        assert "ChildToParentMessage" in result["code"]
+        assert "ChildTransactionReceipt" in result["code"]
         assert "execute" in result["code"]
         assert "CONFIRMED" in result["code"]
 

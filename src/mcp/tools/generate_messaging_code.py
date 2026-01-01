@@ -13,12 +13,25 @@ from typing import Any
 from .base import BaseTool
 
 # Template for L1 -> L2 message via retryable ticket
-L1_TO_L2_MESSAGE_TEMPLATE = '''import { providers, Wallet, utils, BigNumber } from 'ethers';
+L1_TO_L2_MESSAGE_TEMPLATE = '''import { providers, Wallet, utils, BigNumber, Contract } from 'ethers';
 import {
-  ParentToChildMessageCreator,
-  ParentToChildMessageGasEstimator,
   getArbitrumNetwork,
+  ParentTransactionReceipt,
+  ParentToChildMessageStatus,
 } from '@arbitrum/sdk';
+
+// Inbox ABI for createRetryableTicket
+const INBOX_ABI = [
+  'function createRetryableTicket(address to, uint256 l2CallValue, uint256 maxSubmissionCost, address excessFeeRefundAddress, address callValueRefundAddress, uint256 gasLimit, uint256 maxFeePerGas, bytes calldata data) external payable returns (uint256)',
+  'function calculateRetryableSubmissionFee(uint256 dataLength, uint256 baseFee) view returns (uint256)',
+];
+
+// NodeInterface ABI for gas estimation
+const NODE_INTERFACE_ABI = [
+  'function estimateRetryableTicket(address sender, uint256 deposit, address to, uint256 l2CallValue, address excessFeeRefundAddress, address callValueRefundAddress, bytes calldata data) external returns (uint256 gasLimit, uint256 gasPrice, uint256 submissionCost)',
+];
+
+const NODE_INTERFACE_ADDRESS = '0x00000000000000000000000000000000000000C8';
 
 /**
  * Send a message from L1 to L2 using a retryable ticket.
@@ -35,73 +48,73 @@ async function sendL1ToL2Message(
 
   const l2Network = await getArbitrumNetwork(l2Provider);
 
+  // Use NodeInterface to estimate gas (call this on L2)
+  const nodeInterface = new Contract(NODE_INTERFACE_ADDRESS, NODE_INTERFACE_ABI, l2Provider);
+
   // Estimate gas for the retryable ticket
-  const gasEstimator = new ParentToChildMessageGasEstimator(l2Provider);
-
-  const gasParams = await gasEstimator.estimateAll(
-    {
-      from: l1Wallet.address,
-      to: l2ContractAddress,
-      l2CallValue,
-      excessFeeRefundAddress: l1Wallet.address,
-      callValueRefundAddress: l1Wallet.address,
-      data: calldata,
-    },
-    await l1Provider.getBaseFeePerGas(),
-    l1Provider
+  const estimates = await nodeInterface.callStatic.estimateRetryableTicket(
+    l1Wallet.address,
+    utils.parseEther('1'), // deposit estimate
+    l2ContractAddress,
+    l2CallValue,
+    l1Wallet.address,
+    l1Wallet.address,
+    calldata
   );
 
-  console.log('Estimated gas params:', {
-    gasLimit: gasParams.gasLimit.toString(),
-    maxFeePerGas: gasParams.maxFeePerGas.toString(),
-    maxSubmissionCost: gasParams.maxSubmissionCost.toString(),
-  });
+  const gasLimit = estimates.gasLimit;
+  const maxFeePerGas = await l2Provider.getGasPrice();
 
-  // Create the retryable ticket
-  const messageCreator = new ParentToChildMessageCreator(l1Wallet);
-
-  const ticketRequest = await messageCreator.getTicketCreationRequest(
-    {
-      to: l2ContractAddress,
-      from: l1Wallet.address,
-      l2CallValue,
-      excessFeeRefundAddress: l1Wallet.address,
-      callValueRefundAddress: l1Wallet.address,
-      data: calldata,
-      ...gasParams,
-    },
-    l1Provider,
-    l2Provider
+  // Calculate submission cost based on calldata size
+  const inbox = new Contract(l2Network.ethBridge.inbox, INBOX_ABI, l1Wallet);
+  const l1BaseFee = await l1Provider.getBlock('latest').then(b => b.baseFeePerGas || BigNumber.from(0));
+  const maxSubmissionCost = await inbox.calculateRetryableSubmissionFee(
+    calldata.length,
+    l1BaseFee
   );
 
-  // Calculate total value needed (L2 call value + gas costs)
-  const totalValue = gasParams.deposit.add(l2CallValue);
-  console.log('Total ETH required:', utils.formatEther(totalValue));
-
-  // Send the transaction
-  const tx = await l1Wallet.sendTransaction({
-    ...ticketRequest.txRequest,
-    value: totalValue,
+  console.log('Gas params:', {
+    gasLimit: gasLimit.toString(),
+    maxFeePerGas: maxFeePerGas.toString(),
+    maxSubmissionCost: maxSubmissionCost.toString(),
   });
+
+  // Calculate total deposit (with some buffer)
+  const deposit = maxSubmissionCost.add(gasLimit.mul(maxFeePerGas)).add(l2CallValue);
+  console.log('Total ETH required:', utils.formatEther(deposit));
+
+  const tx = await inbox.createRetryableTicket(
+    l2ContractAddress,
+    l2CallValue,
+    maxSubmissionCost,
+    l1Wallet.address,  // excessFeeRefundAddress
+    l1Wallet.address,  // callValueRefundAddress
+    gasLimit,
+    maxFeePerGas,
+    calldata,
+    { value: deposit }
+  );
 
   console.log('L1 tx hash:', tx.hash);
   const receipt = await tx.wait();
   console.log('L1 tx confirmed');
 
-  // Wait for L2 execution
-  const l2Result = await receipt.waitForChildTransactionReceipt(l2Provider);
+  // Parse the receipt to get retryable ticket info
+  const parentReceipt = new ParentTransactionReceipt(receipt);
+  const messages = await parentReceipt.getParentToChildMessages(l2Provider);
 
-  if (l2Result.complete) {
-    console.log('Message executed on L2!');
-    console.log('L2 tx hash:', l2Result.childTxReceipt.transactionHash);
-  } else {
-    console.log('Message not yet executed, status:', l2Result.status);
+  if (messages.length > 0) {
+    const message = messages[0];
+    console.log('Retryable ticket created');
+
+    // Wait for L2 execution
+    const status = await message.waitForStatus();
+    console.log('Message status:', ParentToChildMessageStatus[status.status]);
   }
 
   return {
     l1TxHash: receipt.transactionHash,
-    l2TxHash: l2Result.childTxReceipt?.transactionHash,
-    complete: l2Result.complete,
+    messages,
   };
 }
 
@@ -173,9 +186,8 @@ async function sendL2ToL1Message(
 # Template for claiming L2 -> L1 message on L1
 L2_TO_L1_CLAIM_TEMPLATE = '''import { providers, Wallet } from 'ethers';
 import {
-  ChildToParentMessage,
+  ChildTransactionReceipt,
   ChildToParentMessageStatus,
-  getArbitrumNetwork,
 } from '@arbitrum/sdk';
 
 /**
@@ -193,11 +205,8 @@ async function claimL2ToL1Message(l2TxHash: string) {
   }
 
   // Get the L2 -> L1 messages from the receipt
-  const messages = await ChildToParentMessage.getChildToParentMessages(
-    l1Wallet,
-    l2Receipt,
-    l2Provider
-  );
+  const childReceipt = new ChildTransactionReceipt(l2Receipt);
+  const messages = await childReceipt.getChildToParentMessages(l1Wallet);
 
   if (messages.length === 0) {
     throw new Error('No L2 -> L1 messages found in transaction');
@@ -236,11 +245,10 @@ async function claimL2ToL1Message(l2TxHash: string) {
 # Template for checking message status
 MESSAGE_STATUS_TEMPLATE = '''import { providers } from 'ethers';
 import {
-  ParentToChildMessage,
+  ParentTransactionReceipt,
   ParentToChildMessageStatus,
-  ChildToParentMessage,
+  ChildTransactionReceipt,
   ChildToParentMessageStatus,
-  getArbitrumNetwork,
 } from '@arbitrum/sdk';
 
 /**
@@ -255,18 +263,15 @@ async function checkL1ToL2Status(l1TxHash: string) {
     return { error: 'L1 transaction not found' };
   }
 
-  const messages = await ParentToChildMessage.getParentToChildMessages(
-    l1Receipt,
-    l2Provider
-  );
+  const parentReceipt = new ParentTransactionReceipt(l1Receipt);
+  const messages = await parentReceipt.getParentToChildMessages(l2Provider);
 
   const results = [];
   for (const message of messages) {
-    const status = await message.status();
+    const status = await message.waitForStatus();
     results.push({
-      retryableId: message.retryableCreationId,
-      status: ParentToChildMessageStatus[status],
-      statusCode: status,
+      status: ParentToChildMessageStatus[status.status],
+      statusCode: status.status,
     });
   }
 
@@ -285,11 +290,8 @@ async function checkL2ToL1Status(l2TxHash: string) {
     return { error: 'L2 transaction not found' };
   }
 
-  const messages = await ChildToParentMessage.getChildToParentMessages(
-    l1Provider,
-    l2Receipt,
-    l2Provider
-  );
+  const childReceipt = new ChildTransactionReceipt(l2Receipt);
+  const messages = await childReceipt.getChildToParentMessages(l1Provider);
 
   const results = [];
   for (const message of messages) {
