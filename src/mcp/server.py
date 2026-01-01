@@ -4,7 +4,7 @@ MCP Server for ARBuilder.
 Exposes Stylus development tools, resources, and prompts via the Model Context Protocol.
 
 MCP Capabilities:
-- Tools: 9 development tools (M1: 5 Stylus tools, M3: 4 dApp builder tools)
+- Tools: 12 development tools (M1: 5 Stylus, M2: 3 Arbitrum SDK, M3: 4 dApp builder)
 - Resources: Static knowledge (CLI commands, network configs, workflows)
 - Prompts: Reusable workflow templates
 """
@@ -13,6 +13,7 @@ import json
 import sys
 from typing import Any
 
+# M1: Stylus Tools
 from .tools import (
     # M1: Stylus Tools
     GetStylusContextTool,
@@ -20,12 +21,17 @@ from .tools import (
     AskStylusTool,
     GenerateTestsTool,
     GetWorkflowTool,
+    # M2: Arbitrum SDK Tools
+    GenerateBridgeCodeTool,
+    GenerateMessagingCodeTool,
+    AskBridgingTool,
     # M3: dApp Builder Tools
     GenerateBackendTool,
     GenerateFrontendTool,
     GenerateIndexerTool,
     GenerateDappTool,
 )
+
 from .resources import RESOURCES
 from .prompts import PROMPTS
 
@@ -174,6 +180,76 @@ TOOL_DEFINITIONS = [
                 },
             },
             "required": ["workflow_type"],
+        },
+    },
+    # M2: Arbitrum SDK Tools
+    {
+        "name": "generate_bridge_code",
+        "description": "Generate TypeScript code for Arbitrum asset bridging using the Arbitrum SDK. Supports ETH/ERC20 bridging L1<->L2 and L1->L3.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "bridge_type": {
+                    "type": "string",
+                    "enum": ["eth_deposit", "eth_deposit_to", "eth_withdraw",
+                             "erc20_deposit", "erc20_withdraw",
+                             "eth_l1_l3", "erc20_l1_l3"],
+                    "description": "Type of bridging operation to generate code for",
+                },
+                "amount": {
+                    "type": "string",
+                    "description": "Amount to bridge (in ETH or token units)",
+                    "default": "0.1",
+                },
+                "token_address": {
+                    "type": "string",
+                    "description": "L1 token address (required for erc20 operations)",
+                },
+                "destination_address": {
+                    "type": "string",
+                    "description": "Destination address (for deposit_to operations)",
+                },
+            },
+            "required": ["bridge_type"],
+        },
+    },
+    {
+        "name": "generate_messaging_code",
+        "description": "Generate TypeScript code for Arbitrum cross-chain messaging. Supports L1->L2 retryable tickets and L2->L1 messages.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "message_type": {
+                    "type": "string",
+                    "enum": ["l1_to_l2", "l2_to_l1", "l2_to_l1_claim", "check_status"],
+                    "description": "Type of messaging operation to generate code for",
+                },
+                "include_example": {
+                    "type": "boolean",
+                    "description": "Include example usage with sample contract call",
+                    "default": True,
+                },
+            },
+            "required": ["message_type"],
+        },
+    },
+    {
+        "name": "ask_bridging",
+        "description": "Answer questions about Arbitrum bridging and cross-chain messaging patterns.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "Question about Arbitrum bridging or messaging",
+                },
+                "include_code_example": {
+                    "type": "boolean",
+                    "description": "Include a code example in the answer if relevant",
+                    "default": False,
+                },
+            },
+            "required": ["question"],
         },
     },
     # M3: dApp Builder Tools
@@ -368,7 +444,7 @@ class MCPServer:
     Handles tool registration, resource access, prompt templates, and execution.
 
     Capabilities:
-    - tools/list, tools/call: 9 development tools (M1: 5 Stylus, M3: 4 dApp)
+    - tools/list, tools/call: 12 development tools (M1: 5 Stylus, M2: 3 SDK, M3: 4 dApp)
     - resources/list, resources/read: Static knowledge injection
     - prompts/list, prompts/get: Workflow templates
     """
@@ -378,22 +454,24 @@ class MCPServer:
         # Initialize shared context tool
         self.context_tool = GetStylusContextTool()
 
-        # Initialize M1 Stylus tools
+        # Initialize all tools
         self.tools = {
+            # M1: Stylus Tools
             "get_stylus_context": self.context_tool,
             "generate_stylus_code": GenerateStylusCodeTool(context_tool=self.context_tool),
             "ask_stylus": AskStylusTool(context_tool=self.context_tool),
             "generate_tests": GenerateTestsTool(),
             "get_workflow": GetWorkflowTool(),
-        }
-
-        # Initialize M3 dApp builder tools
-        self.tools.update({
+            # M2: Arbitrum SDK Tools
+            "generate_bridge_code": GenerateBridgeCodeTool(context_tool=self.context_tool),
+            "generate_messaging_code": GenerateMessagingCodeTool(context_tool=self.context_tool),
+            "ask_bridging": AskBridgingTool(context_tool=self.context_tool),
+            # M3: dApp Builder Tools
             "generate_backend": GenerateBackendTool(context_tool=self.context_tool),
             "generate_frontend": GenerateFrontendTool(context_tool=self.context_tool),
             "generate_indexer": GenerateIndexerTool(context_tool=self.context_tool),
             "generate_dapp": GenerateDappTool(context_tool=self.context_tool),
-        })
+        }
 
         # Resources are static knowledge
         self.resources = RESOURCES
@@ -524,7 +602,7 @@ class MCPServer:
                 },
                 "serverInfo": {
                     "name": "arbbuilder",
-                    "version": "0.1.0",
+                    "version": "0.2.0",
                 },
             }
 
@@ -591,7 +669,7 @@ class MCPServer:
     def run_stdio(self):
         """Run server in stdio mode for MCP."""
         print("ARBuilder MCP Server started", file=sys.stderr)
-        print("Capabilities: 9 tools (M1: 5 Stylus, M3: 4 dApp), 5 resources, 5 prompts", file=sys.stderr)
+        print("Capabilities: 12 tools (M1: 5 Stylus, M2: 3 SDK, M3: 4 dApp), 5 resources, 5 prompts", file=sys.stderr)
 
         for line in sys.stdin:
             try:

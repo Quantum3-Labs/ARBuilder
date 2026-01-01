@@ -43,11 +43,23 @@ STYLUS_SOURCES = {
 }
 
 # =============================================================================
-# M2: Arbitrum SDK Sources
+# M2: Arbitrum SDK Sources - Cross-chain messaging and bridging
 # =============================================================================
 ARBITRUM_SDK_SOURCES = {
     "sdk_repo": [
         "https://github.com/OffchainLabs/arbitrum-sdk",
+    ],
+    "tutorials": [
+        "https://github.com/OffchainLabs/arbitrum-tutorials",
+    ],
+    "token_bridge": [
+        "https://github.com/OffchainLabs/arbitrum-token-bridge",
+    ],
+    "docs_bridging": [
+        "https://docs.arbitrum.io/build-decentralized-apps/token-bridging/token-bridge-erc20",
+        "https://docs.arbitrum.io/build-decentralized-apps/cross-chain-messaging",
+        "https://docs.arbitrum.io/build-decentralized-apps/02-use-arbitrum-sdk",
+        "https://docs.arbitrum.io/build-decentralized-apps/precompiles/02-reference",
     ],
 }
 

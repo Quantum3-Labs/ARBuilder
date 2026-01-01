@@ -5,6 +5,7 @@ Scrapes Arbitrum Stylus docs, GitHub repos, and related resources.
 
 import asyncio
 import json
+import logging
 import os
 import re
 from datetime import datetime
@@ -21,6 +22,11 @@ from .config import ALL_SOURCES
 load_dotenv()
 
 console = Console()
+logger = logging.getLogger(__name__)
+
+# Retry configuration
+MAX_RETRIES = 3
+RETRY_DELAY_BASE = 2  # seconds
 
 # Output directories
 RAW_DATA_DIR = Path(os.getenv("RAW_DATA_DIR", "data/raw"))
@@ -42,36 +48,118 @@ async def scrape_url(
     url: str,
     category: str,
     subcategory: str,
+    retries: int = MAX_RETRIES,
 ) -> Optional[dict]:
-    """Scrape a single URL and return structured data."""
-    try:
-        config = CrawlerRunConfig(
-            cache_mode=CacheMode.BYPASS,
-            word_count_threshold=10,
-            exclude_external_links=True,
-            process_iframes=True,
-        )
+    """
+    Scrape a single URL and return structured data with retry logic.
 
-        result = await crawler.arun(url=url, config=config)
+    Args:
+        crawler: The AsyncWebCrawler instance.
+        url: URL to scrape.
+        category: Category of the content.
+        subcategory: Subcategory of the content.
+        retries: Number of retry attempts for transient errors.
 
-        if result.success:
-            return {
-                "url": url,
-                "category": category,
-                "subcategory": subcategory,
-                "title": result.metadata.get("title", ""),
-                "description": result.metadata.get("description", ""),
-                "markdown": result.markdown,
-                "links": result.links,
-                "scraped_at": datetime.utcnow().isoformat(),
-            }
-        else:
-            console.print(f"[red]Failed to scrape {url}: {result.error_message}[/red]")
-            return None
+    Returns:
+        Scraped data dictionary or None if failed.
+    """
+    last_error = None
 
-    except Exception as e:
-        console.print(f"[red]Error scraping {url}: {e}[/red]")
-        return None
+    for attempt in range(retries):
+        try:
+            # Configure crawler with iframe handling disabled to avoid context errors
+            config = CrawlerRunConfig(
+                cache_mode=CacheMode.BYPASS,
+                word_count_threshold=10,
+                exclude_external_links=True,
+                process_iframes=False,  # Disabled to avoid "execution context destroyed" errors
+            )
+
+            result = await crawler.arun(url=url, config=config)
+
+            if result.success:
+                # Validate we got actual content
+                markdown_content = result.markdown or ""
+                if len(markdown_content.strip()) < 50:
+                    logger.warning(f"Scraped content too short for {url} ({len(markdown_content)} chars)")
+                    # Still return it, but log the warning
+
+                return {
+                    "url": url,
+                    "category": category,
+                    "subcategory": subcategory,
+                    "title": result.metadata.get("title", "") if result.metadata else "",
+                    "description": result.metadata.get("description", "") if result.metadata else "",
+                    "markdown": markdown_content,
+                    "links": result.links if result.links else {},
+                    "scraped_at": datetime.utcnow().isoformat(),
+                }
+            else:
+                error_msg = result.error_message if hasattr(result, 'error_message') else "Unknown error"
+                last_error = error_msg
+
+                # Check for retryable errors
+                retryable_errors = [
+                    "timeout",
+                    "navigation",
+                    "context was destroyed",
+                    "connection",
+                    "net::",
+                    "ERR_",
+                ]
+
+                is_retryable = any(err.lower() in str(error_msg).lower() for err in retryable_errors)
+
+                if is_retryable and attempt < retries - 1:
+                    delay = RETRY_DELAY_BASE * (2 ** attempt)
+                    logger.warning(
+                        f"Retryable error scraping {url} (attempt {attempt + 1}/{retries}): {error_msg}. "
+                        f"Retrying in {delay}s..."
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                else:
+                    logger.error(f"Failed to scrape {url}: {error_msg}")
+                    console.print(f"[red]Failed to scrape {url}: {error_msg}[/red]")
+                    return None
+
+        except asyncio.TimeoutError as e:
+            last_error = f"Timeout: {e}"
+            if attempt < retries - 1:
+                delay = RETRY_DELAY_BASE * (2 ** attempt)
+                logger.warning(f"Timeout scraping {url} (attempt {attempt + 1}/{retries}). Retrying in {delay}s...")
+                await asyncio.sleep(delay)
+                continue
+            else:
+                logger.error(f"Timeout scraping {url} after {retries} attempts")
+                console.print(f"[red]Timeout scraping {url}[/red]")
+                return None
+
+        except Exception as e:
+            last_error = str(e)
+            error_type = type(e).__name__
+
+            # Check for retryable exceptions
+            retryable_exceptions = ["ConnectionError", "TimeoutError", "BrowserError"]
+            is_retryable = any(exc in error_type for exc in retryable_exceptions) or \
+                           "context" in str(e).lower() or \
+                           "navigation" in str(e).lower()
+
+            if is_retryable and attempt < retries - 1:
+                delay = RETRY_DELAY_BASE * (2 ** attempt)
+                logger.warning(
+                    f"Error scraping {url} (attempt {attempt + 1}/{retries}): {error_type}: {e}. "
+                    f"Retrying in {delay}s..."
+                )
+                await asyncio.sleep(delay)
+                continue
+            else:
+                logger.error(f"Error scraping {url}: {error_type}: {e}")
+                console.print(f"[red]Error scraping {url}: {error_type}: {e}[/red]")
+                return None
+
+    logger.error(f"Failed to scrape {url} after {retries} attempts. Last error: {last_error}")
+    return None
 
 
 async def scrape_github_repo(

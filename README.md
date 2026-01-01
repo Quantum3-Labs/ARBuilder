@@ -270,11 +270,11 @@ Direct API routes at `/api/v1/tools/*` are for **internal testing only**:
 
 ## MCP Capabilities
 
-ARBuilder exposes a full MCP server with **9 tools**, **5 resources**, and **5 prompts** for Cursor/VS Code integration.
+ARBuilder exposes a full MCP server with **12 tools**, **5 resources**, and **5 prompts** for Cursor/VS Code integration.
 
 ### Tools
 
-#### M1: Stylus Smart Contract Tools
+**M1: Stylus Development (5 tools)**
 
 | Tool | Description |
 |------|-------------|
@@ -284,7 +284,15 @@ ARBuilder exposes a full MCP server with **9 tools**, **5 resources**, and **5 p
 | `generate_tests` | Generate unit/integration/fuzz tests |
 | `get_workflow` | Build/deploy/test workflow guidance |
 
-#### M3: Full dApp Builder Tools
+**M2: Arbitrum SDK - Bridging & Messaging (3 tools)**
+
+| Tool | Description |
+|------|-------------|
+| `generate_bridge_code` | Generate ETH/ERC20 bridging code (L1<->L2, L1->L3) |
+| `generate_messaging_code` | Generate cross-chain messaging code |
+| `ask_bridging` | Q&A about bridging patterns and SDK usage |
+
+**M3: Full dApp Builder Tools (4 tools)**
 
 | Tool | Description |
 |------|-------------|
@@ -417,10 +425,25 @@ Returns: Commands for checking balance, deploying, and verifying
 | Milestone | Description | Status |
 |-----------|-------------|--------|
 | M1 | Stylus Smart Contract Builder | ✅ Complete |
-| M2 | Arbitrum SDK Integration | Planned |
+| M2 | Arbitrum SDK Integration (Bridging & Messaging) | ✅ Complete |
 | M3 | Full dApp Builder | ✅ Complete |
 | M4 | Orbit Chain Integration | Planned |
 | M5 | Unified AI Assistant | Planned |
+
+### M2: Arbitrum SDK Integration
+
+Cross-chain bridging and messaging support:
+
+- **ETH Bridging**: L1 <-> L2 deposits and withdrawals
+- **ERC20 Bridging**: Token bridging with gateway approvals
+- **L1 -> L3 Bridging**: Direct L1 to Orbit chain bridging via double retryables
+- **Cross-chain Messaging**: L1 -> L2 retryable tickets, L2 -> L1 messages via ArbSys
+- **Status Tracking**: Message status monitoring and withdrawal claiming
+
+```bash
+# Example: Generate ETH deposit code
+echo '{"method": "tools/call", "params": {"name": "generate_bridge_code", "arguments": {"bridge_type": "eth_deposit", "amount": "0.5"}}}' | uv run python -m src.mcp.server
+```
 
 ### M3: Full dApp Builder Features
 
@@ -492,6 +515,97 @@ Benchmark reports are saved to `benchmark_results/`.
 ```bash
 black .
 ruff check .
+```
+
+## Troubleshooting
+
+### Embedding Generation Errors
+
+If you encounter errors like `Error generating embeddings: RetryError` or `KeyError` during vector database ingestion:
+
+**1. Check OpenRouter API Key**
+```bash
+# Verify your .env file has a valid API key
+cat .env | grep OPENROUTER_API_KEY
+```
+
+Ensure:
+- The API key is correctly set (no extra spaces or quotes)
+- Your OpenRouter account has credits
+- The embedding model `google/gemini-embedding-001` is available
+
+**2. Rate Limiting Issues**
+
+If you see `HTTPStatusError` with status 429, you're being rate limited. Solutions:
+
+```bash
+# Run with smaller batch size
+python -m src.embeddings.vectordb --batch-size 25
+
+# Or modify max_workers in vectordb.py to 1 for sequential processing
+```
+
+**3. Enable Debug Logging**
+
+Add this to your script or at the start of your session to see detailed logs:
+
+```python
+import logging
+logging.basicConfig(level=logging.INFO)
+# For more verbose output:
+# logging.basicConfig(level=logging.DEBUG)
+```
+
+### Scraper Errors
+
+**"Execution context was destroyed" errors**
+
+This is a browser navigation issue during scraping. The scraper will automatically retry. If it persists:
+- The page may have heavy JavaScript that interferes with scraping
+- These pages are skipped after retries; the scraper continues with other URLs
+
+**Git clone failures**
+
+If repository cloning fails:
+```bash
+# Check your network connection
+ping github.com
+
+# Try cloning manually to diagnose
+git clone --depth 1 https://github.com/OffchainLabs/stylus-hello-world
+
+# If behind a proxy, configure git
+git config --global http.proxy http://proxy:port
+```
+
+**Timeout errors**
+
+For slow connections, increase timeouts in the scraper config or reduce concurrent requests:
+```bash
+python -m scraper.run --max-concurrent 1
+```
+
+### ChromaDB Issues
+
+**Import errors with opentelemetry**
+
+If you see `TypeError: 'NoneType' object is not subscriptable` when importing chromadb:
+```bash
+# This is usually a conda environment issue
+# Make sure you're in the correct environment
+conda activate arbbuilder
+
+# Or reinstall chromadb
+pip uninstall chromadb
+pip install chromadb
+```
+
+**Database corruption**
+
+If the vector database seems corrupted:
+```bash
+# Reset and re-ingest
+python -m src.embeddings.vectordb --reset
 ```
 
 ## License
