@@ -4,7 +4,7 @@ MCP Server for ARBuilder.
 Exposes Stylus development tools, resources, and prompts via the Model Context Protocol.
 
 MCP Capabilities:
-- Tools: 5 development tools (context, code gen, Q&A, tests, workflows)
+- Tools: 8 development tools (M1: Stylus + M2: Arbitrum SDK)
 - Resources: Static knowledge (CLI commands, network configs, workflows)
 - Prompts: Reusable workflow templates
 """
@@ -13,6 +13,7 @@ import json
 import sys
 from typing import Any
 
+# M1: Stylus Tools
 from .tools import (
     GetStylusContextTool,
     GenerateStylusCodeTool,
@@ -20,6 +21,14 @@ from .tools import (
     GenerateTestsTool,
     GetWorkflowTool,
 )
+
+# M2: Arbitrum SDK Tools
+from .tools import (
+    GenerateBridgeCodeTool,
+    GenerateMessagingCodeTool,
+    AskBridgingTool,
+)
+
 from .resources import RESOURCES
 from .prompts import PROMPTS
 
@@ -170,6 +179,76 @@ TOOL_DEFINITIONS = [
             "required": ["workflow_type"],
         },
     },
+    # M2: Arbitrum SDK Tools
+    {
+        "name": "generate_bridge_code",
+        "description": "Generate TypeScript code for Arbitrum asset bridging using the Arbitrum SDK. Supports ETH/ERC20 bridging L1<->L2 and L1->L3.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "bridge_type": {
+                    "type": "string",
+                    "enum": ["eth_deposit", "eth_deposit_to", "eth_withdraw",
+                             "erc20_deposit", "erc20_withdraw",
+                             "eth_l1_l3", "erc20_l1_l3"],
+                    "description": "Type of bridging operation to generate code for",
+                },
+                "amount": {
+                    "type": "string",
+                    "description": "Amount to bridge (in ETH or token units)",
+                    "default": "0.1",
+                },
+                "token_address": {
+                    "type": "string",
+                    "description": "L1 token address (required for erc20 operations)",
+                },
+                "destination_address": {
+                    "type": "string",
+                    "description": "Destination address (for deposit_to operations)",
+                },
+            },
+            "required": ["bridge_type"],
+        },
+    },
+    {
+        "name": "generate_messaging_code",
+        "description": "Generate TypeScript code for Arbitrum cross-chain messaging. Supports L1->L2 retryable tickets and L2->L1 messages.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "message_type": {
+                    "type": "string",
+                    "enum": ["l1_to_l2", "l2_to_l1", "l2_to_l1_claim", "check_status"],
+                    "description": "Type of messaging operation to generate code for",
+                },
+                "include_example": {
+                    "type": "boolean",
+                    "description": "Include example usage with sample contract call",
+                    "default": True,
+                },
+            },
+            "required": ["message_type"],
+        },
+    },
+    {
+        "name": "ask_bridging",
+        "description": "Answer questions about Arbitrum bridging and cross-chain messaging patterns.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "Question about Arbitrum bridging or messaging",
+                },
+                "include_code_example": {
+                    "type": "boolean",
+                    "description": "Include a code example in the answer if relevant",
+                    "default": False,
+                },
+            },
+            "required": ["question"],
+        },
+    },
 ]
 
 
@@ -192,11 +271,16 @@ class MCPServer:
 
         # Initialize all tools
         self.tools = {
+            # M1: Stylus Tools
             "get_stylus_context": self.context_tool,
             "generate_stylus_code": GenerateStylusCodeTool(context_tool=self.context_tool),
             "ask_stylus": AskStylusTool(context_tool=self.context_tool),
             "generate_tests": GenerateTestsTool(),
             "get_workflow": GetWorkflowTool(),
+            # M2: Arbitrum SDK Tools
+            "generate_bridge_code": GenerateBridgeCodeTool(context_tool=self.context_tool),
+            "generate_messaging_code": GenerateMessagingCodeTool(context_tool=self.context_tool),
+            "ask_bridging": AskBridgingTool(context_tool=self.context_tool),
         }
 
         # Resources are static knowledge
