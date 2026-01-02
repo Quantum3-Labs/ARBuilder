@@ -96,6 +96,15 @@ jobs:
       - name: Install migration dependencies
         run: npm install tsx
 
+      - name: Clear existing vectors
+        env:
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+        run: |
+          curl -X POST "https://arbbuilder-staging.swmengappdev.workers.dev/api/admin/migrate" \
+            -H "X-Admin-Secret: $AUTH_SECRET" \
+            -H "Content-Type: application/json" \
+            -d '{"action": "clear"}'
+
       - name: Migrate to Staging Vectorize
         env:
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
