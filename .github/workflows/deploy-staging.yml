@@ -98,7 +98,7 @@ jobs:
 
       - name: Migrate to Staging Vectorize
         env:
-          AUTH_SECRET: ${{ secrets.AUTH_SECRET_STAGING }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           MIGRATE_URL: https://arbbuilder-staging.swmengappdev.workers.dev
         run: npx tsx scripts/diff-migrate.ts --full
 
