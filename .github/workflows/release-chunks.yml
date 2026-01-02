@@ -1,0 +1,111 @@
+name: Release Chunks
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag name for release (e.g., v1.0.0)'
+        required: true
+        type: string
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  build-chunks:
+    name: Build and Upload Chunks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -e .
+          pip install crawl4ai playwright
+          playwright install chromium
+
+      - name: Run web scraper
+        run: python -m scraper.run --categories stylus arbitrum_sdk
+        continue-on-error: true
+
+      - name: Run GitHub scraper
+        run: python -m scraper.github_scraper
+        continue-on-error: true
+
+      - name: Process data
+        run: python -m src.preprocessing.processor
+
+      - name: Find processed chunks file
+        id: find-chunks
+        run: |
+          CHUNKS_FILE=$(ls -t data/processed/processed_chunks_*.json | head -1)
+          echo "file=$CHUNKS_FILE" >> $GITHUB_OUTPUT
+          echo "Found chunks file: $CHUNKS_FILE"
+
+      - name: Get release tag
+        id: get-tag
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload to release
+        if: github.event_name == 'release'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ${{ steps.find-chunks.outputs.file }}
+          asset_name: processed_chunks_${{ steps.get-tag.outputs.tag }}.json
+          asset_content_type: application/json
+
+      - name: Create release (manual trigger)
+        if: github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get-tag.outputs.tag }}
+          name: Release ${{ steps.get-tag.outputs.tag }}
+          body: |
+            ## Pre-built RAG Chunks
+
+            This release includes pre-processed chunks for the ARBuilder knowledge base.
+
+            ### Download
+            ```bash
+            npx tsx scripts/download-chunks.ts --version=${{ steps.get-tag.outputs.tag }}
+            ```
+
+            ### Contents
+            - Stylus SDK documentation and examples
+            - Arbitrum SDK documentation
+            - Production codebases and community projects
+
+            ### Usage
+            - **Local ChromaDB**: `python -m src.embeddings.vectordb`
+            - **Cloudflare Vectorize**: `npx tsx scripts/diff-migrate.ts --full`
+          files: |
+            ${{ steps.find-chunks.outputs.file }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo "## Chunks Release" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** ${{ steps.get-tag.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "**File:** ${{ steps.find-chunks.outputs.file }}" >> $GITHUB_STEP_SUMMARY
+
+          CHUNK_COUNT=$(cat "${{ steps.find-chunks.outputs.file }}" | python -c "import json,sys; print(len(json.load(sys.stdin)))")
+          echo "**Chunks:** $CHUNK_COUNT" >> $GITHUB_STEP_SUMMARY
