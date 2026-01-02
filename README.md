@@ -27,6 +27,12 @@ ARBuilder uses a **Retrieval-Augmented Generation (RAG)** pipeline to provide co
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## Tutorial Video
+
+Watch the tutorial to see ARBuilder in action:
+
+[Tutorial Video](https://drive.google.com/file/d/1gLfXvwNyYeVfLY2g6WQySDyOcNDxmOP2/view?usp=share_link)
+
 ## Project Structure
 
 ```
