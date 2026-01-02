@@ -69,7 +69,7 @@
 
 	// Staging environment (M2 branch testing)
 	// Deploy with: wrangler deploy --env staging
-	// Access at: arbbuilder-staging.whymelabs.workers.dev
+	// Access at: arbbuilder-staging.swmengappdev.workers.dev
 	"env": {
 		"staging": {
 			"name": "arbbuilder-staging",

@@ -52,7 +52,7 @@ jobs:
         run: |
           echo "## Staging Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**URL:** https://arbbuilder-staging.whymelabs.workers.dev" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** https://arbbuilder-staging.swmengappdev.workers.dev" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
 
@@ -99,7 +99,7 @@ jobs:
       - name: Migrate to Staging Vectorize
         env:
           AUTH_SECRET: ${{ secrets.AUTH_SECRET_STAGING }}
-          MIGRATE_URL: https://arbbuilder-staging.whymelabs.workers.dev
+          MIGRATE_URL: https://arbbuilder-staging.swmengappdev.workers.dev
         run: npx tsx scripts/diff-migrate.ts --full
 
       - name: Summary
