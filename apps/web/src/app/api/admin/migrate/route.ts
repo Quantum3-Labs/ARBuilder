@@ -26,6 +26,46 @@ interface MigrateRequest {
   action?: "upsert" | "status" | "clear";
 }
 
+/**
+ * Retry a function with exponential backoff.
+ * Handles transient errors like AiError: 3043 (inference error).
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  options: {
+    maxRetries?: number;
+    baseDelayMs?: number;
+    maxDelayMs?: number;
+  } = {}
+): Promise<T> {
+  const { maxRetries = 3, baseDelayMs = 500, maxDelayMs = 5000 } = options;
+
+  let lastError: Error | unknown;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+
+      // Don't retry on the last attempt
+      if (attempt === maxRetries) {
+        break;
+      }
+
+      // Calculate delay with exponential backoff + jitter
+      const delay = Math.min(
+        baseDelayMs * Math.pow(2, attempt) + Math.random() * 100,
+        maxDelayMs
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { env } = getCloudflareContext();
@@ -72,10 +112,15 @@ export async function POST(request: NextRequest) {
 
       for (const chunk of body.chunks) {
         try {
-          // Generate embedding using BGE-M3
-          const embeddingResponse = await env.AI.run("@cf/baai/bge-m3", {
-            text: [chunk.content],
-          });
+          // Generate embedding using BGE-M3 with retry logic
+          const embeddingResponse = await withRetry(
+            async () => {
+              return await env.AI.run("@cf/baai/bge-m3", {
+                text: [chunk.content],
+              });
+            },
+            { maxRetries: 3, baseDelayMs: 500, maxDelayMs: 5000 }
+          );
 
           let embedding: number[] = [];
           if ("data" in embeddingResponse && Array.isArray(embeddingResponse.data)) {
@@ -107,14 +152,19 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Upsert to Vectorize
+      // Upsert to Vectorize with retry
       if (vectors.length > 0) {
         try {
-          await env.VECTORIZE.upsert(vectors);
+          await withRetry(
+            async () => {
+              await env.VECTORIZE.upsert(vectors);
+            },
+            { maxRetries: 3, baseDelayMs: 1000, maxDelayMs: 10000 }
+          );
         } catch (err) {
           return NextResponse.json(
             {
-              error: `Vectorize upsert failed: ${err}`,
+              error: `Vectorize upsert failed after retries: ${err}`,
               results,
             },
             { status: 500 }
