@@ -88,29 +88,57 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Handle clear - delete vectors by IDs
+    // Handle clear - delete all vectors by querying and deleting in batches
     if (action === "clear") {
-      const ids = body.chunks?.map((c) => c.id) || [];
-      if (ids.length === 0) {
-        return NextResponse.json({
-          status: "ok",
-          message: "No IDs provided to clear",
-          deleted: 0,
-        });
-      }
-
       try {
-        // Delete in batches of 100
+        // If specific IDs provided, delete those
+        const specificIds = body.chunks?.map((c) => c.id) || [];
+        if (specificIds.length > 0) {
+          let totalDeleted = 0;
+          for (let i = 0; i < specificIds.length; i += 100) {
+            const batch = specificIds.slice(i, i + 100);
+            await env.VECTORIZE.deleteByIds(batch);
+            totalDeleted += batch.length;
+          }
+          return NextResponse.json({
+            status: "ok",
+            deleted: totalDeleted,
+          });
+        }
+
+        // Otherwise, query and delete all vectors iteratively
+        // Generate a random embedding to query (1024 dimensions for BGE-M3)
+        const randomEmbedding = Array.from({ length: 1024 }, () => Math.random() - 0.5);
+
         let totalDeleted = 0;
-        for (let i = 0; i < ids.length; i += 100) {
-          const batch = ids.slice(i, i + 100);
-          await env.VECTORIZE.deleteByIds(batch);
-          totalDeleted += batch.length;
+        let iterations = 0;
+        const maxIterations = 1000; // Safety limit
+
+        while (iterations < maxIterations) {
+          // Query for vectors
+          const results = await env.VECTORIZE.query(randomEmbedding, {
+            topK: 100,
+            returnMetadata: "none",
+          });
+
+          if (!results.matches || results.matches.length === 0) {
+            break; // No more vectors
+          }
+
+          // Delete found vectors
+          const ids = results.matches.map((m) => m.id);
+          await env.VECTORIZE.deleteByIds(ids);
+          totalDeleted += ids.length;
+          iterations++;
+
+          // Small delay to avoid rate limiting
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
 
         return NextResponse.json({
           status: "ok",
           deleted: totalDeleted,
+          iterations,
         });
       } catch (err) {
         return NextResponse.json(
