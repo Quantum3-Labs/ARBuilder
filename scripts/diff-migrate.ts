@@ -318,9 +318,64 @@ async function diffMigrate(forceFullRefresh: boolean): Promise<void> {
 // Parse arguments
 const args = process.argv.slice(2);
 const forceFullRefresh = args.includes("--full") || args.includes("-f");
+const clearFirst = args.includes("--clear") || args.includes("-c");
+
+// Clear existing vectors using IDs from state file
+async function clearExistingVectors(): Promise<void> {
+  console.log("=".repeat(60));
+  console.log("Clearing Existing Vectors");
+  console.log("=".repeat(60));
+
+  const state = loadState();
+  if (state.size === 0) {
+    console.log("No state file found - nothing to clear\n");
+    return;
+  }
+
+  const ids = Array.from(state.keys());
+  console.log(`Found ${ids.length} vectors to clear\n`);
+
+  // Delete in batches
+  const batchSize = 100;
+  for (let i = 0; i < ids.length; i += batchSize) {
+    const batch = ids.slice(i, i + batchSize);
+    const progress = Math.round(((i + batch.length) / ids.length) * 100);
+    process.stdout.write(`\rClearing: ${progress}% (${i + batch.length}/${ids.length})`);
+
+    try {
+      await fetch(`${MIGRATE_URL}/api/admin/migrate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Secret": AUTH_SECRET,
+        },
+        body: JSON.stringify({
+          action: "clear",
+          chunks: batch.map((id) => ({ id })),
+        }),
+      });
+    } catch (err) {
+      console.error(`\nError clearing batch: ${err}`);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+
+  // Clear the state file
+  ensureStateDir();
+  writeFileSync(STATE_FILE, JSON.stringify({}, null, 2));
+  console.log("\n\nCleared state file\n");
+}
 
 // Run migration
-diffMigrate(forceFullRefresh).catch((err) => {
+async function main(): Promise<void> {
+  if (clearFirst) {
+    await clearExistingVectors();
+  }
+  await diffMigrate(forceFullRefresh);
+}
+
+main().catch((err) => {
   console.error("Migration failed:", err);
   process.exit(1);
 });

@@ -88,6 +88,38 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Handle clear - delete vectors by IDs
+    if (action === "clear") {
+      const ids = body.chunks?.map((c) => c.id) || [];
+      if (ids.length === 0) {
+        return NextResponse.json({
+          status: "ok",
+          message: "No IDs provided to clear",
+          deleted: 0,
+        });
+      }
+
+      try {
+        // Delete in batches of 100
+        let totalDeleted = 0;
+        for (let i = 0; i < ids.length; i += 100) {
+          const batch = ids.slice(i, i + 100);
+          await env.VECTORIZE.deleteByIds(batch);
+          totalDeleted += batch.length;
+        }
+
+        return NextResponse.json({
+          status: "ok",
+          deleted: totalDeleted,
+        });
+      } catch (err) {
+        return NextResponse.json(
+          { error: `Clear failed: ${err}` },
+          { status: 500 }
+        );
+      }
+    }
+
     // Handle upsert
     if (action === "upsert") {
       if (!body.chunks || !Array.isArray(body.chunks) || body.chunks.length === 0) {
