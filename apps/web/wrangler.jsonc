@@ -59,11 +59,62 @@
 		"NEXTJS_ENV": "production",
 		"NEXT_PUBLIC_TURNSTILE_SITE_KEY": "0x4AAAAAACIQxZ8Nm_BXUfce",
 		"AUTH_TRUST_HOST": "true"
-	}
+	},
 
 	// Secrets to be set via `wrangler secret put`:
 	// - AUTH_SECRET
 	// - RESEND_API_KEY
 	// - TURNSTILE_SECRET_KEY
 	// - OPENROUTER_API_KEY
+
+	// Staging environment (M2 branch testing)
+	// Deploy with: wrangler deploy --env staging
+	// Access at: arbbuilder-staging.whymelabs.workers.dev
+	"env": {
+		"staging": {
+			"name": "arbbuilder-staging",
+			"vars": {
+				"NEXTJS_ENV": "staging",
+				"NEXT_PUBLIC_TURNSTILE_SITE_KEY": "0x4AAAAAACIQxZ8Nm_BXUfce",
+				"AUTH_TRUST_HOST": "true"
+			},
+			// Workers AI for embeddings and reranking
+			"ai": {
+				"binding": "AI"
+			},
+			// Images binding
+			"images": {
+				"binding": "IMAGES"
+			},
+			// Self-reference service
+			"services": [
+				{
+					"binding": "WORKER_SELF_REFERENCE",
+					"service": "arbbuilder-staging"
+				}
+			],
+			// Staging uses separate Vectorize index
+			"vectorize": [
+				{
+					"binding": "VECTORIZE",
+					"index_name": "arbbuilder-staging"
+				}
+			],
+			// Staging D1 database
+			"d1_databases": [
+				{
+					"binding": "DB",
+					"database_name": "arbbuilder-staging",
+					"database_id": "97cc207f-228d-4525-945b-a2ed5138a2f5"
+				}
+			],
+			// Staging KV namespace
+			"kv_namespaces": [
+				{
+					"binding": "KV",
+					"id": "8be510adafdd40d4a0addca6ea62c11f"
+				}
+			]
+		}
+	}
 }
