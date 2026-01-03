@@ -9,6 +9,9 @@
  *
  * For full refresh (ignore diff):
  * AUTH_SECRET=xxx npx tsx scripts/diff-migrate.ts --full
+ *
+ * Update a specific source (delete old chunks, upload new):
+ * AUTH_SECRET=xxx npx tsx scripts/diff-migrate.ts --source "https://github.com/user/repo"
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
@@ -34,6 +37,7 @@ interface ProcessedChunk {
   token_count: number;
   source: string;
   url: string;
+  repo_url?: string; // For GitHub sources
   title: string;
   category: string;
   subcategory: string;
@@ -51,6 +55,7 @@ interface ChunkState {
   contentHash: string;
   sdkVersion: string;
   migratedAt: string;
+  sourceUrl: string; // Track source URL for filtering
 }
 
 interface LastRefresh {
@@ -175,11 +180,14 @@ async function uploadBatch(
   return result.results;
 }
 
-async function diffMigrate(forceFullRefresh: boolean): Promise<void> {
+async function diffMigrate(forceFullRefresh: boolean, sourceUrl?: string | null): Promise<void> {
   console.log("=".repeat(60));
   console.log("Diff-Based Migration to Cloudflare Vectorize");
   console.log("=".repeat(60));
   console.log(`Target: ${MIGRATE_URL}/api/admin/migrate`);
+  if (sourceUrl) {
+    console.log(`Source: ${sourceUrl}`);
+  }
   console.log(`Mode: ${forceFullRefresh ? "FULL REFRESH" : "DIFF-BASED"}\n`);
 
   // Validate environment
@@ -197,11 +205,21 @@ async function diffMigrate(forceFullRefresh: boolean): Promise<void> {
   }
 
   // Load previous state
-  const state = forceFullRefresh ? new Map() : loadState();
+  // For source-specific updates, we still load state for merging later
+  const existingState = loadState();
+  // For diff comparison, use empty state if full refresh or source-specific
+  const state = forceFullRefresh || sourceUrl ? new Map<string, ChunkState>() : existingState;
 
   // Load chunks
-  const chunks = await loadChunks();
-  console.log(`Total chunks in file: ${chunks.length}\n`);
+  let chunks = await loadChunks();
+  console.log(`Total chunks in file: ${chunks.length}`);
+
+  // Filter by source if specified
+  if (sourceUrl) {
+    chunks = chunks.filter((c) => getChunkSourceUrl(c) === sourceUrl);
+    console.log(`Filtered to ${chunks.length} chunks for source: ${sourceUrl}`);
+  }
+  console.log("");
 
   // Determine which chunks need uploading
   const toUpload: ProcessedChunk[] = [];
@@ -245,7 +263,8 @@ async function diffMigrate(forceFullRefresh: boolean): Promise<void> {
   // Process in batches
   let totalSuccess = 0;
   let totalFailed = 0;
-  const newState = new Map(state);
+  // For source-specific updates, start with existing state and update/add new entries
+  const newState = new Map(existingState);
 
   for (let i = 0; i < toUpload.length; i += BATCH_SIZE) {
     const batch = toUpload.slice(i, i + BATCH_SIZE);
@@ -267,6 +286,7 @@ async function diffMigrate(forceFullRefresh: boolean): Promise<void> {
           contentHash,
           sdkVersion: chunk.sdk_version || "",
           migratedAt: new Date().toISOString(),
+          sourceUrl: getChunkSourceUrl(chunk),
         });
       }
 
@@ -320,6 +340,21 @@ const args = process.argv.slice(2);
 const forceFullRefresh = args.includes("--full") || args.includes("-f");
 const clearFirst = args.includes("--clear") || args.includes("-c");
 
+// Parse --source flag
+function getSourceArg(): string | null {
+  const sourceIndex = args.findIndex((a) => a === "--source" || a === "-s");
+  if (sourceIndex !== -1 && args[sourceIndex + 1]) {
+    return args[sourceIndex + 1];
+  }
+  return null;
+}
+const sourceFilter = getSourceArg();
+
+// Get source URL from a chunk
+function getChunkSourceUrl(chunk: ProcessedChunk): string {
+  return chunk.repo_url || chunk.url || "";
+}
+
 // Clear existing vectors using IDs from state file
 async function clearExistingVectors(): Promise<void> {
   console.log("=".repeat(60));
@@ -367,12 +402,81 @@ async function clearExistingVectors(): Promise<void> {
   console.log("\n\nCleared state file\n");
 }
 
+// Clear vectors for a specific source URL
+async function clearSourceVectors(sourceUrl: string): Promise<number> {
+  console.log("=".repeat(60));
+  console.log(`Clearing Vectors for Source: ${sourceUrl}`);
+  console.log("=".repeat(60));
+
+  const state = loadState();
+  if (state.size === 0) {
+    console.log("No state file found - nothing to clear\n");
+    return 0;
+  }
+
+  // Find chunk IDs belonging to this source
+  const idsToDelete: string[] = [];
+  for (const [id, chunkState] of state.entries()) {
+    if (chunkState.sourceUrl === sourceUrl) {
+      idsToDelete.push(id);
+    }
+  }
+
+  if (idsToDelete.length === 0) {
+    console.log("No vectors found for this source\n");
+    return 0;
+  }
+
+  console.log(`Found ${idsToDelete.length} vectors to clear\n`);
+
+  // Delete in batches
+  const batchSize = 100;
+  for (let i = 0; i < idsToDelete.length; i += batchSize) {
+    const batch = idsToDelete.slice(i, i + batchSize);
+    const progress = Math.round(((i + batch.length) / idsToDelete.length) * 100);
+    process.stdout.write(`\rClearing: ${progress}% (${i + batch.length}/${idsToDelete.length})`);
+
+    try {
+      await fetch(`${MIGRATE_URL}/api/admin/migrate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Secret": AUTH_SECRET,
+        },
+        body: JSON.stringify({
+          action: "clear",
+          chunks: batch.map((id) => ({ id })),
+        }),
+      });
+    } catch (err) {
+      console.error(`\nError clearing batch: ${err}`);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+
+  // Remove these IDs from state
+  for (const id of idsToDelete) {
+    state.delete(id);
+  }
+  saveState(state);
+
+  console.log(`\n\nCleared ${idsToDelete.length} vectors for source\n`);
+  return idsToDelete.length;
+}
+
 // Run migration
 async function main(): Promise<void> {
   if (clearFirst) {
     await clearExistingVectors();
   }
-  await diffMigrate(forceFullRefresh);
+
+  // If updating a specific source, clear its vectors first
+  if (sourceFilter) {
+    await clearSourceVectors(sourceFilter);
+  }
+
+  await diffMigrate(forceFullRefresh, sourceFilter);
 }
 
 main().catch((err) => {
