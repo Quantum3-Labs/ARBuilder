@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { askStylus, type AskStylusInput } from "@/lib/tools/askStylus";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { validateAdminSecret } from "@/lib/auth/validateAdminSecret";
+import { validateRequest } from "@/lib/auth/validateRequest";
 
 
 export async function POST(request: NextRequest) {
@@ -9,9 +9,9 @@ export async function POST(request: NextRequest) {
     // Get Cloudflare bindings
     const { env } = getCloudflareContext();
 
-    // Validate admin secret
-    const authError = validateAdminSecret(request, env.AUTH_SECRET);
-    if (authError) return authError;
+    // Validate request (supports both user API keys and admin secret)
+    const auth = await validateRequest(request, env.DB, env.AUTH_SECRET);
+    if (!auth.success) return auth.response;
 
     // Check for OpenRouter API key
     if (!env.OPENROUTER_API_KEY) {
