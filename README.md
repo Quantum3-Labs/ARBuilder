@@ -276,9 +276,11 @@ Direct API routes at `/api/v1/tools/*` are for **internal testing only**:
 
 ## MCP Capabilities
 
-ARBuilder exposes a full MCP server with **5 tools**, **5 resources**, and **5 prompts** for Cursor/VS Code integration.
+ARBuilder exposes a full MCP server with **8 tools**, **5 resources**, and **5 prompts** for Cursor/VS Code integration.
 
 ### Tools
+
+**M1: Stylus Development (5 tools)**
 
 | Tool | Description |
 |------|-------------|
@@ -287,6 +289,14 @@ ARBuilder exposes a full MCP server with **5 tools**, **5 resources**, and **5 p
 | `ask_stylus` | Q&A, debugging, concept explanations |
 | `generate_tests` | Generate unit/integration/fuzz tests |
 | `get_workflow` | Build/deploy/test workflow guidance |
+
+**M2: Arbitrum SDK - Bridging & Messaging (3 tools)**
+
+| Tool | Description |
+|------|-------------|
+| `generate_bridge_code` | Generate ETH/ERC20 bridging code (L1<->L2, L1->L3) |
+| `generate_messaging_code` | Generate cross-chain messaging code |
+| `ask_bridging` | Q&A about bridging patterns and SDK usage |
 
 #### Example: Get Build/Deploy Workflow
 
@@ -412,10 +422,25 @@ Returns: Commands for checking balance, deploying, and verifying
 | Milestone | Description | Status |
 |-----------|-------------|--------|
 | M1 | Stylus Smart Contract Builder | ✅ Complete |
-| M2 | Arbitrum SDK Integration | Planned |
-| M3 | Full dApp Builder | Planned |
+| M2 | Arbitrum SDK Integration (Bridging & Messaging) | ✅ Complete |
+| M3 | Full dApp Builder | In Progress |
 | M4 | Orbit Chain Integration | Planned |
 | M5 | Unified AI Assistant | Planned |
+
+### M2: Arbitrum SDK Integration
+
+Cross-chain bridging and messaging support:
+
+- **ETH Bridging**: L1 <-> L2 deposits and withdrawals
+- **ERC20 Bridging**: Token bridging with gateway approvals
+- **L1 -> L3 Bridging**: Direct L1 to Orbit chain bridging via double retryables
+- **Cross-chain Messaging**: L1 -> L2 retryable tickets, L2 -> L1 messages via ArbSys
+- **Status Tracking**: Message status monitoring and withdrawal claiming
+
+```bash
+# Example: Generate ETH deposit code
+echo '{"method": "tools/call", "params": {"name": "generate_bridge_code", "arguments": {"bridge_type": "eth_deposit", "amount": "0.5"}}}' | uv run python -m src.mcp.server
+```
 
 ## Development
 

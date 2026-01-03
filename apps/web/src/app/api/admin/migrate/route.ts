@@ -26,6 +26,46 @@ interface MigrateRequest {
   action?: "upsert" | "status" | "clear";
 }
 
+/**
+ * Retry a function with exponential backoff.
+ * Handles transient errors like AiError: 3043 (inference error).
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  options: {
+    maxRetries?: number;
+    baseDelayMs?: number;
+    maxDelayMs?: number;
+  } = {}
+): Promise<T> {
+  const { maxRetries = 3, baseDelayMs = 500, maxDelayMs = 5000 } = options;
+
+  let lastError: Error | unknown;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+
+      // Don't retry on the last attempt
+      if (attempt === maxRetries) {
+        break;
+      }
+
+      // Calculate delay with exponential backoff + jitter
+      const delay = Math.min(
+        baseDelayMs * Math.pow(2, attempt) + Math.random() * 100,
+        maxDelayMs
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { env } = getCloudflareContext();
@@ -46,6 +86,66 @@ export async function POST(request: NextRequest) {
         status: "ok",
         vectorCount: info.vectorsCount,
       });
+    }
+
+    // Handle clear - delete all vectors by querying and deleting in batches
+    if (action === "clear") {
+      try {
+        // If specific IDs provided, delete those
+        const specificIds = body.chunks?.map((c) => c.id) || [];
+        if (specificIds.length > 0) {
+          let totalDeleted = 0;
+          for (let i = 0; i < specificIds.length; i += 100) {
+            const batch = specificIds.slice(i, i + 100);
+            await env.VECTORIZE.deleteByIds(batch);
+            totalDeleted += batch.length;
+          }
+          return NextResponse.json({
+            status: "ok",
+            deleted: totalDeleted,
+          });
+        }
+
+        // Otherwise, query and delete all vectors iteratively
+        // Generate a random embedding to query (1024 dimensions for BGE-M3)
+        const randomEmbedding = Array.from({ length: 1024 }, () => Math.random() - 0.5);
+
+        let totalDeleted = 0;
+        let iterations = 0;
+        const maxIterations = 1000; // Safety limit
+
+        while (iterations < maxIterations) {
+          // Query for vectors
+          const results = await env.VECTORIZE.query(randomEmbedding, {
+            topK: 100,
+            returnMetadata: "none",
+          });
+
+          if (!results.matches || results.matches.length === 0) {
+            break; // No more vectors
+          }
+
+          // Delete found vectors
+          const ids = results.matches.map((m) => m.id);
+          await env.VECTORIZE.deleteByIds(ids);
+          totalDeleted += ids.length;
+          iterations++;
+
+          // Small delay to avoid rate limiting
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+
+        return NextResponse.json({
+          status: "ok",
+          deleted: totalDeleted,
+          iterations,
+        });
+      } catch (err) {
+        return NextResponse.json(
+          { error: `Clear failed: ${err}` },
+          { status: 500 }
+        );
+      }
     }
 
     // Handle upsert
@@ -72,10 +172,15 @@ export async function POST(request: NextRequest) {
 
       for (const chunk of body.chunks) {
         try {
-          // Generate embedding using BGE-M3
-          const embeddingResponse = await env.AI.run("@cf/baai/bge-m3", {
-            text: [chunk.content],
-          });
+          // Generate embedding using BGE-M3 with retry logic
+          const embeddingResponse = await withRetry(
+            async () => {
+              return await env.AI.run("@cf/baai/bge-m3", {
+                text: [chunk.content],
+              });
+            },
+            { maxRetries: 3, baseDelayMs: 500, maxDelayMs: 5000 }
+          );
 
           let embedding: number[] = [];
           if ("data" in embeddingResponse && Array.isArray(embeddingResponse.data)) {
@@ -107,14 +212,19 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Upsert to Vectorize
+      // Upsert to Vectorize with retry
       if (vectors.length > 0) {
         try {
-          await env.VECTORIZE.upsert(vectors);
+          await withRetry(
+            async () => {
+              await env.VECTORIZE.upsert(vectors);
+            },
+            { maxRetries: 3, baseDelayMs: 1000, maxDelayMs: 10000 }
+          );
         } catch (err) {
           return NextResponse.json(
             {
-              error: `Vectorize upsert failed: ${err}`,
+              error: `Vectorize upsert failed after retries: ${err}`,
               results,
             },
             { status: 500 }
