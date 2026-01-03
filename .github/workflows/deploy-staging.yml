@@ -36,16 +36,12 @@ jobs:
           cd apps/web
           npm ci
 
-      - name: Build
-        run: |
-          cd apps/web
-          npm run build
-
-      - name: Deploy to Cloudflare (Staging)
+      - name: Build and Deploy to Cloudflare (Staging)
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           cd apps/web
+          npx opennextjs-cloudflare build
           npx wrangler deploy --env staging
 
       - name: Output staging URL
