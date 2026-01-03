@@ -34,7 +34,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd apps/web
-          npm ci
+          npm ci || (rm -rf node_modules && npm install)
 
       - name: Build and Deploy to Cloudflare (Staging)
         env:
