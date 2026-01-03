@@ -28,13 +28,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: apps/web/package-lock.json
 
       - name: Install dependencies
         run: |
           cd apps/web
-          npm ci || (rm -rf node_modules && npm install)
+          rm -rf node_modules package-lock.json
+          npm install
 
       - name: Build and Deploy to Cloudflare (Staging)
         env:
