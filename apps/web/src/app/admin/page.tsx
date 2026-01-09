@@ -45,6 +45,15 @@ export default function AdminPage() {
   const [adminSecret, setAdminSecret] = useState("");
   const [isAuthed, setIsAuthed] = useState(false);
 
+  // Load persisted auth on mount
+  useEffect(() => {
+    const saved = localStorage.getItem("admin_secret");
+    if (saved) {
+      setAdminSecret(saved);
+      setIsAuthed(true);
+    }
+  }, []);
+
   // Filters
   const [categoryFilter, setCategoryFilter] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("");
@@ -76,6 +85,7 @@ export default function AdminPage() {
       if (!res.ok) {
         if (res.status === 401) {
           setIsAuthed(false);
+          localStorage.removeItem("admin_secret");
           setError("Invalid admin secret");
           return;
         }
@@ -86,6 +96,7 @@ export default function AdminPage() {
       setSources(data.sources);
       setStats(data.stats);
       setIsAuthed(true);
+      localStorage.setItem("admin_secret", adminSecret);
     } catch (err) {
       setError(`Failed to fetch sources: ${err}`);
     } finally {
@@ -225,6 +236,7 @@ export default function AdminPage() {
               onClick={() => {
                 setIsAuthed(false);
                 setAdminSecret("");
+                localStorage.removeItem("admin_secret");
               }}
               className="text-sm text-gray-500 hover:text-gray-900 font-medium transition-colors px-3 py-2 rounded-lg hover:bg-gray-100"
             >
