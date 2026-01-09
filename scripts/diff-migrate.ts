@@ -146,7 +146,7 @@ async function checkStatus(): Promise<{ vectorCount: number }> {
     throw new Error(`Status check failed: ${response.status}`);
   }
 
-  return response.json();
+  return response.json() as Promise<{ vectorCount: number }>;
 }
 
 // Upload a batch of chunks
