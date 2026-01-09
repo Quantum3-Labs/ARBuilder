@@ -124,19 +124,29 @@ class VectorDB:
                 ids = [chunk["id"] for chunk in batch]
                 documents = [chunk["content"] for chunk in batch]
 
-                # Sanitize metadata - ChromaDB only accepts str, int, float, bool, None
+                # Sanitize metadata - ChromaDB only accepts str, int, float, bool (NOT None)
                 def sanitize_metadata(chunk: dict) -> dict:
                     result = {}
                     for k, v in chunk.items():
                         if k in ["id", "content"]:
                             continue
+                        if v is None:
+                            # Skip None values - ChromaDB doesn't accept them
+                            continue
                         if isinstance(v, list):
                             # Convert lists to JSON strings
-                            result[k] = json.dumps(v) if v else ""
+                            result[k] = json.dumps(v) if v else "[]"
                         elif isinstance(v, dict):
                             # Convert dicts to JSON strings
                             result[k] = json.dumps(v)
-                        elif v is None or isinstance(v, (str, int, float, bool)):
+                        elif isinstance(v, bool):
+                            # Keep booleans as-is
+                            result[k] = v
+                        elif isinstance(v, (int, float)):
+                            # Keep numbers as-is
+                            result[k] = v
+                        elif isinstance(v, str):
+                            # Keep strings as-is
                             result[k] = v
                         else:
                             # Convert other types to string

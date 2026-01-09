@@ -94,6 +94,7 @@ export default function DashboardLayout({
                 <NavLink href="/dashboard">Overview</NavLink>
                 <NavLink href="/dashboard/keys">API Keys</NavLink>
                 <NavLink href="/dashboard/usage">Usage</NavLink>
+                <NavLink href="/dashboard/admin">Admin</NavLink>
                 <NavLink href="/playground">Playground</NavLink>
               </nav>
             </div>
@@ -118,6 +119,7 @@ export default function DashboardLayout({
             <MobileNavLink href="/dashboard">Overview</MobileNavLink>
             <MobileNavLink href="/dashboard/keys">API Keys</MobileNavLink>
             <MobileNavLink href="/dashboard/usage">Usage</MobileNavLink>
+            <MobileNavLink href="/dashboard/admin">Admin</MobileNavLink>
             <MobileNavLink href="/playground">Playground</MobileNavLink>
           </div>
         </div>

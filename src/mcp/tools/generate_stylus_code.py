@@ -2,6 +2,7 @@
 generate_stylus_code MCP Tool.
 
 Generates Stylus/Rust smart contract code based on user requirements.
+Supports version-aware code generation for different stylus-sdk versions.
 """
 
 import re
@@ -10,17 +11,61 @@ from typing import Optional
 from .base import BaseTool
 from .get_stylus_context import GetStylusContextTool
 
+# Import version manager - handle gracefully if not available
+try:
+    from src.utils.version_manager import (
+        get_main_version,
+        get_minimum_version,
+        is_version_deprecated,
+        get_version_patterns,
+        get_alloy_primitives_version,
+        get_alloy_sol_types_version,
+        detect_version_from_cargo_toml,
+        get_deprecation_warning,
+    )
+    HAS_VERSION_MANAGER = True
+except ImportError:
+    HAS_VERSION_MANAGER = False
+    # Fallback defaults
+    def get_main_version(): return "0.9.0"
+    def get_minimum_version(): return "0.8.0"
+    def is_version_deprecated(v): return False
+    def get_version_patterns(v): return {
+        "attributes": ["#[public]"],
+        "error_handling": "Result<T, Vec<u8>>",
+        "cfg_attr": '#![cfg_attr(not(feature = "export-abi"), no_main)]'
+    }
+    def get_alloy_primitives_version(v): return "0.9.2"
+    def get_alloy_sol_types_version(v): return "0.9.2"
+    def detect_version_from_cargo_toml(c): return None
+    def get_deprecation_warning(v): return None
 
-SYSTEM_PROMPT = """You are an expert Stylus smart contract developer. You write high-quality Rust code for Arbitrum Stylus contracts.
 
-Key Stylus patterns to follow:
+def get_system_prompt(target_version: str) -> str:
+    """Generate version-aware system prompt."""
+    patterns = get_version_patterns(target_version)
+    alloy_version = get_alloy_primitives_version(target_version)
+    main_attr = patterns.get("attributes", ["#[public]"])[0]
+    error_handling = patterns.get("error_handling", "Result<T, Vec<u8>>")
+    cfg_attr = patterns.get("cfg_attr", '#![cfg_attr(not(feature = "export-abi"), no_main)]')
+
+    return f"""You are an expert Stylus smart contract developer. You write high-quality Rust code for Arbitrum Stylus contracts.
+
+Target SDK Version: stylus-sdk {target_version}
+
+Key Stylus patterns for v{target_version}:
 1. Use `sol_storage!` macro for state storage
 2. Use `#[entrypoint]` attribute on the main contract struct
-3. Use `#[external]` for public functions
+3. Use `{main_attr}` for public functions
 4. Use Stylus SDK types: `StorageVec`, `StorageMap`, `StorageU256`, `StorageAddress`, etc.
 5. Use `msg::sender()` to get the caller address
-6. Handle errors with Result types or custom error enums
-7. Follow Rust naming conventions (snake_case for functions, PascalCase for types)
+6. Handle errors with {error_handling}
+7. Include {cfg_attr}
+8. Follow Rust naming conventions (snake_case for functions, PascalCase for types)
+
+Dependencies for v{target_version}:
+- stylus-sdk = "{target_version}"
+- alloy-primitives = "{alloy_version}"
 
 When generating code:
 - Generate complete, compilable Rust code
@@ -29,6 +74,10 @@ When generating code:
 - Use proper error handling
 - Follow security best practices (check for overflows, validate inputs)
 """
+
+
+# Legacy prompt for backwards compatibility
+SYSTEM_PROMPT = get_system_prompt(get_main_version())
 
 CONTRACT_TEMPLATES = {
     "erc20": """use stylus_sdk::prelude::*;
@@ -100,6 +149,8 @@ class GenerateStylusCodeTool(BaseTool):
         contract_type: Optional[str] = None,
         include_tests: bool = False,
         temperature: float = 0.2,
+        target_version: Optional[str] = None,
+        cargo_toml: Optional[str] = None,
         **kwargs,
     ) -> dict:
         """
@@ -111,9 +162,11 @@ class GenerateStylusCodeTool(BaseTool):
             contract_type: Type of contract (erc20, erc721, erc1155, custom).
             include_tests: Whether to include unit tests.
             temperature: Generation temperature (0-1).
+            target_version: Target stylus-sdk version (default: main version).
+            cargo_toml: Optional Cargo.toml content for automatic version detection.
 
         Returns:
-            Dict with code, explanation, dependencies, warnings, context_used.
+            Dict with code, explanation, dependencies, warnings, context_used, target_version.
         """
         # Validate input
         if not prompt or not prompt.strip():
@@ -121,6 +174,19 @@ class GenerateStylusCodeTool(BaseTool):
 
         prompt = prompt.strip()
         warnings = []
+
+        # Version detection/selection logic
+        if cargo_toml:
+            detected_version = detect_version_from_cargo_toml(cargo_toml)
+            if detected_version:
+                target_version = detected_version
+                deprecation_warning = get_deprecation_warning(detected_version)
+                if deprecation_warning:
+                    warnings.append(deprecation_warning)
+
+        # Default to main version if not specified
+        if not target_version:
+            target_version = get_main_version()
 
         # Check if request is Stylus-related
         stylus_keywords = ["stylus", "rust", "contract", "token", "erc", "storage", "arbitrum"]
@@ -156,9 +222,10 @@ class GenerateStylusCodeTool(BaseTool):
                 include_tests=include_tests,
             )
 
-            # Generate code
+            # Generate code with version-aware system prompt
+            system_prompt = get_system_prompt(target_version)
             messages = [
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ]
 
@@ -171,8 +238,8 @@ class GenerateStylusCodeTool(BaseTool):
             # Parse response
             code, explanation = self._parse_response(response)
 
-            # Extract dependencies
-            dependencies = self._extract_dependencies(code)
+            # Extract dependencies with correct versions
+            dependencies = self._extract_dependencies(code, target_version)
 
             # Validate code
             validation_warnings = self._validate_code(code)
@@ -184,6 +251,7 @@ class GenerateStylusCodeTool(BaseTool):
                 "dependencies": dependencies,
                 "warnings": warnings if warnings else [],
                 "context_used": context_used,
+                "target_version": target_version,
             }
 
         except Exception as e:
@@ -253,27 +321,31 @@ class GenerateStylusCodeTool(BaseTool):
 
         return code, explanation
 
-    def _extract_dependencies(self, code: str) -> list[dict]:
-        """Extract Cargo dependencies from code."""
+    def _extract_dependencies(self, code: str, target_version: str) -> list[dict]:
+        """Extract Cargo dependencies from code with correct versions for target SDK."""
         dependencies = []
+
+        # Get version-appropriate dependency versions
+        alloy_primitives_ver = get_alloy_primitives_version(target_version)
+        alloy_sol_types_ver = get_alloy_sol_types_version(target_version)
 
         # Check for common Stylus dependencies
         if "stylus_sdk" in code or "stylus-sdk" in code:
             dependencies.append({
                 "name": "stylus-sdk",
-                "version": "0.6",
+                "version": target_version,
             })
 
         if "alloy_primitives" in code or "alloy-primitives" in code:
             dependencies.append({
                 "name": "alloy-primitives",
-                "version": "0.7",
+                "version": alloy_primitives_ver,
             })
 
         if "alloy_sol_types" in code or "alloy-sol-types" in code:
             dependencies.append({
                 "name": "alloy-sol-types",
-                "version": "0.7",
+                "version": alloy_sol_types_ver,
             })
 
         return dependencies

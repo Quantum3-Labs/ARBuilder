@@ -42,10 +42,12 @@ interface ProcessedChunk {
   category: string;
   subcategory: string;
   scraped_at: string;
-  // New fields
+  // SDK version tracking fields
   content_hash?: string;
   sdk_version?: string;
+  stylus_version?: string; // Explicit version field
   is_current?: boolean;
+  is_version_deprecated?: boolean;
   deprecated_patterns?: string[];
 }
 
@@ -54,6 +56,8 @@ interface ChunkState {
   id: string;
   contentHash: string;
   sdkVersion: string;
+  stylusVersion: string; // Explicit stylus version
+  isVersionDeprecated: boolean;
   migratedAt: string;
   sourceUrl: string; // Track source URL for filtering
 }
@@ -165,6 +169,9 @@ async function uploadBatch(
         url: c.url,
         title: c.title,
         category: c.category,
+        // Include SDK version metadata for version-aware search
+        stylus_version: c.stylus_version || c.sdk_version || "",
+        is_version_deprecated: c.is_version_deprecated || false,
       })),
     }),
   });
@@ -281,10 +288,13 @@ async function diffMigrate(forceFullRefresh: boolean, sourceUrl?: string | null)
       // Update state for successfully uploaded chunks
       for (const chunk of batch) {
         const contentHash = chunk.content_hash || computeHash(chunk.content);
+        const stylusVersion = chunk.stylus_version || chunk.sdk_version || "";
         newState.set(chunk.id, {
           id: chunk.id,
           contentHash,
-          sdkVersion: chunk.sdk_version || "",
+          sdkVersion: stylusVersion,
+          stylusVersion,
+          isVersionDeprecated: chunk.is_version_deprecated || false,
           migratedAt: new Date().toISOString(),
           sourceUrl: getChunkSourceUrl(chunk),
         });

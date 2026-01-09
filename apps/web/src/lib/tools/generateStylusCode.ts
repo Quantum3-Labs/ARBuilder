@@ -3,10 +3,20 @@
  *
  * Generates Stylus smart contract code based on natural language
  * descriptions, using RAG context for accurate patterns.
+ *
+ * Supports version-aware code generation for different stylus-sdk versions.
  */
 
 import { generateCode } from "../openrouter";
 import { getStylusContext } from "./getStylusContext";
+import {
+  getMainVersion,
+  getAlloyPrimitivesVersion,
+  getAlloySolTypesVersion,
+  detectVersionFromCargoToml,
+  isVersionDeprecated,
+  getDeprecationWarning,
+} from "../stylusVersions";
 
 export interface GenerateStylusCodeInput {
   prompt: string;
@@ -14,6 +24,10 @@ export interface GenerateStylusCodeInput {
   contractType?: "token" | "nft" | "defi" | "utility" | "custom";
   includeTests?: boolean;
   temperature?: number;
+  /** Target stylus-sdk version. If not provided, defaults to main version. */
+  targetVersion?: string;
+  /** Cargo.toml content for automatic version detection. */
+  cargoToml?: string;
 }
 
 export interface GenerateStylusCodeOutput {
@@ -23,6 +37,8 @@ export interface GenerateStylusCodeOutput {
   warnings: string[];
   contextUsed: string[];
   tokensUsed: number;
+  /** The stylus-sdk version used for code generation. */
+  targetVersion: string;
 }
 
 export async function generateStylusCode(
@@ -36,15 +52,42 @@ export async function generateStylusCode(
     contextQuery,
     contractType = "utility",
     includeTests = false,
+    cargoToml,
     // temperature reserved for future use with configurable LLM settings
   } = input;
 
-  // Get relevant context from knowledge base
+  // Version detection logic
+  let targetVersion = input.targetVersion;
+  const warnings: string[] = [];
+
+  // Auto-detect version from Cargo.toml if provided
+  if (cargoToml && !targetVersion) {
+    const detected = detectVersionFromCargoToml(cargoToml);
+    if (detected) {
+      targetVersion = detected;
+    }
+  }
+
+  // Default to main version if not specified
+  if (!targetVersion) {
+    targetVersion = getMainVersion();
+  }
+
+  // Check for deprecation warnings
+  if (isVersionDeprecated(targetVersion)) {
+    const warning = getDeprecationWarning(targetVersion);
+    if (warning) {
+      warnings.push(warning);
+    }
+  }
+
+  // Get relevant context from knowledge base with version awareness
   const searchQuery = contextQuery || `${contractType} contract ${prompt}`;
   const contextResult = await getStylusContext(vectorize, ai, {
     query: searchQuery,
     nResults: 5,
     rerank: true,
+    targetVersion, // Pass version for boosted search
   });
 
   // Build context string
@@ -58,8 +101,8 @@ export async function generateStylusCode(
     enhancedPrompt += "\n\nAlso include a #[cfg(test)] module with comprehensive unit tests.";
   }
 
-  // Generate code using LLM
-  const response = await generateCode(openrouterApiKey, enhancedPrompt, contextStr);
+  // Generate code using LLM with version-aware prompts
+  const response = await generateCode(openrouterApiKey, enhancedPrompt, contextStr, targetVersion);
 
   // Parse response - extract code blocks and explanation
   const codeMatch = response.content.match(/```rust\n([\s\S]*?)```/);
@@ -73,16 +116,19 @@ export async function generateStylusCode(
     .filter((line) => line.trim())
     .join("\n");
 
-  // Detect dependencies from code
+  // Detect dependencies from code with correct versions for target SDK
+  const alloyPrimitivesVer = getAlloyPrimitivesVersion(targetVersion);
+  const alloySolTypesVer = getAlloySolTypesVersion(targetVersion);
+
   const dependencies: string[] = [];
-  if (code.includes("stylus-sdk")) dependencies.push('stylus-sdk = "0.8.4"');
+  if (code.includes("stylus_sdk") || code.includes("stylus-sdk"))
+    dependencies.push(`stylus-sdk = "${targetVersion}"`);
   if (code.includes("alloy_primitives") || code.includes("U256"))
-    dependencies.push('alloy-primitives = "0.8.14"');
+    dependencies.push(`alloy-primitives = "${alloyPrimitivesVer}"`);
   if (code.includes("alloy_sol_types") || code.includes("sol!"))
-    dependencies.push('alloy-sol-types = "0.8.14"');
+    dependencies.push(`alloy-sol-types = "${alloySolTypesVer}"`);
 
   // Check for potential issues
-  const warnings: string[] = [];
   if (code.includes("unwrap()"))
     warnings.push("Code contains unwrap() - consider proper error handling");
   if (!code.includes("#![cfg_attr"))
@@ -95,5 +141,6 @@ export async function generateStylusCode(
     warnings,
     contextUsed: contextResult.contexts.map((c) => c.source),
     tokensUsed: response.usage.totalTokens,
+    targetVersion,
   };
 }

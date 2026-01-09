@@ -220,10 +220,10 @@ class SourceProcessor:
                 # Choose chunker based on file type
                 if ext == ".md":
                     chunker = DocumentChunker(max_tokens=512, overlap_tokens=50)
+                    file_chunks = chunker.chunk(file_content)
                 else:
                     chunker = CodeChunker(max_tokens=1024, overlap_lines=5)
-
-                file_chunks = chunker.chunk(file_content)
+                    file_chunks = chunker.chunk(file_content, ext)
 
                 for chunk in file_chunks:
                     chunk_dict = chunk.to_dict()
