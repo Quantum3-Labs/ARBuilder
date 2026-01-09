@@ -7,11 +7,16 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
+// M1: Stylus Tools
 import { getStylusContext } from "@/lib/tools/getStylusContext";
 import { askStylus } from "@/lib/tools/askStylus";
 import { generateStylusCode } from "@/lib/tools/generateStylusCode";
 import { generateTests } from "@/lib/tools/generateTests";
 import { getWorkflow } from "@/lib/tools/getWorkflow";
+// M2: Arbitrum SDK Tools
+import { generateBridgeCode } from "@/lib/tools/generateBridgeCode";
+import { generateMessagingCode } from "@/lib/tools/generateMessagingCode";
+import { askBridging } from "@/lib/tools/askBridging";
 
 // MCP Protocol Types
 interface JsonRpcRequest {
@@ -164,12 +169,92 @@ const TOOLS = [
       required: ["workflowType"],
     },
   },
+  // M2: Arbitrum SDK Tools
+  {
+    name: "generate_bridge_code",
+    description:
+      "Generate TypeScript code for bridging ETH or ERC20 tokens between L1, L2, and L3 (Orbit chains). Supports deposits, withdrawals, and L1->L3 bridging.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        bridgeType: {
+          type: "string",
+          enum: [
+            "eth_deposit",
+            "eth_deposit_to",
+            "eth_withdraw",
+            "erc20_deposit",
+            "erc20_withdraw",
+            "eth_l1_l3",
+            "erc20_l1_l3",
+          ],
+          description: "Type of bridging operation to generate code for",
+        },
+        amount: {
+          type: "string",
+          description: "Amount to bridge (e.g., '0.1' for ETH)",
+          default: "0.1",
+        },
+        tokenAddress: {
+          type: "string",
+          description: "ERC20 token address (required for token bridging)",
+        },
+        destinationAddress: {
+          type: "string",
+          description: "Destination address (required for depositTo)",
+        },
+      },
+      required: ["bridgeType"],
+    },
+  },
+  {
+    name: "generate_messaging_code",
+    description:
+      "Generate TypeScript code for Arbitrum cross-chain messaging. Supports L1->L2 messaging via retryable tickets, L2->L1 messaging via ArbSys, and message status checking.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        messageType: {
+          type: "string",
+          enum: ["l1_to_l2", "l2_to_l1", "l2_to_l1_claim", "check_status"],
+          description: "Type of messaging operation to generate code for",
+        },
+        includeExample: {
+          type: "boolean",
+          description: "Include example usage with sample contract call",
+          default: true,
+        },
+      },
+      required: ["messageType"],
+    },
+  },
+  {
+    name: "ask_bridging",
+    description:
+      "Answer questions about Arbitrum bridging and cross-chain messaging using RAG. Topics: ETH/ERC20 bridging, L1->L3 bridging, retryable tickets, challenge periods, gas estimation.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        question: {
+          type: "string",
+          description: "Question about Arbitrum bridging or messaging",
+        },
+        questionType: {
+          type: "string",
+          enum: ["general", "bridging", "messaging", "l3"],
+          description: "Type of question for better context retrieval",
+          default: "general",
+        },
+      },
+      required: ["question"],
+    },
+  },
 ];
 
 // Server info for MCP
 const SERVER_INFO = {
   name: "arbbuilder",
-  version: "1.0.0",
+  version: "1.1.0", // M2: Added Arbitrum SDK tools
   protocolVersion: "2024-11-05",
 };
 
@@ -331,6 +416,49 @@ async function handleToolCall(
         includeTroubleshooting: (args.includeTroubleshooting as boolean) ?? true,
       });
       return { data: result, tokensUsed: 0 };
+    }
+
+    // M2: Arbitrum SDK Tools
+    case "generate_bridge_code": {
+      const result = generateBridgeCode({
+        bridgeType: args.bridgeType as
+          | "eth_deposit"
+          | "eth_deposit_to"
+          | "eth_withdraw"
+          | "erc20_deposit"
+          | "erc20_withdraw"
+          | "eth_l1_l3"
+          | "erc20_l1_l3",
+        amount: args.amount as string | undefined,
+        tokenAddress: args.tokenAddress as string | undefined,
+        destinationAddress: args.destinationAddress as string | undefined,
+      });
+      return { data: result, tokensUsed: 0 };
+    }
+
+    case "generate_messaging_code": {
+      const result = generateMessagingCode({
+        messageType: args.messageType as
+          | "l1_to_l2"
+          | "l2_to_l1"
+          | "l2_to_l1_claim"
+          | "check_status",
+        includeExample: (args.includeExample as boolean) ?? true,
+      });
+      return { data: result, tokensUsed: 0 };
+    }
+
+    case "ask_bridging": {
+      if (!OPENROUTER_API_KEY) {
+        throw new Error("OpenRouter API key not configured");
+      }
+      const result = await askBridging(VECTORIZE, AI, OPENROUTER_API_KEY, {
+        question: args.question as string,
+        questionType:
+          (args.questionType as "general" | "bridging" | "messaging" | "l3") ??
+          "general",
+      });
+      return { data: result, tokensUsed: result.tokensUsed || 0 };
     }
 
     default:

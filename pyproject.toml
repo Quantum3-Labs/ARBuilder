@@ -42,6 +42,7 @@ dev = [
 
 [project.scripts]
 arbbuilder-scrape = "scraper.run:main"
+rag = "src.rag.cli:main"
 
 [build-system]
 requires = ["setuptools>=61.0"]

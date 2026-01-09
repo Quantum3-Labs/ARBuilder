@@ -14,7 +14,6 @@
 	},
 	"dependencies": {
 		"@auth/d1-adapter": "^1.11.1",
-		"@cloudflare/next-on-pages": "^1.13.16",
 		"@opennextjs/cloudflare": "^1.14.4",
 		"next": "15.5.9",
 		"next-auth": "^5.0.0-beta.30",

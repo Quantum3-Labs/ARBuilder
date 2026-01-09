@@ -293,9 +293,13 @@ class DataProcessor:
         # Combine all chunks
         all_chunks = doc_chunks + code_chunks
 
-        # Add unique IDs
-        for i, chunk in enumerate(all_chunks):
-            chunk["id"] = f"chunk_{i:06d}"
+        # Add deterministic IDs based on content hash
+        # This ensures same content always gets same ID (for upsert to work correctly)
+        for chunk in all_chunks:
+            # Create hash from source URL + content (first 500 chars for stability)
+            hash_input = f"{chunk.get('url', '')}{chunk.get('content', '')[:500]}"
+            content_hash = hashlib.sha256(hash_input.encode()).hexdigest()[:12]
+            chunk["id"] = f"chunk_{content_hash}"
 
         # Save processed data
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

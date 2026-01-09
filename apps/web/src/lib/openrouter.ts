@@ -157,6 +157,41 @@ Be concise but thorough.`,
 }
 
 /**
+ * Answer questions about Arbitrum bridging and SDK.
+ */
+export async function answerBridgingQuestion(
+  apiKey: string,
+  question: string,
+  context: string
+): Promise<ChatCompletionResponse> {
+  const messages: Message[] = [
+    {
+      role: "system",
+      content: `You are an expert on Arbitrum SDK, cross-chain bridging, and messaging.
+Answer questions about:
+- ETH and ERC20 bridging (L1 <-> L2) using EthBridger and Erc20Bridger
+- L1 -> L3 bridging for Orbit chains using EthL1L3Bridger and Erc20L1L3Bridger
+- Cross-chain messaging via retryable tickets (L1->L2) and ArbSys (L2->L1)
+- Challenge periods, gas estimation, and message status tracking
+
+Use the provided context from the Arbitrum SDK documentation and code examples.
+Include TypeScript/JavaScript code examples when relevant.
+Be accurate about timings: L1->L2 takes ~10-15 min, L2->L1 takes ~7 days.
+Reference the correct SDK v4 classes: ParentTransactionReceipt, ChildTransactionReceipt, etc.`,
+    },
+    {
+      role: "user",
+      content: `Context from Arbitrum SDK documentation:\n${context}\n\n---\n\nQuestion: ${question}`,
+    },
+  ];
+
+  return chatCompletion(apiKey, messages, {
+    model: MODELS.QA,
+    temperature: 0.3,
+  });
+}
+
+/**
  * Generate tests for Stylus contract code.
  */
 export async function generateTests(

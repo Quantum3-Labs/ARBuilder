@@ -1,0 +1,169 @@
+name: Release Chunks
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag name for release (e.g., v1.0.0)'
+        required: true
+        type: string
+      skip_embeddings:
+        description: 'Skip embedding generation (faster, chunks only)'
+        type: boolean
+        default: false
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  build-chunks:
+    name: Build and Upload Chunks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -e .
+          pip install crawl4ai playwright numpy
+          playwright install chromium
+
+      - name: Run web scraper
+        run: python -m scraper.run --categories stylus arbitrum_sdk
+        continue-on-error: true
+
+      - name: Run GitHub scraper
+        run: python -m scraper.github_scraper
+        continue-on-error: true
+
+      - name: Process data
+        run: python -m src.preprocessing.processor
+
+      - name: Find processed chunks file
+        id: find-chunks
+        run: |
+          CHUNKS_FILE=$(ls -t data/processed/processed_chunks_*.json | head -1)
+          echo "file=$CHUNKS_FILE" >> $GITHUB_OUTPUT
+          echo "Found chunks file: $CHUNKS_FILE"
+
+      - name: Get release tag
+        id: get-tag
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate embeddings
+        if: ${{ github.event.inputs.skip_embeddings != 'true' }}
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          mkdir -p data/embeddings
+          python -m src.embeddings.export_embeddings \
+            --input "${{ steps.find-chunks.outputs.file }}" \
+            --output "data/embeddings/embeddings_${{ steps.get-tag.outputs.tag }}.npz"
+
+      - name: Find embeddings file
+        id: find-embeddings
+        if: ${{ github.event.inputs.skip_embeddings != 'true' }}
+        run: |
+          EMBEDDINGS_FILE="data/embeddings/embeddings_${{ steps.get-tag.outputs.tag }}.npz"
+          if [ -f "$EMBEDDINGS_FILE" ]; then
+            echo "file=$EMBEDDINGS_FILE" >> $GITHUB_OUTPUT
+            echo "exists=true" >> $GITHUB_OUTPUT
+            SIZE=$(du -h "$EMBEDDINGS_FILE" | cut -f1)
+            echo "Found embeddings file: $EMBEDDINGS_FILE ($SIZE)"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "No embeddings file found"
+          fi
+
+      - name: Upload chunks to release
+        if: github.event_name == 'release'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ${{ steps.find-chunks.outputs.file }}
+          asset_name: processed_chunks_${{ steps.get-tag.outputs.tag }}.json
+          asset_content_type: application/json
+
+      - name: Upload embeddings to release
+        if: github.event_name == 'release' && steps.find-embeddings.outputs.exists == 'true'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ${{ steps.find-embeddings.outputs.file }}
+          asset_name: embeddings_${{ steps.get-tag.outputs.tag }}.npz
+          asset_content_type: application/octet-stream
+
+      - name: Create release (manual trigger)
+        if: github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get-tag.outputs.tag }}
+          name: Release ${{ steps.get-tag.outputs.tag }}
+          body: |
+            ## Pre-built RAG Data
+
+            This release includes pre-processed chunks and embeddings for the ARBuilder knowledge base.
+
+            ### Download
+
+            **Option 1: With pre-computed embeddings (recommended)**
+            ```bash
+            npx tsx scripts/download-chunks.ts --version=${{ steps.get-tag.outputs.tag }} --embeddings
+            python -m src.embeddings.load_prebuilt --reset
+            ```
+
+            **Option 2: Chunks only (generate embeddings locally)**
+            ```bash
+            npx tsx scripts/download-chunks.ts --version=${{ steps.get-tag.outputs.tag }}
+            python -m src.embeddings.vectordb
+            ```
+
+            ### Contents
+            - Stylus SDK documentation and examples
+            - Arbitrum SDK documentation
+            - Production codebases and community projects
+
+            ### Files
+            - `processed_chunks_${{ steps.get-tag.outputs.tag }}.json` - Text chunks with metadata
+            - `embeddings_${{ steps.get-tag.outputs.tag }}.npz` - Pre-computed embeddings (portable format)
+          files: |
+            ${{ steps.find-chunks.outputs.file }}
+            ${{ steps.find-embeddings.outputs.file }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo "## Release Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** ${{ steps.get-tag.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Chunks" >> $GITHUB_STEP_SUMMARY
+          echo "**File:** ${{ steps.find-chunks.outputs.file }}" >> $GITHUB_STEP_SUMMARY
+          CHUNK_COUNT=$(cat "${{ steps.find-chunks.outputs.file }}" | python -c "import json,sys; print(len(json.load(sys.stdin)))")
+          echo "**Count:** $CHUNK_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.find-embeddings.outputs.exists }}" == "true" ]; then
+            echo "### Embeddings" >> $GITHUB_STEP_SUMMARY
+            echo "**File:** ${{ steps.find-embeddings.outputs.file }}" >> $GITHUB_STEP_SUMMARY
+            SIZE=$(du -h "${{ steps.find-embeddings.outputs.file }}" | cut -f1)
+            echo "**Size:** $SIZE" >> $GITHUB_STEP_SUMMARY
+          fi

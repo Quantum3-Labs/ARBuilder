@@ -326,6 +326,47 @@ class VectorDB:
             "persist_directory": str(self.persist_directory),
         }
 
+    def delete_by_ids(self, ids: list[str]) -> int:
+        """
+        Delete chunks by their IDs.
+
+        Args:
+            ids: List of chunk IDs to delete.
+
+        Returns:
+            Number of chunks deleted.
+        """
+        if not ids:
+            return 0
+
+        try:
+            self.collection.delete(ids=ids)
+            return len(ids)
+        except Exception as e:
+            console.print(f"[red]Delete error: {e}[/red]")
+            return 0
+
+    def delete_by_source(self, source_url: str) -> int:
+        """
+        Delete all chunks from a specific source URL.
+
+        Args:
+            source_url: The source URL to delete chunks for.
+
+        Returns:
+            Number of chunks deleted.
+        """
+        # Query for all chunks with this source URL
+        results = self.collection.get(
+            where={"$or": [{"url": source_url}, {"repo_url": source_url}]},
+            include=[],  # Only need IDs
+        )
+
+        if not results["ids"]:
+            return 0
+
+        return self.delete_by_ids(results["ids"])
+
     def delete_collection(self):
         """Delete the collection."""
         self.client.delete_collection(self.collection_name)
