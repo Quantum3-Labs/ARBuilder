@@ -99,7 +99,7 @@ export async function getStylusContext(
   });
 
   // Apply version-aware scoring adjustments
-  let scoredResults = applyVersionScoring(searchResults, targetVersion);
+  const scoredResults = applyVersionScoring(searchResults, targetVersion);
 
   // Rerank if enabled
   let finalResults: SearchResult[];
