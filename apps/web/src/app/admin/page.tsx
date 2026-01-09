@@ -174,6 +174,31 @@ export default function AdminPage() {
     }
   };
 
+  const handleRefreshSource = async (source: Source) => {
+    // Mark as pending and show command
+    try {
+      await fetch("/api/admin/sources", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Secret": adminSecret,
+        },
+        body: JSON.stringify({
+          url: source.url,
+          category: source.category,
+          subcategory: source.subcategory,
+          status: "pending",
+        }),
+      });
+
+      const cmd = `AUTH_SECRET=xxx npx tsx scripts/diff-migrate.ts --source "${source.url}"`;
+      alert(`Source marked for refresh.\n\nRun this command locally to re-ingest:\n\n${cmd}`);
+      fetchSources();
+    } catch (err) {
+      setError(`Failed to mark source for refresh: ${err}`);
+    }
+  };
+
   // Auth form
   if (!isAuthed) {
     return (
@@ -506,7 +531,13 @@ export default function AdminPage() {
                       <td className="px-4 py-3 text-sm text-gray-900">
                         {source.chunkCount}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-right space-x-2">
+                        <button
+                          onClick={() => handleRefreshSource(source)}
+                          className="text-blue-600 hover:text-blue-800 text-sm"
+                        >
+                          Refresh
+                        </button>
                         <button
                           onClick={() => handleDeleteSource(source)}
                           className="text-red-600 hover:text-red-800 text-sm"

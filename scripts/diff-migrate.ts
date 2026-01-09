@@ -327,6 +327,10 @@ async function diffMigrate(forceFullRefresh: boolean, sourceUrl?: string | null)
     failed: totalFailed,
   });
 
+  // Sync source metadata to KV
+  console.log("\nSyncing source metadata to KV...");
+  await syncSourcestoKV(chunks);
+
   console.log(`\n\n${"=".repeat(60)}`);
   console.log("Migration Complete!");
   console.log(`${"=".repeat(60)}`);
@@ -363,6 +367,57 @@ const sourceFilter = getSourceArg();
 // Get source URL from a chunk
 function getChunkSourceUrl(chunk: ProcessedChunk): string {
   return chunk.repo_url || chunk.url || "";
+}
+
+// Sync source metadata to Cloudflare KV
+async function syncSourcestoKV(chunks: ProcessedChunk[]): Promise<void> {
+  // Count chunks per source
+  const sourceCounts: Record<string, { count: number; category: string; subcategory: string }> = {};
+
+  for (const chunk of chunks) {
+    const sourceUrl = getChunkSourceUrl(chunk);
+    if (!sourceUrl) continue;
+
+    if (!sourceCounts[sourceUrl]) {
+      sourceCounts[sourceUrl] = {
+        count: 0,
+        category: chunk.category || "stylus",
+        subcategory: chunk.subcategory || "",
+      };
+    }
+    sourceCounts[sourceUrl].count++;
+  }
+
+  console.log(`Syncing ${Object.keys(sourceCounts).length} sources to KV...`);
+
+  // Update each source in KV
+  let updated = 0;
+  for (const [url, data] of Object.entries(sourceCounts)) {
+    try {
+      const response = await fetch(`${MIGRATE_URL}/api/admin/sources`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Secret": AUTH_SECRET,
+        },
+        body: JSON.stringify({
+          url,
+          category: data.category,
+          subcategory: data.subcategory,
+          status: "active",
+          chunkCount: data.count,
+        }),
+      });
+
+      if (response.ok) {
+        updated++;
+      }
+    } catch (err) {
+      console.error(`Failed to sync source ${url}: ${err}`);
+    }
+  }
+
+  console.log(`Synced ${updated}/${Object.keys(sourceCounts).length} sources to KV`);
 }
 
 // Clear existing vectors using IDs from state file
