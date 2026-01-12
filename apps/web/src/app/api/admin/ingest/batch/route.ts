@@ -208,8 +208,9 @@ async function processJobInBackground(env: CloudflareEnv, jobId: string): Promis
         };
 
         if (hasContainer) {
-          // Use container
-          const containerId = env.SCRAPER_CONTAINER.idFromName(source.url);
+          // Use a single shared container instance (not one per URL)
+          // This prevents hitting max_instances limit
+          const containerId = env.SCRAPER_CONTAINER.idFromName("shared-scraper");
           const container = env.SCRAPER_CONTAINER.get(containerId);
 
           const response = await container.fetch(
@@ -224,7 +225,16 @@ async function processJobInBackground(env: CloudflareEnv, jobId: string): Promis
             })
           );
 
-          result = await response.json() as typeof result;
+          // Check if container returned an error status
+          if (!response.ok) {
+            const errorText = await response.text();
+            result = {
+              status: "error",
+              error: `Container HTTP ${response.status}: ${errorText.slice(0, 200)}`,
+            };
+          } else {
+            result = await response.json() as typeof result;
+          }
         } else {
           // No container - mark source as pending for CLI processing
           // Update the source status in KV via internal fetch

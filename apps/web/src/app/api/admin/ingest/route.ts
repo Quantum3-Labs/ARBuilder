@@ -60,9 +60,9 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Get container instance using source URL hash as the Durable Object ID
-    // This ensures each source gets its own container instance
-    const containerId = env.SCRAPER_CONTAINER.idFromName(body.url);
+    // Get a shared container instance (not one per URL)
+    // This prevents hitting max_instances limit
+    const containerId = env.SCRAPER_CONTAINER.idFromName("shared-scraper");
     const container = env.SCRAPER_CONTAINER.get(containerId);
 
     // Send ingest request to the container
@@ -148,8 +148,8 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Get a container instance for health check
-    const containerId = env.SCRAPER_CONTAINER.idFromName("health-check");
+    // Get the shared container instance for health check
+    const containerId = env.SCRAPER_CONTAINER.idFromName("shared-scraper");
     const container = env.SCRAPER_CONTAINER.get(containerId);
 
     try {

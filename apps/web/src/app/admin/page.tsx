@@ -744,6 +744,31 @@ export default function AdminPage() {
                 </div>
               )}
 
+              {/* Show failed items with error messages */}
+              {activeJob.results.filter(r => r.status === "error").length > 0 && (
+                <div className="mt-4 border-t pt-3">
+                  <details className="cursor-pointer">
+                    <summary className="text-sm font-medium text-red-700 hover:text-red-800">
+                      View {activeJob.results.filter(r => r.status === "error").length} failed items
+                    </summary>
+                    <div className="mt-2 max-h-60 overflow-y-auto space-y-2">
+                      {activeJob.results
+                        .filter(r => r.status === "error")
+                        .map((result, idx) => (
+                          <div key={idx} className="bg-red-100 rounded p-2 text-sm">
+                            <div className="font-medium text-red-800 truncate" title={result.url}>
+                              {truncateUrl(result.url)}
+                            </div>
+                            <div className="text-red-600 text-xs mt-1">
+                              {result.message || "Unknown error"}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </details>
+                </div>
+              )}
+
               {/* Note about background processing */}
               {(activeJob.status === "pending" || activeJob.status === "running") && (
                 <p className="mt-2 text-xs text-gray-500">
