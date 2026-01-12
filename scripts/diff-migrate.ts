@@ -369,10 +369,19 @@ function getChunkSourceUrl(chunk: ProcessedChunk): string {
   return chunk.repo_url || chunk.url || "";
 }
 
+// Source metadata for KV sync
+interface SourceMeta {
+  count: number;
+  category: string;
+  subcategory: string;
+  stylusVersion?: string;
+  isVersionDeprecated?: boolean;
+}
+
 // Sync source metadata to Cloudflare KV
 async function syncSourcestoKV(chunks: ProcessedChunk[]): Promise<void> {
-  // Count chunks per source
-  const sourceCounts: Record<string, { count: number; category: string; subcategory: string }> = {};
+  // Count chunks per source and extract version info
+  const sourceCounts: Record<string, SourceMeta> = {};
 
   for (const chunk of chunks) {
     const sourceUrl = getChunkSourceUrl(chunk);
@@ -386,9 +395,20 @@ async function syncSourcestoKV(chunks: ProcessedChunk[]): Promise<void> {
       };
     }
     sourceCounts[sourceUrl].count++;
+
+    // Extract stylus version from chunk (GitHub repos have this from Cargo.toml)
+    const version = chunk.stylus_version || chunk.sdk_version;
+    if (version && !sourceCounts[sourceUrl].stylusVersion) {
+      sourceCounts[sourceUrl].stylusVersion = version;
+      sourceCounts[sourceUrl].isVersionDeprecated = chunk.is_version_deprecated || false;
+    }
   }
 
   console.log(`Syncing ${Object.keys(sourceCounts).length} sources to KV...`);
+
+  // Count sources with version info
+  const withVersion = Object.values(sourceCounts).filter((s) => s.stylusVersion).length;
+  console.log(`  - ${withVersion} sources have SDK version info`);
 
   // Update each source in KV
   let updated = 0;
@@ -406,6 +426,8 @@ async function syncSourcestoKV(chunks: ProcessedChunk[]): Promise<void> {
           subcategory: data.subcategory,
           status: "active",
           chunkCount: data.count,
+          stylusVersion: data.stylusVersion,
+          isVersionDeprecated: data.isVersionDeprecated,
         }),
       });
 

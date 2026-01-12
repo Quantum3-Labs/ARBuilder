@@ -37,6 +37,31 @@ interface SourcesResponse {
   stats: Stats;
 }
 
+interface BatchJob {
+  id: string;
+  status: "pending" | "running" | "completed" | "failed";
+  sources: Array<{
+    url: string;
+    category: string;
+    subcategory: string;
+  }>;
+  progress: {
+    current: number;
+    total: number;
+    succeeded: number;
+    failed: number;
+  };
+  results: Array<{
+    url: string;
+    status: "success" | "error" | "pending";
+    message?: string;
+    stylusVersion?: string;
+  }>;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+}
+
 export default function AdminPage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -65,6 +90,15 @@ export default function AdminPage() {
   const [newCategory, setNewCategory] = useState("stylus");
   const [newSubcategory, setNewSubcategory] = useState("");
   const [addingSource, setAddingSource] = useState(false);
+
+  // Ingestion tracking
+  const [ingesting, setIngesting] = useState<Record<string, boolean>>({});
+  const [ingestResults, setIngestResults] = useState<Record<string, { success: boolean; message: string; cliCommand?: string }>>({});
+
+  // Batch operations
+  const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set());
+  const [activeJob, setActiveJob] = useState<BatchJob | null>(null);
+  const [pollingJob, setPollingJob] = useState(false);
 
   const fetchSources = useCallback(async () => {
     if (!adminSecret) return;
@@ -175,8 +209,16 @@ export default function AdminPage() {
   };
 
   const handleRefreshSource = async (source: Source) => {
-    // Mark as pending and show command
+    // Trigger container-based re-ingestion
+    setIngesting((prev) => ({ ...prev, [source.id]: true }));
+    setIngestResults((prev) => {
+      const newResults = { ...prev };
+      delete newResults[source.id];
+      return newResults;
+    });
+
     try {
+      // First mark as pending
       await fetch("/api/admin/sources", {
         method: "POST",
         headers: {
@@ -191,12 +233,203 @@ export default function AdminPage() {
         }),
       });
 
-      const cmd = `AUTH_SECRET=xxx npx tsx scripts/diff-migrate.ts --source "${source.url}"`;
-      alert(`Source marked for refresh.\n\nRun this command locally to re-ingest:\n\n${cmd}`);
+      // Trigger container ingestion
+      const response = await fetch("/api/admin/ingest", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Secret": adminSecret,
+        },
+        body: JSON.stringify({
+          url: source.url,
+          category: source.category,
+          subcategory: source.subcategory,
+        }),
+      });
+
+      const result = await response.json() as {
+        status?: string;
+        error?: string;
+        message?: string;
+        cliCommand?: string;
+        result?: {
+          chunks: number;
+          uploaded: number;
+          errors: string[];
+        };
+      };
+
+      if (response.ok && result.status === "ok") {
+        // Container ingestion succeeded
+        setIngestResults((prev) => ({
+          ...prev,
+          [source.id]: {
+            success: true,
+            message: `Ingested ${result.result?.chunks || 0} chunks, uploaded ${result.result?.uploaded || 0}`,
+          },
+        }));
+      } else if (result.status === "starting") {
+        // Container is starting up, retry automatically
+        setIngestResults((prev) => ({
+          ...prev,
+          [source.id]: {
+            success: false,
+            message: "Container starting... retrying",
+          },
+        }));
+        // Retry after 3 seconds
+        setTimeout(() => handleRefreshSource(source), 3000);
+        return; // Don't set ingesting to false
+      } else if (result.status === "fallback" && result.cliCommand) {
+        // Container not available, show CLI command
+        setIngestResults((prev) => ({
+          ...prev,
+          [source.id]: {
+            success: false,
+            message: "Use CLI",
+            cliCommand: result.cliCommand,
+          },
+        }));
+      } else {
+        setIngestResults((prev) => ({
+          ...prev,
+          [source.id]: {
+            success: false,
+            message: result.error || result.message || "Ingestion failed",
+          },
+        }));
+      }
+
       fetchSources();
     } catch (err) {
-      setError(`Failed to mark source for refresh: ${err}`);
+      setIngestResults((prev) => ({
+        ...prev,
+        [source.id]: {
+          success: false,
+          message: `Error: ${err}`,
+        },
+      }));
+    } finally {
+      setIngesting((prev) => ({ ...prev, [source.id]: false }));
     }
+  };
+
+  // Poll for active batch job status
+  const pollJobStatus = useCallback(async (jobId: string) => {
+    if (pollingJob) return;
+    setPollingJob(true);
+
+    try {
+      const response = await fetch(`/api/admin/ingest/batch?jobId=${jobId}`, {
+        headers: { "X-Admin-Secret": adminSecret },
+      });
+
+      if (response.ok) {
+        const data = await response.json() as { job: BatchJob };
+        setActiveJob(data.job);
+
+        // Continue polling if job is still running
+        if (data.job.status === "pending" || data.job.status === "running") {
+          setTimeout(() => {
+            setPollingJob(false);
+            pollJobStatus(jobId);
+          }, 2000);
+        } else {
+          // Job completed - refresh sources and clear after delay
+          fetchSources();
+          setTimeout(() => setActiveJob(null), 5000);
+        }
+      }
+    } catch (err) {
+      console.error("Poll error:", err);
+    } finally {
+      setPollingJob(false);
+    }
+  }, [adminSecret, pollingJob, fetchSources]);
+
+  // Check for active jobs on mount
+  useEffect(() => {
+    if (!isAuthed || !adminSecret) return;
+
+    const checkActiveJobs = async () => {
+      try {
+        const response = await fetch("/api/admin/ingest/batch", {
+          headers: { "X-Admin-Secret": adminSecret },
+        });
+        if (response.ok) {
+          const data = await response.json() as { jobs: BatchJob[] };
+          // Find any running job
+          const runningJob = data.jobs.find(
+            (j) => j.status === "pending" || j.status === "running"
+          );
+          if (runningJob) {
+            setActiveJob(runningJob);
+            pollJobStatus(runningJob.id);
+          }
+        }
+      } catch {
+        // Ignore errors
+      }
+    };
+
+    checkActiveJobs();
+  }, [isAuthed, adminSecret, pollJobStatus]);
+
+  // Batch refresh - starts a background job
+  const handleBatchRefresh = async (sourcesToRefresh: Source[]) => {
+    if (sourcesToRefresh.length === 0) return;
+
+    const confirmed = confirm(
+      `Refresh ${sourcesToRefresh.length} source(s)?\n\nThis will run in the background - you can close this page and the ingestion will continue.`
+    );
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch("/api/admin/ingest/batch", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Secret": adminSecret,
+        },
+        body: JSON.stringify({
+          sources: sourcesToRefresh.map((s) => ({
+            url: s.url,
+            category: s.category,
+            subcategory: s.subcategory,
+          })),
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json() as { jobId: string };
+        setSelectedSources(new Set());
+        // Start polling for job status
+        pollJobStatus(data.jobId);
+      } else {
+        const errorData = await response.json() as { error: string };
+        setError(`Failed to start batch job: ${errorData.error}`);
+      }
+    } catch (err) {
+      setError(`Failed to start batch job: ${err}`);
+    }
+  };
+
+  const handleSelectAll = () => {
+    if (selectedSources.size === sources.length) {
+      setSelectedSources(new Set());
+    } else {
+      setSelectedSources(new Set(sources.map((s) => s.id)));
+    }
+  };
+
+  const toggleSelectSource = (id: string) => {
+    const newSelected = new Set(selectedSources);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedSources(newSelected);
   };
 
   // Auth form
@@ -425,15 +658,100 @@ export default function AdminPage() {
                 <option value="github">GitHub</option>
               </select>
             </div>
-            <div className="flex items-end">
+            <div className="flex items-end gap-2">
               <button
                 onClick={fetchSources}
                 className="px-4 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
               >
-                Refresh
+                Refresh List
+              </button>
+              <button
+                onClick={() => handleBatchRefresh(sources.filter((s) => selectedSources.has(s.id)))}
+                disabled={selectedSources.size === 0 || !!activeJob}
+                className="px-4 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Refresh Selected ({selectedSources.size})
+              </button>
+              <button
+                onClick={() => handleBatchRefresh(sources)}
+                disabled={sources.length === 0 || !!activeJob}
+                className="px-4 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Refresh All ({sources.length})
               </button>
             </div>
           </div>
+
+          {/* Active Job Progress */}
+          {activeJob && (
+            <div className={`mt-4 p-4 rounded-lg ${
+              activeJob.status === "completed" ? "bg-green-50" :
+              activeJob.status === "failed" ? "bg-red-50" : "bg-blue-50"
+            }`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {(activeJob.status === "pending" || activeJob.status === "running") && (
+                    <svg className="animate-spin h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                  )}
+                  <span className={`font-medium ${
+                    activeJob.status === "completed" ? "text-green-800" :
+                    activeJob.status === "failed" ? "text-red-800" : "text-blue-800"
+                  }`}>
+                    {activeJob.status === "pending" ? "Starting batch job..." :
+                     activeJob.status === "running" ? "Processing sources..." :
+                     activeJob.status === "completed" ? "Batch completed!" :
+                     "Batch failed"}
+                  </span>
+                </div>
+                <span className="text-sm text-gray-600">
+                  {activeJob.progress.current}/{activeJob.progress.total}
+                  {activeJob.progress.failed > 0 && (
+                    <span className="text-red-600 ml-1">
+                      ({activeJob.progress.failed} failed)
+                    </span>
+                  )}
+                </span>
+              </div>
+
+              {/* Progress bar */}
+              <div className="mt-3 h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-300 ${
+                    activeJob.status === "completed" ? "bg-green-500" :
+                    activeJob.status === "failed" ? "bg-red-500" : "bg-blue-600"
+                  }`}
+                  style={{ width: `${(activeJob.progress.current / activeJob.progress.total) * 100}%` }}
+                />
+              </div>
+
+              {/* Current source being processed */}
+              {activeJob.status === "running" && activeJob.progress.current > 0 && (
+                <p className="mt-2 text-xs text-gray-500 truncate">
+                  Processing: {activeJob.sources[activeJob.progress.current - 1]?.url}
+                </p>
+              )}
+
+              {/* Results summary when completed */}
+              {activeJob.status === "completed" && (
+                <div className="mt-3 text-sm">
+                  <span className="text-green-700">{activeJob.progress.succeeded} succeeded</span>
+                  {activeJob.progress.failed > 0 && (
+                    <span className="text-red-700 ml-3">{activeJob.progress.failed} failed</span>
+                  )}
+                </div>
+              )}
+
+              {/* Note about background processing */}
+              {(activeJob.status === "pending" || activeJob.status === "running") && (
+                <p className="mt-2 text-xs text-gray-500">
+                  This job runs in the background. You can close this page and come back later.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Error */}
@@ -456,6 +774,14 @@ export default function AdminPage() {
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
+                    <th className="px-4 py-3 text-left">
+                      <input
+                        type="checkbox"
+                        checked={selectedSources.size === sources.length && sources.length > 0}
+                        onChange={handleSelectAll}
+                        className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                      />
+                    </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Source
                     </th>
@@ -481,7 +807,15 @@ export default function AdminPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {sources.map((source) => (
-                    <tr key={source.id} className="hover:bg-gray-50">
+                    <tr key={source.id} className={`hover:bg-gray-50 ${selectedSources.has(source.id) ? "bg-blue-50" : ""}`}>
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedSources.has(source.id)}
+                          onChange={() => toggleSelectSource(source.id)}
+                          className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                        />
+                      </td>
                       <td className="px-4 py-3">
                         <a
                           href={source.url}
@@ -531,19 +865,81 @@ export default function AdminPage() {
                       <td className="px-4 py-3 text-sm text-gray-900">
                         {source.chunkCount}
                       </td>
-                      <td className="px-4 py-3 text-right space-x-2">
-                        <button
-                          onClick={() => handleRefreshSource(source)}
-                          className="text-blue-600 hover:text-blue-800 text-sm"
-                        >
-                          Refresh
-                        </button>
-                        <button
-                          onClick={() => handleDeleteSource(source)}
-                          className="text-red-600 hover:text-red-800 text-sm"
-                        >
-                          Delete
-                        </button>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {ingestResults[source.id] && (
+                            ingestResults[source.id].cliCommand ? (
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(ingestResults[source.id].cliCommand!);
+                                  alert("CLI command copied to clipboard!\n\n" + ingestResults[source.id].cliCommand);
+                                }}
+                                className="text-xs text-blue-600 hover:text-blue-800 underline"
+                                title="Click to copy CLI command"
+                              >
+                                Copy CLI
+                              </button>
+                            ) : (
+                              <span
+                                className={`text-xs ${
+                                  ingestResults[source.id].success
+                                    ? "text-green-600"
+                                    : "text-red-600"
+                                }`}
+                                title={ingestResults[source.id].message}
+                              >
+                                {ingestResults[source.id].success ? "Done" : "Failed"}
+                              </span>
+                            )
+                          )}
+                          <button
+                            onClick={() => handleRefreshSource(source)}
+                            disabled={ingesting[source.id]}
+                            className={`text-sm ${
+                              ingesting[source.id]
+                                ? "text-gray-400 cursor-not-allowed"
+                                : "text-blue-600 hover:text-blue-800"
+                            }`}
+                          >
+                            {ingesting[source.id] ? (
+                              <span className="flex items-center gap-1">
+                                <svg
+                                  className="animate-spin h-3 w-3"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <circle
+                                    className="opacity-25"
+                                    cx="12"
+                                    cy="12"
+                                    r="10"
+                                    stroke="currentColor"
+                                    strokeWidth="4"
+                                  />
+                                  <path
+                                    className="opacity-75"
+                                    fill="currentColor"
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                  />
+                                </svg>
+                                Ingesting...
+                              </span>
+                            ) : (
+                              "Refresh"
+                            )}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSource(source)}
+                            disabled={ingesting[source.id]}
+                            className={`text-sm ${
+                              ingesting[source.id]
+                                ? "text-gray-400 cursor-not-allowed"
+                                : "text-red-600 hover:text-red-800"
+                            }`}
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

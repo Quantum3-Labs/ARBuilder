@@ -197,6 +197,7 @@ export async function POST(request: NextRequest) {
       subcategory?: string;
       sourceType?: SourceType;
       stylusVersion?: string;
+      isVersionDeprecated?: boolean;
       status?: SourceStatus;
       chunkCount?: number;
       lastError?: string;
@@ -223,6 +224,7 @@ export async function POST(request: NextRequest) {
         category: body.category,
         subcategory: body.subcategory || existing.subcategory,
         stylusVersion: body.stylusVersion ?? existing.stylusVersion,
+        isVersionDeprecated: body.isVersionDeprecated ?? existing.isVersionDeprecated,
         status: body.status ?? existing.status,
         chunkCount: body.chunkCount ?? existing.chunkCount,
         lastError: body.lastError,
@@ -247,7 +249,7 @@ export async function POST(request: NextRequest) {
       category: body.category,
       subcategory: body.subcategory || "",
       stylusVersion: body.stylusVersion,
-      isVersionDeprecated: false,
+      isVersionDeprecated: body.isVersionDeprecated ?? false,
       status: body.status || "pending",
       chunkCount: body.chunkCount || 0,
       errorCount: 0,
