@@ -237,17 +237,25 @@ python -m scraper.run --skip-github
 
 ### Data Sources
 
-The scraper collects data from:
+The scraper collects data from 50+ sources with automatic Stylus SDK version detection:
 
 **Stylus (M1)**
-- Official documentation: [docs.arbitrum.io](https://docs.arbitrum.io/stylus/stylus-overview)
+- Official documentation: [docs.arbitrum.io](https://docs.arbitrum.io/stylus/stylus-overview) (7 pages)
 - Curated resources: [awesome-stylus](https://github.com/OffchainLabs/awesome-stylus)
-- Official examples: stylus-by-example, stylus-hello-world, etc.
-- Production codebases: OpenZeppelin rust-contracts-stylus, renegade-contracts, etc.
-- Community projects and blog articles
+- Official examples: stylus-hello-world (v0.9.0), stylus-quickstart-vending-machine (v0.8.4)
+- Production codebases: OpenZeppelin rust-contracts-stylus (v0.9.0), renegade-contracts
+- Community projects and challenges (19 challenge submissions, all v0.9.0)
+- Blog articles
+
+**Version Filtering:**
+- Only sources using Stylus SDK >= 0.8.0 are included
+- Each GitHub repo's SDK version is auto-detected from Cargo.toml
+- Deprecated versions (< 0.8.0) are excluded from the knowledge base
 
 **Arbitrum SDK (M2)**
 - [arbitrum-sdk](https://github.com/OffchainLabs/arbitrum-sdk)
+- [arbitrum-tutorials](https://github.com/OffchainLabs/arbitrum-tutorials)
+- Official bridging and messaging documentation (7 pages)
 
 **Orbit SDK (M4)**
 - [arbitrum-orbit-sdk](https://github.com/OffchainLabs/arbitrum-orbit-sdk)
@@ -364,13 +372,32 @@ See [docs/mcp_tools_spec.md](docs/mcp_tools_spec.md) for full specification.
 
 ### Generating Stylus Contracts
 
+ARBuilder uses **template-based code generation** to ensure generated code compiles correctly. Instead of generating from scratch, it customizes verified working templates from official Stylus examples.
+
+**Available Templates:**
+
+| Template | Type | Description |
+|----------|------|-------------|
+| Counter | utility | Simple storage with getter/setter operations |
+| VendingMachine | defi | Mappings with time-based rate limiting |
+| SimpleERC20 | token | Basic ERC20 with transfer, approve, transferFrom |
+| AccessControl | utility | Owner-only functions with ownership transfer |
+
+**Stylus SDK Version Support:**
+
+| Version | Status | Notes |
+|---------|--------|-------|
+| 0.9.0 | **Main** (default) | Recommended for new projects |
+| 0.8.x | Supported | Minimum supported version |
+| < 0.8.0 | Deprecated | Warning shown, may not compile |
+
 Ask your AI assistant to generate contracts:
 
 ```
 User: "Create an ERC20 token called MyToken with 1 million supply"
 
 AI uses: generate_stylus_code tool
-Returns: Complete Rust contract with proper imports, storage, and methods
+Returns: Complete Rust contract based on SimpleERC20 template with proper imports, storage, and methods
 ```
 
 ### Getting Context and Examples
