@@ -237,17 +237,34 @@ python -m scraper.run --skip-github
 
 ### Data Sources
 
-The scraper collects data from:
+The scraper collects data from 50+ sources with automatic Stylus SDK version detection:
 
 **Stylus (M1)**
-- Official documentation: [docs.arbitrum.io](https://docs.arbitrum.io/stylus/stylus-overview)
+- Official documentation: [docs.arbitrum.io](https://docs.arbitrum.io/stylus/stylus-overview) (8 pages including gas-metering)
 - Curated resources: [awesome-stylus](https://github.com/OffchainLabs/awesome-stylus)
-- Official examples: stylus-by-example, stylus-hello-world, etc.
-- Production codebases: OpenZeppelin rust-contracts-stylus, renegade-contracts, etc.
-- Community projects and blog articles
+- Official examples: stylus-hello-world (v0.9.0), stylus-quickstart-vending-machine (v0.8.4)
+- Production codebases: OpenZeppelin rust-contracts-stylus (v0.9.0), renegade-contracts
+- Community projects and challenges (19 challenge submissions, all v0.9.0)
+- Blog articles
+
+**Stylus SDK Version Support:**
+
+| Version | Status | Notes |
+|---------|--------|-------|
+| 0.9.0 | **Main** (default) | Recommended for new projects |
+| 0.8.x | Supported | Minimum supported version |
+| < 0.8.0 | Deprecated | Warning shown, excluded from knowledge base |
+
+**Version Filtering:**
+- Only sources using Stylus SDK >= 0.8.0 are included
+- Each GitHub repo's SDK version is auto-detected from Cargo.toml
+- Deprecated versions (< 0.8.0) are excluded from the knowledge base
+- Code generation targets the main version (0.9.0) by default
 
 **Arbitrum SDK (M2)**
 - [arbitrum-sdk](https://github.com/OffchainLabs/arbitrum-sdk)
+- [arbitrum-tutorials](https://github.com/OffchainLabs/arbitrum-tutorials)
+- Official bridging and messaging documentation (7 pages)
 
 **Orbit SDK (M4)**
 - [arbitrum-orbit-sdk](https://github.com/OffchainLabs/arbitrum-orbit-sdk)
