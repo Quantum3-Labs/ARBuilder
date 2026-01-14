@@ -98,6 +98,8 @@ export default function AdminPage() {
   // Batch operations
   const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set());
   const [activeJob, setActiveJob] = useState<BatchJob | null>(null);
+  const [jobHistory, setJobHistory] = useState<BatchJob[]>([]);
+  const [showJobHistory, setShowJobHistory] = useState(false);
   const [pollingJob, setPollingJob] = useState(false);
 
   const fetchSources = useCallback(async () => {
@@ -347,7 +349,7 @@ export default function AdminPage() {
     }
   }, [adminSecret, pollingJob, fetchSources]);
 
-  // Check for active jobs on mount
+  // Check for active jobs on mount and load job history
   useEffect(() => {
     if (!isAuthed || !adminSecret) return;
 
@@ -358,6 +360,10 @@ export default function AdminPage() {
         });
         if (response.ok) {
           const data = await response.json() as { jobs: BatchJob[] };
+          // Save all jobs to history (sorted by date, newest first)
+          setJobHistory(data.jobs.sort((a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          ));
           // Find any running job
           const runningJob = data.jobs.find(
             (j) => j.status === "pending" || j.status === "running"
@@ -374,6 +380,34 @@ export default function AdminPage() {
 
     checkActiveJobs();
   }, [isAuthed, adminSecret, pollJobStatus]);
+
+  // Clear/delete a batch job
+  const handleClearJob = async (jobId: string) => {
+    const confirmed = confirm("Clear this job? This will remove it from the job list.");
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch(`/api/admin/ingest/batch?jobId=${jobId}`, {
+        method: "DELETE",
+        headers: { "X-Admin-Secret": adminSecret },
+      });
+
+      if (response.ok) {
+        // Clear from active job if it matches
+        if (activeJob?.id === jobId) {
+          setActiveJob(null);
+        }
+        // Remove from job history
+        setJobHistory((prev) => prev.filter((j) => j.id !== jobId));
+        fetchSources();
+      } else {
+        const errorData = await response.json() as { error: string };
+        setError(`Failed to clear job: ${errorData.error}`);
+      }
+    } catch (err) {
+      setError(`Failed to clear job: ${err}`);
+    }
+  };
 
   // Batch refresh - starts a background job
   const handleBatchRefresh = async (sourcesToRefresh: Source[]) => {
@@ -774,6 +808,118 @@ export default function AdminPage() {
                 <p className="mt-2 text-xs text-gray-500">
                   This job runs in the background. You can close this page and come back later.
                 </p>
+              )}
+
+              {/* Clear Job button */}
+              <div className="mt-3 flex justify-end">
+                <button
+                  onClick={() => handleClearJob(activeJob.id)}
+                  className="text-sm text-red-600 hover:text-red-800 hover:underline"
+                >
+                  Clear Job
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Job History Section */}
+          {jobHistory.length > 0 && (
+            <div className="mt-4">
+              <button
+                onClick={() => setShowJobHistory(!showJobHistory)}
+                className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+              >
+                <svg
+                  className={`w-4 h-4 transition-transform ${showJobHistory ? "rotate-90" : ""}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                Job History ({jobHistory.length} jobs)
+              </button>
+
+              {showJobHistory && (
+                <div className="mt-3 space-y-3">
+                  {jobHistory.map((job) => (
+                    <div
+                      key={job.id}
+                      className={`p-3 rounded-lg border ${
+                        job.status === "completed"
+                          ? "bg-gray-50 border-gray-200"
+                          : job.status === "failed"
+                          ? "bg-red-50 border-red-200"
+                          : job.status === "running" || job.status === "pending"
+                          ? "bg-blue-50 border-blue-200"
+                          : "bg-gray-50 border-gray-200"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                              job.status === "completed"
+                                ? "bg-green-100 text-green-800"
+                                : job.status === "failed"
+                                ? "bg-red-100 text-red-800"
+                                : job.status === "running"
+                                ? "bg-blue-100 text-blue-800"
+                                : "bg-yellow-100 text-yellow-800"
+                            }`}
+                          >
+                            {job.status}
+                          </span>
+                          <span className="text-sm text-gray-600">
+                            {job.progress.succeeded}/{job.progress.total} succeeded
+                            {job.progress.failed > 0 && (
+                              <span className="text-red-600 ml-1">
+                                ({job.progress.failed} failed)
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <span className="text-xs text-gray-400">
+                            {new Date(job.createdAt).toLocaleString()}
+                          </span>
+                          <button
+                            onClick={() => handleClearJob(job.id)}
+                            className="text-xs text-red-500 hover:text-red-700"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Show failed items for this job */}
+                      {job.results.filter((r) => r.status === "error").length > 0 && (
+                        <details className="mt-2">
+                          <summary className="text-xs text-red-600 hover:text-red-800 cursor-pointer">
+                            View {job.results.filter((r) => r.status === "error").length} failed
+                          </summary>
+                          <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+                            {job.results
+                              .filter((r) => r.status === "error")
+                              .map((result, idx) => (
+                                <div
+                                  key={idx}
+                                  className="bg-red-100 rounded px-2 py-1 text-xs"
+                                >
+                                  <div className="font-medium text-red-800 truncate" title={result.url}>
+                                    {truncateUrl(result.url)}
+                                  </div>
+                                  <div className="text-red-600">
+                                    {result.message || "Unknown error"}
+                                  </div>
+                                </div>
+                              ))}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           )}

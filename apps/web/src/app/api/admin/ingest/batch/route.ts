@@ -1,42 +1,25 @@
 /**
- * Batch Ingestion API with background processing.
+ * Batch Ingestion API with Durable Object-based processing.
  *
  * POST /api/admin/ingest/batch - Start a batch ingestion job
- * GET /api/admin/ingest/batch?jobId=xxx - Get job status
+ * GET /api/admin/ingest/batch - List all jobs or get specific job
+ * DELETE /api/admin/ingest/batch?jobId=xxx - Delete a job
+ * PUT /api/admin/ingest/batch?jobId=xxx&action=pause|resume - Pause/resume a job
  *
- * Jobs are stored in KV and processed in background using waitUntil().
- * This allows the browser to close without stopping the ingestion.
+ * Uses BatchJobDO Durable Object with alarms for reliable long-running processing.
+ * Each source is processed in a separate alarm invocation, avoiding timeout issues.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 
-// KV key prefix for batch jobs
+// KV key prefix for batch jobs (for listing)
 const BATCH_JOB_PREFIX = "batch:job:";
 
-interface BatchJob {
-  id: string;
-  status: "pending" | "running" | "completed" | "failed";
-  sources: Array<{
-    url: string;
-    category: string;
-    subcategory: string;
-  }>;
-  progress: {
-    current: number;
-    total: number;
-    succeeded: number;
-    failed: number;
-  };
-  results: Array<{
-    url: string;
-    status: "success" | "error" | "pending";
-    message?: string;
-    stylusVersion?: string;
-  }>;
-  createdAt: string;
-  updatedAt: string;
-  completedAt?: string;
+interface BatchSource {
+  url: string;
+  category: string;
+  subcategory: string;
 }
 
 // Generate job ID
@@ -52,7 +35,7 @@ function verifyAuth(request: NextRequest, authSecret: string): boolean {
 
 /**
  * GET /api/admin/ingest/batch?jobId=xxx
- * Get job status
+ * Get job status or list all jobs
  */
 export async function GET(request: NextRequest) {
   try {
@@ -66,29 +49,53 @@ export async function GET(request: NextRequest) {
     const jobId = searchParams.get("jobId");
 
     if (!jobId) {
-      // List recent jobs
-      const jobs: BatchJob[] = [];
-      const list = await env.KV.list({ prefix: BATCH_JOB_PREFIX, limit: 10 });
+      // List recent jobs from KV
+      const jobs: unknown[] = [];
+      const list = await env.KV.list({ prefix: BATCH_JOB_PREFIX, limit: 20 });
 
       for (const key of list.keys) {
-        const job = await env.KV.get(key.name, "json") as BatchJob | null;
+        const job = await env.KV.get(key.name, "json");
         if (job) jobs.push(job);
       }
 
       // Sort by createdAt descending
-      jobs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      jobs.sort((a, b) => {
+        const aJob = a as { createdAt?: string };
+        const bJob = b as { createdAt?: string };
+        return new Date(bJob.createdAt || 0).getTime() - new Date(aJob.createdAt || 0).getTime();
+      });
 
       return NextResponse.json({ status: "ok", jobs });
     }
 
-    // Get specific job
-    const job = await env.KV.get(`${BATCH_JOB_PREFIX}${jobId}`, "json") as BatchJob | null;
+    // Get specific job from DO
+    if (!env.BATCH_JOB) {
+      // Fallback to KV if DO not available
+      const job = await env.KV.get(`${BATCH_JOB_PREFIX}${jobId}`, "json");
+      if (!job) {
+        return NextResponse.json({ error: "Job not found" }, { status: 404 });
+      }
+      return NextResponse.json({ status: "ok", job });
+    }
 
-    if (!job) {
+    const doId = env.BATCH_JOB.idFromName(jobId);
+    const stub = env.BATCH_JOB.get(doId);
+
+    const response = await stub.fetch(
+      new Request("http://do/status", { method: "GET" })
+    );
+
+    if (!response.ok) {
+      // Try KV as fallback
+      const job = await env.KV.get(`${BATCH_JOB_PREFIX}${jobId}`, "json");
+      if (job) {
+        return NextResponse.json({ status: "ok", job });
+      }
       return NextResponse.json({ error: "Job not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ status: "ok", job });
+    const data = await response.json() as { status: string; job?: unknown };
+    return NextResponse.json(data);
   } catch (error) {
     console.error("Batch job status error:", error);
     return NextResponse.json(
@@ -105,7 +112,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { env, ctx } = getCloudflareContext();
+    const { env } = getCloudflareContext();
 
     if (!verifyAuth(request, env.AUTH_SECRET)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -126,44 +133,51 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create job
+    // Check if BATCH_JOB DO is available
+    if (!env.BATCH_JOB) {
+      return NextResponse.json(
+        { error: "Batch processing not available (BATCH_JOB binding missing)" },
+        { status: 503 }
+      );
+    }
+
+    // Generate job ID
     const jobId = generateJobId();
-    const now = new Date().toISOString();
 
-    const job: BatchJob = {
-      id: jobId,
-      status: "pending",
-      sources: body.sources.map((s) => ({
-        url: s.url,
-        category: s.category,
-        subcategory: s.subcategory || "",
-      })),
-      progress: {
-        current: 0,
-        total: body.sources.length,
-        succeeded: 0,
-        failed: 0,
-      },
-      results: body.sources.map((s) => ({
-        url: s.url,
-        status: "pending" as const,
-      })),
-      createdAt: now,
-      updatedAt: now,
-    };
+    // Normalize sources
+    const sources: BatchSource[] = body.sources.map((s) => ({
+      url: s.url,
+      category: s.category,
+      subcategory: s.subcategory || "",
+    }));
 
-    // Save job to KV
-    await env.KV.put(`${BATCH_JOB_PREFIX}${jobId}`, JSON.stringify(job), {
-      expirationTtl: 86400 * 7, // 7 days
-    });
+    // Create DO instance for this job
+    const doId = env.BATCH_JOB.idFromName(jobId);
+    const stub = env.BATCH_JOB.get(doId);
 
-    // Process in background using waitUntil
-    ctx.waitUntil(processJobInBackground(env, jobId));
+    // Start the job
+    const response = await stub.fetch(
+      new Request("http://do/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId, sources }),
+      })
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      return NextResponse.json(
+        { error: `Failed to start job: ${error}` },
+        { status: 500 }
+      );
+    }
+
+    const result = await response.json() as { status: string; jobId: string; message: string };
 
     return NextResponse.json({
       status: "ok",
-      jobId,
-      message: `Started batch ingestion of ${body.sources.length} sources`,
+      jobId: result.jobId,
+      message: result.message,
     });
   } catch (error) {
     console.error("Batch job start error:", error);
@@ -175,148 +189,62 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Process job in background
+ * PUT /api/admin/ingest/batch?jobId=xxx&action=pause|resume
+ * Pause or resume a job
  */
-async function processJobInBackground(env: CloudflareEnv, jobId: string): Promise<void> {
-  const jobKey = `${BATCH_JOB_PREFIX}${jobId}`;
-
+export async function PUT(request: NextRequest) {
   try {
-    // Load job
-    const job = await env.KV.get(jobKey, "json") as BatchJob | null;
-    if (!job) return;
+    const { env } = getCloudflareContext();
 
-    // Update status to running
-    job.status = "running";
-    job.updatedAt = new Date().toISOString();
-    await env.KV.put(jobKey, JSON.stringify(job));
-
-    // Check if container is available
-    const hasContainer = !!env.SCRAPER_CONTAINER;
-
-    // Process each source
-    for (let i = 0; i < job.sources.length; i++) {
-      const source = job.sources[i];
-
-      try {
-        let result: {
-          status?: string;
-          chunks?: number;
-          uploaded?: number;
-          stylusVersion?: string;
-          error?: string;
-          message?: string;
-        };
-
-        if (hasContainer) {
-          // Use a single shared container instance (not one per URL)
-          // This prevents hitting max_instances limit
-          const containerId = env.SCRAPER_CONTAINER.idFromName("shared-scraper");
-          const container = env.SCRAPER_CONTAINER.get(containerId);
-
-          const response = await container.fetch(
-            new Request("http://container/ingest", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                url: source.url,
-                category: source.category,
-                subcategory: source.subcategory,
-              }),
-            })
-          );
-
-          // Check if container returned an error status
-          if (!response.ok) {
-            const errorText = await response.text();
-            result = {
-              status: "error",
-              error: `Container HTTP ${response.status}: ${errorText.slice(0, 200)}`,
-            };
-          } else {
-            result = await response.json() as typeof result;
-          }
-        } else {
-          // No container - mark source as pending for CLI processing
-          // Update the source status in KV via internal fetch
-          try {
-            await fetch("https://arbbuilder.swmengappdev.workers.dev/api/admin/sources", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Admin-Secret": env.AUTH_SECRET,
-              },
-              body: JSON.stringify({
-                url: source.url,
-                category: source.category,
-                subcategory: source.subcategory,
-                status: "pending",
-              }),
-            });
-          } catch {
-            // Ignore fetch errors
-          }
-
-          result = {
-            status: "queued",
-            message: "Marked as pending - run CLI to process",
-          };
-        }
-
-        // Update result
-        job.results[i] = {
-          url: source.url,
-          status: result.status === "success" || result.status === "partial" || result.status === "queued" ? "success" : "error",
-          message: result.status === "success"
-            ? `${result.chunks} chunks, ${result.uploaded} uploaded`
-            : result.error || result.message || "Unknown error",
-          stylusVersion: result.stylusVersion,
-        };
-
-        if (result.status === "success" || result.status === "partial" || result.status === "queued") {
-          job.progress.succeeded++;
-        } else {
-          job.progress.failed++;
-        }
-      } catch (err) {
-        job.results[i] = {
-          url: source.url,
-          status: "error",
-          message: `Error: ${err}`,
-        };
-        job.progress.failed++;
-      }
-
-      // Update progress
-      job.progress.current = i + 1;
-      job.updatedAt = new Date().toISOString();
-      await env.KV.put(jobKey, JSON.stringify(job));
-
-      // Small delay between sources to avoid overwhelming
-      if (i < job.sources.length - 1) {
-        await new Promise((r) => setTimeout(r, 1000));
-      }
+    if (!verifyAuth(request, env.AUTH_SECRET)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Mark as completed
-    job.status = "completed";
-    job.completedAt = new Date().toISOString();
-    job.updatedAt = job.completedAt;
-    await env.KV.put(jobKey, JSON.stringify(job));
+    const { searchParams } = new URL(request.url);
+    const jobId = searchParams.get("jobId");
+    const action = searchParams.get("action");
 
+    if (!jobId) {
+      return NextResponse.json({ error: "jobId is required" }, { status: 400 });
+    }
+
+    if (!action || !["pause", "resume"].includes(action)) {
+      return NextResponse.json(
+        { error: "action must be 'pause' or 'resume'" },
+        { status: 400 }
+      );
+    }
+
+    if (!env.BATCH_JOB) {
+      return NextResponse.json(
+        { error: "Batch processing not available" },
+        { status: 503 }
+      );
+    }
+
+    const doId = env.BATCH_JOB.idFromName(jobId);
+    const stub = env.BATCH_JOB.get(doId);
+
+    const response = await stub.fetch(
+      new Request(`http://do/${action}`, { method: "POST" })
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      return NextResponse.json(
+        { error: `Failed to ${action} job: ${error}` },
+        { status: 500 }
+      );
+    }
+
+    const result = await response.json() as { status: string; message: string };
+    return NextResponse.json(result);
   } catch (error) {
-    console.error("Background job error:", error);
-
-    // Mark as failed
-    try {
-      const job = await env.KV.get(jobKey, "json") as BatchJob | null;
-      if (job) {
-        job.status = "failed";
-        job.updatedAt = new Date().toISOString();
-        await env.KV.put(jobKey, JSON.stringify(job));
-      }
-    } catch {
-      // Ignore errors when updating failed status
-    }
+    console.error("Batch job update error:", error);
+    return NextResponse.json(
+      { error: `Failed to update job: ${error}` },
+      { status: 500 }
+    );
   }
 }
 
@@ -339,7 +267,23 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "jobId is required" }, { status: 400 });
     }
 
+    // Delete from KV
     await env.KV.delete(`${BATCH_JOB_PREFIX}${jobId}`);
+
+    // Delete from DO if available
+    if (env.BATCH_JOB) {
+      try {
+        const doId = env.BATCH_JOB.idFromName(jobId);
+        const stub = env.BATCH_JOB.get(doId);
+
+        await stub.fetch(
+          new Request("http://do/delete", { method: "DELETE" })
+        );
+      } catch (e) {
+        // Ignore DO deletion errors (may not exist)
+        console.log("DO delete error (may be expected):", e);
+      }
+    }
 
     return NextResponse.json({ status: "ok", message: "Job deleted" });
   } catch (error) {

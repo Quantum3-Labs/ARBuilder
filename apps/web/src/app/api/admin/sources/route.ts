@@ -140,10 +140,13 @@ export async function GET(request: NextRequest) {
       return a.url.localeCompare(b.url);
     });
 
-    // Generate statistics
+    // Generate statistics - calculate totalChunks from actual data (not stored counter)
+    const allSources = Object.values(registry.sources);
+    const actualTotalChunks = allSources.reduce((sum, s) => sum + (s.chunkCount || 0), 0);
+
     const stats = {
-      totalSources: Object.keys(registry.sources).length,
-      totalChunks: registry.totalChunks,
+      totalSources: allSources.length,
+      totalChunks: actualTotalChunks,  // Use calculated sum, not stored counter
       lastSync: registry.lastSync,
       byCategory: {} as Record<string, number>,
       byStatus: {} as Record<string, number>,
@@ -152,7 +155,7 @@ export async function GET(request: NextRequest) {
       deprecatedCount: 0,
     };
 
-    for (const source of Object.values(registry.sources)) {
+    for (const source of allSources) {
       stats.byCategory[source.category] = (stats.byCategory[source.category] || 0) + 1;
       stats.byStatus[source.status] = (stats.byStatus[source.status] || 0) + 1;
       stats.byType[source.sourceType] = (stats.byType[source.sourceType] || 0) + 1;
@@ -162,6 +165,12 @@ export async function GET(request: NextRequest) {
       if (source.isVersionDeprecated) {
         stats.deprecatedCount++;
       }
+    }
+
+    // Fix corrupted totalChunks counter in registry if needed
+    if (registry.totalChunks !== actualTotalChunks) {
+      registry.totalChunks = actualTotalChunks;
+      await saveRegistry(env.KV, registry);
     }
 
     return NextResponse.json({

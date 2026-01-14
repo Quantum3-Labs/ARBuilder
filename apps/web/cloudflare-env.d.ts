@@ -30,6 +30,12 @@ declare namespace Cloudflare {
     WORKER_SELF_REFERENCE: Fetcher;
     IMAGES: ImagesBinding;
     ASSETS: Fetcher;
+
+    // Durable Object for Python scraper container
+    SCRAPER_CONTAINER: DurableObjectNamespace;
+
+    // Durable Object for batch job processing
+    BATCH_JOB: DurableObjectNamespace;
   }
 }
 

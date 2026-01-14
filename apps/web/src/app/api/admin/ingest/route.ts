@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
 
     // Get a shared container instance (not one per URL)
     // This prevents hitting max_instances limit
-    const containerId = env.SCRAPER_CONTAINER.idFromName("shared-scraper");
+    const containerId = env.SCRAPER_CONTAINER.idFromName("shared-scraper-v6");
     const container = env.SCRAPER_CONTAINER.get(containerId);
 
     // Send ingest request to the container
@@ -76,6 +76,7 @@ export async function POST(request: NextRequest) {
           url: body.url,
           category: body.category || "stylus",
           subcategory: body.subcategory || "",
+          auth_secret: env.AUTH_SECRET,
         }),
       })
     );
@@ -149,7 +150,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get the shared container instance for health check
-    const containerId = env.SCRAPER_CONTAINER.idFromName("shared-scraper");
+    const containerId = env.SCRAPER_CONTAINER.idFromName("shared-scraper-v6");
     const container = env.SCRAPER_CONTAINER.get(containerId);
 
     try {

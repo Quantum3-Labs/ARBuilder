@@ -56,21 +56,25 @@
 	],
 
 	// Cloudflare Container for Python scraper (re-ingestion)
-	// Use existing container image from registry (built previously)
+	// v12: Added Stylus SDK version detection for documentation sources
 	"containers": [
 		{
 			"class_name": "ScraperContainer",
-			"image": "registry.cloudflare.com/1e0170aaabc90ecf5f466128d1f0466a/arbbuilder-scrapercontainer:b19ed783",
+			"image": "registry.cloudflare.com/1e0170aaabc90ecf5f466128d1f0466a/arbbuilder-scraper-lite:v12",
 			"max_instances": 3
 		}
 	],
 
-	// Durable Objects bindings (includes container)
+	// Durable Objects bindings (includes container and batch processor)
 	"durable_objects": {
 		"bindings": [
 			{
 				"name": "SCRAPER_CONTAINER",
 				"class_name": "ScraperContainer"
+			},
+			{
+				"name": "BATCH_JOB",
+				"class_name": "BatchJobDO"
 			}
 		]
 	},
@@ -80,6 +84,10 @@
 		{
 			"tag": "v1",
 			"new_sqlite_classes": ["ScraperContainer"]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": ["BatchJobDO"]
 		}
 	],
 

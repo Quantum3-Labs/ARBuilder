@@ -400,7 +400,8 @@ def ingest():
     {
         "url": "https://github.com/...",
         "category": "stylus",
-        "subcategory": "community_projects"
+        "subcategory": "community_projects",
+        "auth_secret": "..." (optional, overrides env var)
     }
     """
     data = request.get_json()
@@ -411,16 +412,18 @@ def ingest():
     url = data.get("url")
     category = data.get("category", "stylus")
     subcategory = data.get("subcategory", "")
+    # Accept auth_secret from request body (preferred) or fall back to env var
+    auth_secret = data.get("auth_secret") or AUTH_SECRET
 
     if not url:
         return jsonify({"error": "url is required"}), 400
 
     # Check auth
-    if not AUTH_SECRET:
-        return jsonify({"error": "AUTH_SECRET not configured"}), 500
+    if not auth_secret:
+        return jsonify({"error": "AUTH_SECRET not configured (pass auth_secret in request or set AUTH_SECRET env var)"}), 500
 
     # Process the source
-    processor = SourceProcessor(MIGRATE_URL, AUTH_SECRET)
+    processor = SourceProcessor(MIGRATE_URL, auth_secret)
     result = asyncio.run(processor.process_source(url, category, subcategory))
 
     status_code = 200 if result["status"] == "success" else 500
