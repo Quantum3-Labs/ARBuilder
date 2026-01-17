@@ -474,15 +474,26 @@ echo '{"method": "tools/call", "params": {"name": "generate_bridge_code", "argum
 ### Running Tests
 
 ```bash
-# Run all tests
-pytest tests/
+# Run all unit tests
+pytest tests/ -m "not integration"
 
 # Run retrieval quality tests
 pytest tests/test_retrieval.py -v
 
 # Run MCP tool tests (requires tool implementations)
 pytest tests/mcp_tools/ -v
+
+# Run template selection and validation tests
+pytest tests/test_templates.py -v -m "not integration"
+
+# Run template compilation tests (requires Rust toolchain + cargo-stylus)
+pytest tests/test_templates.py -v -m integration
 ```
+
+**Template compilation tests require:**
+- Rust toolchain 1.87.0: `rustup install 1.87.0`
+- WASM target: `rustup target add wasm32-unknown-unknown --toolchain 1.87.0`
+- cargo-stylus: `cargo install --locked cargo-stylus`
 
 ### Running Benchmarks
 

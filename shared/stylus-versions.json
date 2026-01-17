@@ -5,8 +5,8 @@
   "versions": {
     "0.9.0": {
       "status": "main",
-      "alloy_primitives": "0.9.2",
-      "alloy_sol_types": "0.9.2",
+      "alloy_primitives": "0.8.20",
+      "alloy_sol_types": "0.8.20",
       "breaking_changes": [
         "Updated to alloy 0.9.x ecosystem"
       ],

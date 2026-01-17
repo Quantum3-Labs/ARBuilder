@@ -30,6 +30,7 @@ export const COUNTER_TEMPLATE: StylusTemplate = {
   features: ["storage", "public functions", "payable", "tests"],
   libRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
+#[macro_use]
 extern crate alloc;
 
 use alloc::vec::Vec;
@@ -104,10 +105,9 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 stylus-sdk = "0.9.0"
-alloy-primitives = "0.8.20"
-alloy-sol-types = "0.8.20"
-mini-alloc = "0.7.0"
-
+alloy-primitives = "=0.8.20"
+alloy-sol-types = "=0.8.20"
+ruint = "=1.15.0"
 [dev-dependencies]
 tokio = { version = "1.21.0", features = ["full"] }
 ethers = "2.0"
@@ -116,6 +116,7 @@ ethers = "2.0"
 default = ["mini-alloc"]
 export-abi = ["stylus-sdk/export-abi"]
 debug = ["stylus-sdk/debug"]
+mini-alloc = ["stylus-sdk/mini-alloc"]
 
 [lib]
 crate-type = ["lib", "cdylib"]
@@ -140,6 +141,7 @@ export const VENDING_MACHINE_TEMPLATE: StylusTemplate = {
   features: ["mappings", "timestamps", "rate limiting", "tests"],
   libRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
+#[macro_use]
 extern crate alloc;
 
 use alloc::vec::Vec;
@@ -164,9 +166,9 @@ impl VendingMachine {
         let current_time = U256::from(self.vm().block_timestamp());
 
         if current_time >= min_claim_time {
-            // Update balance
-            let mut balance = self.balances.setter(user);
-            balance.set(balance.get() + U256::from(1));
+            // Update balance (get current first to avoid borrow conflict)
+            let current_balance = self.balances.get(user);
+            self.balances.setter(user).set(current_balance + U256::from(1));
 
             // Update last claim time
             self.last_claim_time.setter(user).set(current_time);
@@ -235,10 +237,9 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 stylus-sdk = "0.9.0"
-alloy-primitives = "0.8.20"
-alloy-sol-types = "0.8.20"
-mini-alloc = "0.7.0"
-
+alloy-primitives = "=0.8.20"
+alloy-sol-types = "=0.8.20"
+ruint = "=1.15.0"
 [dev-dependencies]
 tokio = { version = "1.21.0", features = ["full"] }
 ethers = "2.0"
@@ -247,6 +248,7 @@ ethers = "2.0"
 default = ["mini-alloc"]
 export-abi = ["stylus-sdk/export-abi"]
 debug = ["stylus-sdk/debug"]
+mini-alloc = ["stylus-sdk/mini-alloc"]
 
 [lib]
 crate-type = ["lib", "cdylib"]
@@ -271,12 +273,13 @@ export const SIMPLE_ERC20_TEMPLATE: StylusTemplate = {
   features: ["ERC20", "mappings", "events", "error handling"],
   libRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
+#[macro_use]
 extern crate alloc;
 
 use alloc::{string::String, vec::Vec};
 use stylus_sdk::{
-    alloy_primitives::{Address, U256},
-    alloy_sol_types::sol,
+    alloy_primitives::{Address, U8, U256},
+    alloy_sol_types::{sol, SolError},
     evm, msg,
     prelude::*,
 };
@@ -317,7 +320,7 @@ impl Erc20 {
     ) {
         self.name.set_str(&name);
         self.symbol.set_str(&symbol);
-        self.decimals.set(decimals.into());
+        self.decimals.set(U8::from(decimals));
         self.total_supply.set(initial_supply);
         self.balances.setter(msg::sender()).set(initial_supply);
     }
@@ -383,7 +386,7 @@ impl Erc20 {
                 have: current_allowance,
                 want: value,
             }
-            .encode());
+            .abi_encode());
         }
 
         self.allowances
@@ -404,7 +407,7 @@ impl Erc20 {
                 have: from_balance,
                 want: value,
             }
-            .encode());
+            .abi_encode());
         }
 
         self.balances.setter(from).set(from_balance - value);
@@ -452,10 +455,9 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 stylus-sdk = "0.9.0"
-alloy-primitives = "0.8.20"
-alloy-sol-types = "0.8.20"
-mini-alloc = "0.7.0"
-
+alloy-primitives = "=0.8.20"
+alloy-sol-types = "=0.8.20"
+ruint = "=1.15.0"
 [dev-dependencies]
 tokio = { version = "1.21.0", features = ["full"] }
 ethers = "2.0"
@@ -464,6 +466,7 @@ ethers = "2.0"
 default = ["mini-alloc"]
 export-abi = ["stylus-sdk/export-abi"]
 debug = ["stylus-sdk/debug"]
+mini-alloc = ["stylus-sdk/mini-alloc"]
 
 [lib]
 crate-type = ["lib", "cdylib"]
@@ -487,12 +490,13 @@ export const ACCESS_CONTROL_TEMPLATE: StylusTemplate = {
   features: ["access control", "ownership", "modifiers"],
   libRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
+#[macro_use]
 extern crate alloc;
 
 use alloc::vec::Vec;
 use stylus_sdk::{
-    alloy_primitives::{Address, U256},
-    alloy_sol_types::sol,
+    alloy_primitives::{Address, U8, U256},
+    alloy_sol_types::{sol, SolError},
     evm, msg,
     prelude::*,
 };
@@ -549,7 +553,7 @@ impl Ownable {
         self.only_owner()?;
 
         if new_owner == Address::ZERO {
-            return Err(ZeroAddress {}.encode());
+            return Err(ZeroAddress {}.abi_encode());
         }
 
         let previous_owner = self.owner.get();
@@ -578,7 +582,7 @@ impl Ownable {
         let caller = msg::sender();
         let owner = self.owner.get();
         if caller != owner {
-            return Err(NotOwner { caller, owner }.encode());
+            return Err(NotOwner { caller, owner }.abi_encode());
         }
         Ok(())
     }
@@ -624,10 +628,9 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 stylus-sdk = "0.9.0"
-alloy-primitives = "0.8.20"
-alloy-sol-types = "0.8.20"
-mini-alloc = "0.7.0"
-
+alloy-primitives = "=0.8.20"
+alloy-sol-types = "=0.8.20"
+ruint = "=1.15.0"
 [dev-dependencies]
 tokio = { version = "1.21.0", features = ["full"] }
 ethers = "2.0"
@@ -636,6 +639,7 @@ ethers = "2.0"
 default = ["mini-alloc"]
 export-abi = ["stylus-sdk/export-abi"]
 debug = ["stylus-sdk/debug"]
+mini-alloc = ["stylus-sdk/mini-alloc"]
 
 [lib]
 crate-type = ["lib", "cdylib"]
