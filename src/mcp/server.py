@@ -486,6 +486,11 @@ class MCPServer:
             try:
                 request = json.loads(line.strip())
                 request_id = request.get("id")
+
+                # Per JSON-RPC, notifications omit id and should not get a response.
+                if request_id is None:
+                    continue
+
                 result = self.handle_request(request)
 
                 # Wrap response in JSON-RPC 2.0 format
