@@ -480,7 +480,7 @@ class MCPServer:
     def run_stdio(self):
         """Run server in stdio mode for MCP."""
         print("ARBuilder MCP Server started", file=sys.stderr)
-        print("Capabilities: 5 tools, 5 resources, 5 prompts", file=sys.stderr)
+        print(f"Capabilities: {len(self.tools)} tools, {len(self.resources)} resources, {len(self.prompts)} prompts", file=sys.stderr)
 
         for line in sys.stdin:
             try:

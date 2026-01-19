@@ -72,7 +72,7 @@ ArbBuilder/
 ├── data/
 │   ├── raw/              # Raw scraped data (73 pages + 17 repos)
 │   ├── processed/        # Pre-processed chunks (8,692 chunks)
-│   └── chroma_db/        # ChromaDB vector store (generated locally)
+│   └── chroma_db/        # ChromaDB vector store (generated locally, not in repo)
 ├── environment.yml       # Conda environment specification
 ├── pyproject.toml        # Project metadata and dependencies
 └── .env                  # Environment variables (not committed)
@@ -113,11 +113,26 @@ The repository includes all data needed:
 - **Raw data** (`data/raw/`): 73 markdown pages + 17 GitHub repos
 - **Processed chunks** (`data/processed/`): 8,692 chunks ready for embedding
 
-To generate the vector database:
+**Important:** The ChromaDB vector database must be generated locally (it's not included in the repo due to binary compatibility issues across systems).
 
 ```bash
-# Ingest processed chunks into ChromaDB
+# Generate the vector database (required before using MCP tools)
 python -m src.embeddings.vectordb
+```
+
+### 4. Verify MCP Server
+
+Test that the MCP server starts correctly:
+
+```bash
+# Run the MCP server directly (press Ctrl+C to exit)
+python -m src.mcp.server
+```
+
+You should see:
+```
+ARBuilder MCP Server started
+Capabilities: 8 tools, 5 resources, 5 prompts
 ```
 
 #### Optional: Refresh Data
