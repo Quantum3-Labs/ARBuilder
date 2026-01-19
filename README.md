@@ -27,6 +27,46 @@ ARBuilder uses a **Retrieval-Augmented Generation (RAG)** pipeline to provide co
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## TL;DR - Quick Start
+
+**Option 1: Hosted Service (Easiest)**
+```bash
+# No local setup needed - just configure your IDE
+# Add to ~/.cursor/mcp.json:
+{
+  "mcpServers": {
+    "arbbuilder": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://arbbuilder.whymelabs.com/mcp",
+               "--header", "Authorization: Bearer YOUR_API_KEY"]
+    }
+  }
+}
+```
+Get your API key at [arbbuilder.whymelabs.com](https://arbbuilder.whymelabs.com)
+
+**Option 2: Self-Hosted**
+```bash
+# 1. Clone and setup
+git clone https://github.com/Quantum3-Labs/ARBuilder.git
+cd ARBuilder
+conda env create -f environment.yml
+conda activate arbbuilder
+
+# 2. Configure API key
+cp .env.example .env
+# Edit .env and add your OPENROUTER_API_KEY
+
+# 3. Generate vector database (required)
+python -m src.embeddings.vectordb
+
+# 4. Test MCP server
+python -m src.mcp.server
+# Should show: "Capabilities: 8 tools, 5 resources, 5 prompts"
+
+# 5. Configure Cursor IDE (~/.cursor/mcp.json) - see Setup section below
+```
+
 ## Tutorial Video
 
 Watch the tutorial to see ARBuilder in action:
@@ -53,7 +93,7 @@ ArbBuilder/
 │   │   └── reranker.py   # BM25, LLM, and hybrid reranking
 │   ├── mcp/              # MCP server for IDE integration
 │   │   ├── server.py     # MCP server (tools, resources, prompts)
-│   │   ├── tools/        # MCP tool implementations (5 tools)
+│   │   ├── tools/        # MCP tool implementations (8 tools)
 │   │   ├── resources/    # Static knowledge (CLI, workflows, networks)
 │   │   └── prompts/      # Workflow templates
 │   └── rag/              # RAG pipeline (TBD)
@@ -86,10 +126,12 @@ ArbBuilder/
 # Create and activate the environment
 conda env create -f environment.yml
 conda activate arbbuilder
-
-# Install playwright browsers for web scraping
-playwright install chromium
 ```
+
+> **Note:** If you plan to refresh the knowledge base by scraping (optional), also install playwright:
+> ```bash
+> playwright install chromium
+> ```
 
 ### 2. Configure Environment Variables
 
@@ -481,7 +523,7 @@ Cross-chain bridging and messaging support:
 
 ```bash
 # Example: Generate ETH deposit code
-echo '{"method": "tools/call", "params": {"name": "generate_bridge_code", "arguments": {"bridge_type": "eth_deposit", "amount": "0.5"}}}' | uv run python -m src.mcp.server
+echo '{"method": "tools/call", "id": 1, "params": {"name": "generate_bridge_code", "arguments": {"bridge_type": "eth_deposit", "amount": "0.5"}}}' | python -m src.mcp.server
 ```
 
 ## Development
@@ -601,6 +643,18 @@ python -m scraper.run --max-concurrent 1
 ```
 
 ### ChromaDB Issues
+
+**"Collection is empty" error**
+
+If you see `collection is empty` when using `get_stylus_context` tool:
+```bash
+# The vector database must be generated locally (it's not included in the repo)
+# Run this command to populate the database:
+python -m src.embeddings.vectordb
+
+# If that doesn't work, try resetting first:
+python -m src.embeddings.vectordb --reset
+```
 
 **Import errors with opentelemetry**
 
