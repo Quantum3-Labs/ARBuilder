@@ -4,6 +4,12 @@
  * Uses DeepSeek for code generation and Gemini for Q&A.
  */
 
+import {
+  getMainVersion,
+  getVersionPatterns,
+  getAlloyPrimitivesVersion,
+} from "./stylusVersions";
+
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 export interface Message {
@@ -94,26 +100,56 @@ export async function chatCompletion(
 }
 
 /**
+ * Build version-aware system prompt for code generation.
+ */
+function buildCodeGenSystemPrompt(targetVersion: string): string {
+  const patterns = getVersionPatterns(targetVersion);
+  const alloyVersion = getAlloyPrimitivesVersion(targetVersion);
+  const mainAttr = patterns.attributes[0] || "#[public]";
+  const errorHandling = patterns.error_handling;
+  const cfgAttr = patterns.cfg_attr;
+
+  return `You are an expert Stylus (Rust) smart contract developer for Arbitrum.
+You write clean, secure, and gas-efficient code following best practices.
+Use the provided context from the Stylus documentation and examples.
+
+Target SDK Version: stylus-sdk ${targetVersion}
+
+Key patterns for v${targetVersion}:
+- Use stylus-sdk ${targetVersion} with alloy-primitives ${alloyVersion}
+- Include ${cfgAttr}
+- Use sol_storage! macro for storage
+- Use ${mainAttr} for external functions
+- Handle errors with ${errorHandling}
+- Follow Rust naming conventions (snake_case for functions, PascalCase for types)
+
+Security best practices:
+- Check for overflows using checked_add/checked_sub
+- Validate all inputs
+- Use proper access control`;
+}
+
+/**
  * Generate Stylus code using DeepSeek.
+ *
+ * @param apiKey - OpenRouter API key
+ * @param prompt - Code generation prompt
+ * @param context - RAG context from documentation
+ * @param targetVersion - Target stylus-sdk version (default: main version)
  */
 export async function generateCode(
   apiKey: string,
   prompt: string,
-  context: string
+  context: string,
+  targetVersion?: string
 ): Promise<ChatCompletionResponse> {
+  const version = targetVersion || getMainVersion();
+  const systemPrompt = buildCodeGenSystemPrompt(version);
+
   const messages: Message[] = [
     {
       role: "system",
-      content: `You are an expert Stylus (Rust) smart contract developer for Arbitrum.
-You write clean, secure, and gas-efficient code following best practices.
-Use the provided context from the Stylus documentation and examples.
-
-Important:
-- Use stylus-sdk 0.8.4 with alloy-primitives 0.8.14
-- Include #![cfg_attr(not(feature = "export-abi"), no_main)]
-- Use sol_storage! macro for storage
-- Use #[public] for external functions
-- Handle errors with Result<T, Vec<u8>>`,
+      content: systemPrompt,
     },
     {
       role: "user",

@@ -11,6 +11,10 @@ export interface SearchResult {
   source: string;
   contentType: string;
   score: number;
+  /** Stylus SDK version for this content (if available). */
+  stylusVersion?: string;
+  /** Whether this version is deprecated (below minimum). */
+  isVersionDeprecated?: boolean;
 }
 
 export interface VectorizeMetadata {
@@ -18,6 +22,8 @@ export interface VectorizeMetadata {
   source: string;
   content_type: string;
   chunk_index?: number;
+  stylus_version?: string;
+  is_version_deprecated?: boolean;
 }
 
 export interface SearchOptions {
@@ -71,6 +77,8 @@ export async function searchVectorize(
       source: String(metadata?.source ?? "unknown"),
       contentType: String(metadata?.content_type ?? "documentation"),
       score: match.score,
+      stylusVersion: metadata?.stylus_version ? String(metadata.stylus_version) : undefined,
+      isVersionDeprecated: metadata?.is_version_deprecated === true,
     };
   });
 }

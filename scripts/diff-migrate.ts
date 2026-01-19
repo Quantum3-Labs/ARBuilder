@@ -42,10 +42,12 @@ interface ProcessedChunk {
   category: string;
   subcategory: string;
   scraped_at: string;
-  // New fields
+  // SDK version tracking fields
   content_hash?: string;
   sdk_version?: string;
+  stylus_version?: string; // Explicit version field
   is_current?: boolean;
+  is_version_deprecated?: boolean;
   deprecated_patterns?: string[];
 }
 
@@ -54,6 +56,8 @@ interface ChunkState {
   id: string;
   contentHash: string;
   sdkVersion: string;
+  stylusVersion: string; // Explicit stylus version
+  isVersionDeprecated: boolean;
   migratedAt: string;
   sourceUrl: string; // Track source URL for filtering
 }
@@ -142,7 +146,7 @@ async function checkStatus(): Promise<{ vectorCount: number }> {
     throw new Error(`Status check failed: ${response.status}`);
   }
 
-  return response.json();
+  return response.json() as Promise<{ vectorCount: number }>;
 }
 
 // Upload a batch of chunks
@@ -165,6 +169,9 @@ async function uploadBatch(
         url: c.url,
         title: c.title,
         category: c.category,
+        // Include SDK version metadata for version-aware search
+        stylus_version: c.stylus_version || c.sdk_version || "",
+        is_version_deprecated: c.is_version_deprecated || false,
       })),
     }),
   });
@@ -281,10 +288,13 @@ async function diffMigrate(forceFullRefresh: boolean, sourceUrl?: string | null)
       // Update state for successfully uploaded chunks
       for (const chunk of batch) {
         const contentHash = chunk.content_hash || computeHash(chunk.content);
+        const stylusVersion = chunk.stylus_version || chunk.sdk_version || "";
         newState.set(chunk.id, {
           id: chunk.id,
           contentHash,
-          sdkVersion: chunk.sdk_version || "",
+          sdkVersion: stylusVersion,
+          stylusVersion,
+          isVersionDeprecated: chunk.is_version_deprecated || false,
           migratedAt: new Date().toISOString(),
           sourceUrl: getChunkSourceUrl(chunk),
         });
@@ -316,6 +326,10 @@ async function diffMigrate(forceFullRefresh: boolean, sourceUrl?: string | null)
     success: totalSuccess,
     failed: totalFailed,
   });
+
+  // Sync source metadata to KV
+  console.log("\nSyncing source metadata to KV...");
+  await syncSourcestoKV(chunks);
 
   console.log(`\n\n${"=".repeat(60)}`);
   console.log("Migration Complete!");
@@ -353,6 +367,79 @@ const sourceFilter = getSourceArg();
 // Get source URL from a chunk
 function getChunkSourceUrl(chunk: ProcessedChunk): string {
   return chunk.repo_url || chunk.url || "";
+}
+
+// Source metadata for KV sync
+interface SourceMeta {
+  count: number;
+  category: string;
+  subcategory: string;
+  stylusVersion?: string;
+  isVersionDeprecated?: boolean;
+}
+
+// Sync source metadata to Cloudflare KV
+async function syncSourcestoKV(chunks: ProcessedChunk[]): Promise<void> {
+  // Count chunks per source and extract version info
+  const sourceCounts: Record<string, SourceMeta> = {};
+
+  for (const chunk of chunks) {
+    const sourceUrl = getChunkSourceUrl(chunk);
+    if (!sourceUrl) continue;
+
+    if (!sourceCounts[sourceUrl]) {
+      sourceCounts[sourceUrl] = {
+        count: 0,
+        category: chunk.category || "stylus",
+        subcategory: chunk.subcategory || "",
+      };
+    }
+    sourceCounts[sourceUrl].count++;
+
+    // Extract stylus version from chunk (GitHub repos have this from Cargo.toml)
+    const version = chunk.stylus_version || chunk.sdk_version;
+    if (version && !sourceCounts[sourceUrl].stylusVersion) {
+      sourceCounts[sourceUrl].stylusVersion = version;
+      sourceCounts[sourceUrl].isVersionDeprecated = chunk.is_version_deprecated || false;
+    }
+  }
+
+  console.log(`Syncing ${Object.keys(sourceCounts).length} sources to KV...`);
+
+  // Count sources with version info
+  const withVersion = Object.values(sourceCounts).filter((s) => s.stylusVersion).length;
+  console.log(`  - ${withVersion} sources have SDK version info`);
+
+  // Update each source in KV
+  let updated = 0;
+  for (const [url, data] of Object.entries(sourceCounts)) {
+    try {
+      const response = await fetch(`${MIGRATE_URL}/api/admin/sources`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Secret": AUTH_SECRET,
+        },
+        body: JSON.stringify({
+          url,
+          category: data.category,
+          subcategory: data.subcategory,
+          status: "active",
+          chunkCount: data.count,
+          stylusVersion: data.stylusVersion,
+          isVersionDeprecated: data.isVersionDeprecated,
+        }),
+      });
+
+      if (response.ok) {
+        updated++;
+      }
+    } catch (err) {
+      console.error(`Failed to sync source ${url}: ${err}`);
+    }
+  }
+
+  console.log(`Synced ${updated}/${Object.keys(sourceCounts).length} sources to KV`);
 }
 
 // Clear existing vectors using IDs from state file

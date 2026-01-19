@@ -37,7 +37,7 @@ from .prompts import PROMPTS
 TOOL_DEFINITIONS = [
     {
         "name": "get_stylus_context",
-        "description": "Retrieve relevant Stylus documentation and code examples from the knowledge base. Use this to find examples, patterns, and documentation for Stylus development.",
+        "description": "Retrieve relevant Stylus documentation and code examples from the knowledge base. Use this to find examples, patterns, and documentation for Stylus development. Supports version-aware search to prioritize results matching your SDK version.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -61,13 +61,17 @@ TOOL_DEFINITIONS = [
                     "description": "Whether to rerank results for relevance (default: true)",
                     "default": True,
                 },
+                "target_version": {
+                    "type": "string",
+                    "description": "Target stylus-sdk version to prioritize results for. Results matching this version are boosted.",
+                },
             },
             "required": ["query"],
         },
     },
     {
         "name": "generate_stylus_code",
-        "description": "Generate Stylus/Rust smart contract code based on requirements. Uses RAG context to provide relevant examples.",
+        "description": "Generate Stylus/Rust smart contract code based on requirements. Uses RAG context to provide relevant examples. Supports version-aware generation for different stylus-sdk versions.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -93,6 +97,15 @@ TOOL_DEFINITIONS = [
                     "type": "number",
                     "description": "Generation temperature 0-1 (default: 0.2)",
                     "default": 0.2,
+                },
+                "target_version": {
+                    "type": "string",
+                    "description": "Target stylus-sdk version (default: 0.9.0). Use this to generate code for a specific SDK version.",
+                    "default": "0.9.0",
+                },
+                "cargo_toml": {
+                    "type": "string",
+                    "description": "Optional Cargo.toml content for automatic SDK version detection. If provided, target_version is auto-detected from dependencies.",
                 },
             },
             "required": ["prompt"],

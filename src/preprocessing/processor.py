@@ -28,6 +28,17 @@ try:
 except ImportError:
     HAS_VERSION_EXTRACTOR = False
 
+# Import version manager for deprecation checking
+try:
+    from src.utils.version_manager import (
+        is_version_deprecated as check_version_deprecated,
+        get_main_version,
+        get_minimum_version,
+    )
+    HAS_VERSION_MANAGER = True
+except ImportError:
+    HAS_VERSION_MANAGER = False
+
 load_dotenv()
 
 console = Console()
@@ -242,6 +253,11 @@ class DataProcessor:
                     if repo_sdk_version and latest_sdk and HAS_VERSION_EXTRACTOR:
                         is_current = is_version_current(repo_sdk_version, latest_sdk)
 
+                    # Check if version is deprecated (below minimum)
+                    version_deprecated = False
+                    if repo_sdk_version and HAS_VERSION_MANAGER:
+                        version_deprecated = check_version_deprecated(repo_sdk_version)
+
                     # Metadata for code files
                     metadata = {
                         "source": "github",
@@ -251,9 +267,11 @@ class DataProcessor:
                         "extension": extension,
                         "category": category,
                         "subcategory": subcategory,
-                        # New metadata fields
+                        # SDK version tracking
                         "sdk_version": repo_sdk_version or "",
+                        "stylus_version": repo_sdk_version or "",  # Explicit field for clarity
                         "is_current": is_current,
+                        "is_version_deprecated": version_deprecated,
                         "deprecated_patterns": deprecated_patterns,
                         "content_hash": content_hash,
                         "scraped_at": datetime.utcnow().isoformat(),
@@ -340,6 +358,7 @@ class DataProcessor:
         by_language = {}
         by_sdk_version = {}
         deprecated_count = 0
+        deprecated_version_count = 0  # Chunks with deprecated SDK version
         current_count = 0
         outdated_count = 0
 
@@ -372,6 +391,20 @@ class DataProcessor:
                 if chunk.get("deprecated_patterns"):
                     deprecated_count += 1
 
+                # Count chunks with deprecated SDK version (below minimum)
+                if chunk.get("is_version_deprecated", False):
+                    deprecated_version_count += 1
+
+        # Get version config info
+        main_version = None
+        minimum_version = None
+        if HAS_VERSION_MANAGER:
+            try:
+                main_version = get_main_version()
+                minimum_version = get_minimum_version()
+            except Exception:
+                pass
+
         return {
             "total_chunks": len(chunks),
             "total_tokens": total_tokens,
@@ -381,9 +414,12 @@ class DataProcessor:
             "by_language": by_language,
             "by_sdk_version": by_sdk_version,
             "latest_sdk_version": self._latest_sdk_version,
+            "main_supported_version": main_version,
+            "minimum_supported_version": minimum_version,
             "current_chunks": current_count,
             "outdated_chunks": outdated_count,
             "deprecated_pattern_chunks": deprecated_count,
+            "deprecated_version_chunks": deprecated_version_count,
             "processed_at": datetime.utcnow().isoformat(),
         }
 
@@ -408,11 +444,17 @@ class DataProcessor:
                 console.print(f"  {lang}: {count:,}")
 
         # SDK version info
-        if stats.get("latest_sdk_version"):
+        if stats.get("latest_sdk_version") or stats.get("main_supported_version"):
             console.print(f"\n[bold]SDK Version Info:[/bold]")
-            console.print(f"  Latest stylus-sdk: {stats['latest_sdk_version']}")
+            if stats.get("main_supported_version"):
+                console.print(f"  Main supported: {stats['main_supported_version']}")
+            if stats.get("minimum_supported_version"):
+                console.print(f"  Minimum supported: {stats['minimum_supported_version']}")
+            if stats.get("latest_sdk_version"):
+                console.print(f"  Latest on crates.io: {stats['latest_sdk_version']}")
             console.print(f"  Current chunks: {stats.get('current_chunks', 0):,}")
             console.print(f"  Outdated chunks: {stats.get('outdated_chunks', 0):,}")
+            console.print(f"  Deprecated version chunks: {stats.get('deprecated_version_chunks', 0):,}")
             console.print(f"  With deprecated patterns: {stats.get('deprecated_pattern_chunks', 0):,}")
 
             if stats.get("by_sdk_version"):

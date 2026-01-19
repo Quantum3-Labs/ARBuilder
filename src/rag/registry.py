@@ -35,6 +35,10 @@ class Source:
     category: str
     subcategory: str = ""
 
+    # SDK version tracking (for Stylus sources)
+    stylus_version: Optional[str] = None  # e.g., "0.9.0"
+    is_version_deprecated: bool = False  # True if version < minimum
+
     # State tracking
     status: SourceStatus = SourceStatus.PENDING
     last_modified: Optional[str] = None  # From HTTP headers or git commit
@@ -261,6 +265,8 @@ class SourceRegistry:
         last_processed: Optional[str] = None,
         chunk_ids: Optional[list[str]] = None,
         last_error: Optional[str] = None,
+        stylus_version: Optional[str] = None,
+        is_version_deprecated: Optional[bool] = None,
     ) -> Optional[Source]:
         """Update source state after scraping/processing."""
         source = self.get_source(url_or_id)
@@ -293,6 +299,10 @@ class SourceRegistry:
         if last_error is not None:
             source.last_error = last_error
             source.error_count += 1
+        if stylus_version is not None:
+            source.stylus_version = stylus_version
+        if is_version_deprecated is not None:
+            source.is_version_deprecated = is_version_deprecated
 
         self.save()
         return source
@@ -302,6 +312,8 @@ class SourceRegistry:
         category: Optional[str] = None,
         source_type: Optional[SourceType] = None,
         status: Optional[SourceStatus] = None,
+        stylus_version: Optional[str] = None,
+        deprecated_only: bool = False,
     ) -> list[Source]:
         """List sources with optional filtering."""
         state = self.load()
@@ -314,6 +326,10 @@ class SourceRegistry:
             sources = [s for s in sources if s.source_type == source_type]
         if status:
             sources = [s for s in sources if s.status == status]
+        if stylus_version:
+            sources = [s for s in sources if s.stylus_version == stylus_version]
+        if deprecated_only:
+            sources = [s for s in sources if s.is_version_deprecated]
 
         return sources
 
@@ -325,14 +341,17 @@ class SourceRegistry:
         """
         Get sources that may need updating.
 
-        This includes pending sources and sources that haven't
-        been synced recently.
+        This includes pending sources, error sources (for retry),
+        and active sources that haven't been synced recently.
         """
         state = self.load()
 
         needs_update = []
         for source in state.sources.values():
             if source.status == SourceStatus.PENDING:
+                needs_update.append(source)
+            elif source.status == SourceStatus.ERROR:
+                # Error sources should be retried
                 needs_update.append(source)
             elif source.status == SourceStatus.ACTIVE:
                 # Active sources might need checking for updates
@@ -372,6 +391,8 @@ class SourceRegistry:
         by_category = {}
         by_type = {}
         by_status = {}
+        by_stylus_version = {}
+        deprecated_count = 0
 
         for source in state.sources.values():
             # By category
@@ -382,6 +403,14 @@ class SourceRegistry:
             # By status
             status_key = source.status.value
             by_status[status_key] = by_status.get(status_key, 0) + 1
+            # By stylus version
+            if source.stylus_version:
+                by_stylus_version[source.stylus_version] = (
+                    by_stylus_version.get(source.stylus_version, 0) + 1
+                )
+            # Deprecated count
+            if source.is_version_deprecated:
+                deprecated_count += 1
 
         return {
             "total_sources": len(state.sources),
@@ -391,6 +420,8 @@ class SourceRegistry:
             "by_category": by_category,
             "by_type": by_type,
             "by_status": by_status,
+            "by_stylus_version": by_stylus_version,
+            "deprecated_sources": deprecated_count,
         }
 
     def mark_sync_complete(self) -> None:
