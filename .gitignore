@@ -39,10 +39,11 @@ env/
 *~
 
 # Data - raw and processed are committed
-# Only chroma_db is excluded (generated locally)
+# ChromaDB is excluded (must be generated locally due to binary compatibility)
 
-# Chroma DB
+# Chroma DB (any location)
 chroma_db/
+data/chroma_db/
 
 # Benchmark results
 benchmark_results/

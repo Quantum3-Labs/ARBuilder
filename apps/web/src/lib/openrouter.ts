@@ -9,6 +9,7 @@ import {
   getVersionPatterns,
   getAlloyPrimitivesVersion,
 } from "./stylusVersions";
+import type { StylusTemplate } from "./templates/stylusTemplates";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -160,6 +161,86 @@ export async function generateCode(
   return chatCompletion(apiKey, messages, {
     model: MODELS.CODE_GEN,
     temperature: 0.2,
+  });
+}
+
+/**
+ * Generate Stylus code from a verified working template.
+ *
+ * This approach uses a curated template as the foundation, asking the LLM
+ * to customize it rather than generate from scratch. This ensures the
+ * output maintains the correct structure and compiles successfully.
+ *
+ * @param apiKey - OpenRouter API key
+ * @param prompt - User's customization request
+ * @param template - Base template from official examples
+ * @param context - Additional RAG context for specific patterns
+ * @param targetVersion - Target stylus-sdk version
+ */
+export async function generateCodeFromTemplate(
+  apiKey: string,
+  prompt: string,
+  template: StylusTemplate,
+  context: string,
+  targetVersion?: string
+): Promise<ChatCompletionResponse> {
+  const version = targetVersion || getMainVersion();
+  const patterns = getVersionPatterns(version);
+  const alloyVersion = getAlloyPrimitivesVersion(version);
+
+  const systemPrompt = `You are an expert Stylus (Rust) smart contract developer for Arbitrum.
+
+IMPORTANT: You are customizing a WORKING template. The template below compiles and deploys correctly.
+Your job is to MODIFY this template to match the user's requirements while keeping the structure intact.
+
+Base Template: ${template.name}
+Template Description: ${template.description}
+Template Features: ${template.features.join(", ")}
+
+Target SDK Version: stylus-sdk ${version}
+Alloy Primitives: ${alloyVersion}
+
+RULES:
+1. KEEP the #![cfg_attr...] attributes exactly as they are - they are required
+2. KEEP the extern crate alloc; declaration
+3. KEEP the sol_storage! macro structure - modify the fields inside
+4. KEEP the #[public] attribute on the impl block
+5. KEEP the [profile.release] section in Cargo.toml
+6. You MAY add new functions, modify existing ones, add storage fields
+7. You MAY add events using sol! macro
+8. You MAY add error types using sol! macro
+9. ALWAYS use proper error handling with Result<T, Vec<u8>>
+10. NEVER use unwrap() - use proper error handling
+
+Output format:
+1. First provide a brief explanation of changes
+2. Then the complete lib.rs in a \`\`\`rust code block
+3. Then the Cargo.toml in a \`\`\`toml code block (only if dependencies changed)`;
+
+  const userPrompt = `BASE TEMPLATE (lib.rs):
+\`\`\`rust
+${template.libRs}
+\`\`\`
+
+BASE TEMPLATE (Cargo.toml):
+\`\`\`toml
+${template.cargoToml}
+\`\`\`
+
+${context ? `ADDITIONAL PATTERNS FROM DOCUMENTATION:\n${context}\n\n` : ""}USER REQUEST:
+${prompt}
+
+Please customize the template to implement the user's request. Keep the working structure intact.`;
+
+  const messages: Message[] = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userPrompt },
+  ];
+
+  return chatCompletion(apiKey, messages, {
+    model: MODELS.CODE_GEN,
+    temperature: 0.2,
+    maxTokens: 8192, // Allow longer output for complete contracts
   });
 }
 

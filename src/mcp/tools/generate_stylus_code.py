@@ -2,7 +2,10 @@
 generate_stylus_code MCP Tool.
 
 Generates Stylus/Rust smart contract code based on user requirements.
-Supports version-aware code generation for different stylus-sdk versions.
+Uses verified working templates as the foundation to ensure compilable output.
+
+Key improvement: Instead of generating from scratch, this tool customizes
+curated templates from official Stylus examples.
 """
 
 import re
@@ -10,6 +13,20 @@ from typing import Optional
 
 from .base import BaseTool
 from .get_stylus_context import GetStylusContextTool
+
+# Import templates
+try:
+    from src.templates.stylus_templates import (
+        StylusTemplate,
+        select_template,
+        get_template,
+    )
+    HAS_TEMPLATES = True
+except ImportError:
+    HAS_TEMPLATES = False
+    StylusTemplate = None
+    select_template = None
+    get_template = None
 
 # Import version manager - handle gracefully if not available
 try:
@@ -79,6 +96,42 @@ When generating code:
 # Legacy prompt for backwards compatibility
 SYSTEM_PROMPT = get_system_prompt(get_main_version())
 
+
+def get_template_system_prompt(template: "StylusTemplate", target_version: str) -> str:
+    """Generate system prompt for template-based generation."""
+    alloy_version = get_alloy_primitives_version(target_version)
+
+    return f"""You are an expert Stylus (Rust) smart contract developer for Arbitrum.
+
+IMPORTANT: You are customizing a WORKING template. The template below compiles and deploys correctly.
+Your job is to MODIFY this template to match the user's requirements while keeping the structure intact.
+
+Base Template: {template.name}
+Template Description: {template.description}
+Template Features: {', '.join(template.features)}
+
+Target SDK Version: stylus-sdk {target_version}
+Alloy Primitives: {alloy_version}
+
+RULES:
+1. KEEP the #![cfg_attr...] attributes exactly as they are - they are required
+2. KEEP the extern crate alloc; declaration
+3. KEEP the sol_storage! macro structure - modify the fields inside
+4. KEEP the #[public] attribute on the impl block
+5. KEEP the [profile.release] section in Cargo.toml
+6. You MAY add new functions, modify existing ones, add storage fields
+7. You MAY add events using sol! macro
+8. You MAY add error types using sol! macro
+9. ALWAYS use proper error handling with Result<T, Vec<u8>>
+10. NEVER use unwrap() - use proper error handling
+
+Output format:
+1. First provide a brief explanation of changes
+2. Then the complete lib.rs in a ```rust code block
+3. Then the Cargo.toml in a ```toml code block (only if dependencies changed)"""
+
+
+# Legacy templates for backwards compatibility (when templates module not available)
 CONTRACT_TEMPLATES = {
     "erc20": """use stylus_sdk::prelude::*;
 use stylus_sdk::alloy_primitives::{Address, U256};
@@ -93,7 +146,7 @@ sol_storage! {
     }
 }
 
-#[external]
+#[public]
 impl Token {
     // ERC20 implementation
 }
@@ -113,7 +166,7 @@ sol_storage! {
     }
 }
 
-#[external]
+#[public]
 impl NFT {
     // ERC721 implementation
 }
@@ -154,19 +207,20 @@ class GenerateStylusCodeTool(BaseTool):
         **kwargs,
     ) -> dict:
         """
-        Generate Stylus smart contract code.
+        Generate Stylus smart contract code using template-based generation.
 
         Args:
             prompt: Description of the code to generate.
             context_query: Optional query to retrieve context.
-            contract_type: Type of contract (erc20, erc721, erc1155, custom).
+            contract_type: Type of contract (token, defi, utility, custom).
             include_tests: Whether to include unit tests.
             temperature: Generation temperature (0-1).
             target_version: Target stylus-sdk version (default: main version).
             cargo_toml: Optional Cargo.toml content for automatic version detection.
 
         Returns:
-            Dict with code, explanation, dependencies, warnings, context_used, target_version.
+            Dict with code, cargo_toml, explanation, dependencies, warnings,
+            context_used, target_version, template_used.
         """
         # Validate input
         if not prompt or not prompt.strip():
@@ -188,20 +242,23 @@ class GenerateStylusCodeTool(BaseTool):
         if not target_version:
             target_version = get_main_version()
 
-        # Check if request is Stylus-related
-        stylus_keywords = ["stylus", "rust", "contract", "token", "erc", "storage", "arbitrum"]
-        if not any(kw in prompt.lower() for kw in stylus_keywords):
-            warnings.append("This request may not be related to Stylus. Results may vary.")
-
         try:
-            # Retrieve relevant context
+            # Select appropriate template
+            template = None
+            template_name = "legacy"
+
+            if HAS_TEMPLATES and select_template:
+                template = select_template(contract_type or "utility", prompt)
+                template_name = template.name
+
+            # Retrieve relevant context for additional patterns
             context_used = []
             context_text = ""
 
             query = context_query or prompt
             context_result = self.context_tool.execute(
                 query=query,
-                n_results=5,
+                n_results=3,  # Reduced since we have a template as base
                 content_type="code",
                 rerank=True,
             )
@@ -215,15 +272,25 @@ class GenerateStylusCodeTool(BaseTool):
                     context_text += f"\n--- Example from {ctx['source']} ---\n{ctx['content'][:1500]}\n"
 
             # Build generation prompt
-            user_prompt = self._build_prompt(
-                prompt=prompt,
-                contract_type=contract_type,
-                context_text=context_text,
-                include_tests=include_tests,
-            )
+            if template:
+                # Use template-based generation
+                user_prompt = self._build_template_prompt(
+                    prompt=prompt,
+                    template=template,
+                    context_text=context_text,
+                    include_tests=include_tests,
+                )
+                system_prompt = get_template_system_prompt(template, target_version)
+            else:
+                # Fallback to legacy generation
+                user_prompt = self._build_prompt(
+                    prompt=prompt,
+                    contract_type=contract_type,
+                    context_text=context_text,
+                    include_tests=include_tests,
+                )
+                system_prompt = get_system_prompt(target_version)
 
-            # Generate code with version-aware system prompt
-            system_prompt = get_system_prompt(target_version)
             messages = [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -232,11 +299,13 @@ class GenerateStylusCodeTool(BaseTool):
             response = self._call_llm(
                 messages=messages,
                 temperature=temperature,
-                max_tokens=4096,
+                max_tokens=8192,  # Allow longer output for complete contracts
             )
 
             # Parse response
-            code, explanation = self._parse_response(response)
+            code, cargo_toml_output, explanation = self._parse_template_response(
+                response, template
+            )
 
             # Extract dependencies with correct versions
             dependencies = self._extract_dependencies(code, target_version)
@@ -247,15 +316,53 @@ class GenerateStylusCodeTool(BaseTool):
 
             return {
                 "code": code,
+                "cargo_toml": cargo_toml_output,
                 "explanation": explanation,
                 "dependencies": dependencies,
                 "warnings": warnings if warnings else [],
                 "context_used": context_used,
                 "target_version": target_version,
+                "template_used": template_name,
             }
 
         except Exception as e:
             return {"error": f"Code generation failed: {str(e)}"}
+
+    def _build_template_prompt(
+        self,
+        prompt: str,
+        template: "StylusTemplate",
+        context_text: str,
+        include_tests: bool,
+    ) -> str:
+        """Build prompt for template-based generation."""
+        parts = [
+            "BASE TEMPLATE (lib.rs):",
+            f"```rust\n{template.lib_rs}\n```",
+            "",
+            "BASE TEMPLATE (Cargo.toml):",
+            f"```toml\n{template.cargo_toml}\n```",
+            "",
+        ]
+
+        if context_text:
+            parts.append("ADDITIONAL PATTERNS FROM DOCUMENTATION:")
+            parts.append(context_text)
+            parts.append("")
+
+        parts.append("USER REQUEST:")
+        parts.append(prompt)
+        parts.append("")
+
+        if include_tests:
+            parts.append("Keep the #[cfg(test)] module and update the tests to match the new functionality.")
+        else:
+            parts.append("You may remove the #[cfg(test)] module if not needed.")
+
+        parts.append("")
+        parts.append("Please customize the template to implement the user's request. Keep the working structure intact.")
+
+        return "\n".join(parts)
 
     def _build_prompt(
         self,
@@ -264,7 +371,7 @@ class GenerateStylusCodeTool(BaseTool):
         context_text: str,
         include_tests: bool,
     ) -> str:
-        """Build the generation prompt."""
+        """Build the generation prompt (legacy fallback)."""
         parts = []
 
         # Add template hint if contract type specified
@@ -295,7 +402,7 @@ class GenerateStylusCodeTool(BaseTool):
         return "\n".join(parts)
 
     def _parse_response(self, response: str) -> tuple[str, str]:
-        """Parse code and explanation from LLM response."""
+        """Parse code and explanation from LLM response (legacy)."""
         code = ""
         explanation = ""
 
@@ -320,6 +427,52 @@ class GenerateStylusCodeTool(BaseTool):
             explanation = "Generated Stylus smart contract code based on the provided requirements."
 
         return code, explanation
+
+    def _parse_template_response(
+        self, response: str, template: Optional["StylusTemplate"]
+    ) -> tuple[str, str, str]:
+        """Parse code, cargo.toml, and explanation from template-based response."""
+        code = ""
+        cargo_toml = ""
+        explanation = ""
+
+        # Extract rust code blocks
+        rust_pattern = r"```rust\s*([\s\S]*?)```"
+        rust_matches = re.findall(rust_pattern, response)
+
+        if rust_matches:
+            code = rust_matches[0].strip()
+
+        # Extract toml code blocks
+        toml_pattern = r"```toml\s*([\s\S]*?)```"
+        toml_matches = re.findall(toml_pattern, response)
+
+        if toml_matches:
+            cargo_toml = toml_matches[0].strip()
+        elif template:
+            # Use template's cargo.toml if not provided
+            cargo_toml = template.cargo_toml
+
+        # Extract explanation (text before first code block or after last)
+        explanation_parts = response.split("```")
+        if explanation_parts:
+            # First part before any code block
+            first_part = explanation_parts[0].strip()
+            if first_part:
+                explanation = first_part
+            elif len(explanation_parts) > 1:
+                # Try last part after all code blocks
+                last_part = explanation_parts[-1].strip()
+                if last_part:
+                    explanation = last_part
+
+        if not code:
+            code = response.strip()
+
+        if not explanation:
+            explanation = "Contract customized based on your requirements."
+
+        return code, cargo_toml, explanation
 
     def _extract_dependencies(self, code: str, target_version: str) -> list[dict]:
         """Extract Cargo dependencies from code with correct versions for target SDK."""

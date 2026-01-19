@@ -27,6 +27,46 @@ ARBuilder uses a **Retrieval-Augmented Generation (RAG)** pipeline to provide co
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## TL;DR - Quick Start
+
+**Option 1: Hosted Service (Easiest)**
+```bash
+# No local setup needed - just configure your IDE
+# Add to ~/.cursor/mcp.json:
+{
+  "mcpServers": {
+    "arbbuilder": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://arbbuilder.whymelabs.com/mcp",
+               "--header", "Authorization: Bearer YOUR_API_KEY"]
+    }
+  }
+}
+```
+Get your API key at [arbbuilder.whymelabs.com](https://arbbuilder.whymelabs.com)
+
+**Option 2: Self-Hosted**
+```bash
+# 1. Clone and setup
+git clone https://github.com/Quantum3-Labs/ARBuilder.git
+cd ARBuilder
+conda env create -f environment.yml
+conda activate arbbuilder
+
+# 2. Configure API key
+cp .env.example .env
+# Edit .env and add your OPENROUTER_API_KEY
+
+# 3. Generate vector database (required)
+python -m src.embeddings.vectordb
+
+# 4. Test MCP server
+python -m src.mcp.server
+# Should show: "Capabilities: 8 tools, 5 resources, 5 prompts"
+
+# 5. Configure Cursor IDE (~/.cursor/mcp.json) - see Setup section below
+```
+
 ## Tutorial Video
 
 Watch the tutorial to see ARBuilder in action:
@@ -53,7 +93,7 @@ ArbBuilder/
 │   │   └── reranker.py   # BM25, LLM, and hybrid reranking
 │   ├── mcp/              # MCP server for IDE integration
 │   │   ├── server.py     # MCP server (tools, resources, prompts)
-│   │   ├── tools/        # MCP tool implementations (5 tools)
+│   │   ├── tools/        # MCP tool implementations (8 tools)
 │   │   ├── resources/    # Static knowledge (CLI, workflows, networks)
 │   │   └── prompts/      # Workflow templates
 │   └── rag/              # RAG pipeline (TBD)
@@ -72,7 +112,7 @@ ArbBuilder/
 ├── data/
 │   ├── raw/              # Raw scraped data (73 pages + 17 repos)
 │   ├── processed/        # Pre-processed chunks (8,692 chunks)
-│   └── chroma_db/        # ChromaDB vector store (generated locally)
+│   └── chroma_db/        # ChromaDB vector store (generated locally, not in repo)
 ├── environment.yml       # Conda environment specification
 ├── pyproject.toml        # Project metadata and dependencies
 └── .env                  # Environment variables (not committed)
@@ -86,10 +126,12 @@ ArbBuilder/
 # Create and activate the environment
 conda env create -f environment.yml
 conda activate arbbuilder
-
-# Install playwright browsers for web scraping
-playwright install chromium
 ```
+
+> **Note:** If you plan to refresh the knowledge base by scraping (optional), also install playwright:
+> ```bash
+> playwright install chromium
+> ```
 
 ### 2. Configure Environment Variables
 
@@ -113,11 +155,26 @@ The repository includes all data needed:
 - **Raw data** (`data/raw/`): 73 markdown pages + 17 GitHub repos
 - **Processed chunks** (`data/processed/`): 8,692 chunks ready for embedding
 
-To generate the vector database:
+**Important:** The ChromaDB vector database must be generated locally (it's not included in the repo due to binary compatibility issues across systems).
 
 ```bash
-# Ingest processed chunks into ChromaDB
+# Generate the vector database (required before using MCP tools)
 python -m src.embeddings.vectordb
+```
+
+### 4. Verify MCP Server
+
+Test that the MCP server starts correctly:
+
+```bash
+# Run the MCP server directly (press Ctrl+C to exit)
+python -m src.mcp.server
+```
+
+You should see:
+```
+ARBuilder MCP Server started
+Capabilities: 8 tools, 5 resources, 5 prompts
 ```
 
 #### Optional: Refresh Data
@@ -381,13 +438,32 @@ See [docs/mcp_tools_spec.md](docs/mcp_tools_spec.md) for full specification.
 
 ### Generating Stylus Contracts
 
+ARBuilder uses **template-based code generation** to ensure generated code compiles correctly. Instead of generating from scratch, it customizes verified working templates from official Stylus examples.
+
+**Available Templates:**
+
+| Template | Type | Description |
+|----------|------|-------------|
+| Counter | utility | Simple storage with getter/setter operations |
+| VendingMachine | defi | Mappings with time-based rate limiting |
+| SimpleERC20 | token | Basic ERC20 with transfer, approve, transferFrom |
+| AccessControl | utility | Owner-only functions with ownership transfer |
+
+**Stylus SDK Version Support:**
+
+| Version | Status | Notes |
+|---------|--------|-------|
+| 0.9.0 | **Main** (default) | Recommended for new projects |
+| 0.8.x | Supported | Minimum supported version |
+| < 0.8.0 | Deprecated | Warning shown, may not compile |
+
 Ask your AI assistant to generate contracts:
 
 ```
 User: "Create an ERC20 token called MyToken with 1 million supply"
 
 AI uses: generate_stylus_code tool
-Returns: Complete Rust contract with proper imports, storage, and methods
+Returns: Complete Rust contract based on SimpleERC20 template with proper imports, storage, and methods
 ```
 
 ### Getting Context and Examples
@@ -456,7 +532,7 @@ Cross-chain bridging and messaging support:
 
 ```bash
 # Example: Generate ETH deposit code
-echo '{"method": "tools/call", "params": {"name": "generate_bridge_code", "arguments": {"bridge_type": "eth_deposit", "amount": "0.5"}}}' | uv run python -m src.mcp.server
+echo '{"method": "tools/call", "id": 1, "params": {"name": "generate_bridge_code", "arguments": {"bridge_type": "eth_deposit", "amount": "0.5"}}}' | python -m src.mcp.server
 ```
 
 ## Development
@@ -464,15 +540,26 @@ echo '{"method": "tools/call", "params": {"name": "generate_bridge_code", "argum
 ### Running Tests
 
 ```bash
-# Run all tests
-pytest tests/
+# Run all unit tests
+pytest tests/ -m "not integration"
 
 # Run retrieval quality tests
 pytest tests/test_retrieval.py -v
 
 # Run MCP tool tests (requires tool implementations)
 pytest tests/mcp_tools/ -v
+
+# Run template selection and validation tests
+pytest tests/test_templates.py -v -m "not integration"
+
+# Run template compilation tests (requires Rust toolchain + cargo-stylus)
+pytest tests/test_templates.py -v -m integration
 ```
+
+**Template compilation tests require:**
+- Rust toolchain 1.87.0: `rustup install 1.87.0`
+- WASM target: `rustup target add wasm32-unknown-unknown --toolchain 1.87.0`
+- cargo-stylus: `cargo install --locked cargo-stylus`
 
 ### Running Benchmarks
 
@@ -565,6 +652,18 @@ python -m scraper.run --max-concurrent 1
 ```
 
 ### ChromaDB Issues
+
+**"Collection is empty" error**
+
+If you see `collection is empty` when using `get_stylus_context` tool:
+```bash
+# The vector database must be generated locally (it's not included in the repo)
+# Run this command to populate the database:
+python -m src.embeddings.vectordb
+
+# If that doesn't work, try resetting first:
+python -m src.embeddings.vectordb --reset
+```
 
 **Import errors with opentelemetry**
 

@@ -2,12 +2,15 @@
  * Generate Stylus Code Tool
  *
  * Generates Stylus smart contract code based on natural language
- * descriptions, using RAG context for accurate patterns.
+ * descriptions, using verified working templates as the foundation.
+ *
+ * Key improvement: Uses curated templates from official examples instead
+ * of generating from scratch, ensuring the output compiles correctly.
  *
  * Supports version-aware code generation for different stylus-sdk versions.
  */
 
-import { generateCode } from "../openrouter";
+import { generateCodeFromTemplate } from "../openrouter";
 import { getStylusContext } from "./getStylusContext";
 import {
   getMainVersion,
@@ -17,6 +20,7 @@ import {
   isVersionDeprecated,
   getDeprecationWarning,
 } from "../stylusVersions";
+import { selectTemplate, StylusTemplate } from "../templates/stylusTemplates";
 
 export interface GenerateStylusCodeInput {
   prompt: string;
@@ -32,6 +36,7 @@ export interface GenerateStylusCodeInput {
 
 export interface GenerateStylusCodeOutput {
   code: string;
+  cargoToml: string;
   explanation: string;
   dependencies: string[];
   warnings: string[];
@@ -39,6 +44,8 @@ export interface GenerateStylusCodeOutput {
   tokensUsed: number;
   /** The stylus-sdk version used for code generation. */
   targetVersion: string;
+  /** The base template that was used. */
+  templateUsed: string;
 }
 
 export async function generateStylusCode(
@@ -81,16 +88,19 @@ export async function generateStylusCode(
     }
   }
 
-  // Get relevant context from knowledge base with version awareness
+  // Select the best template based on contract type and prompt
+  const template = selectTemplate(contractType, prompt);
+
+  // Get relevant context from knowledge base for additional patterns
   const searchQuery = contextQuery || `${contractType} contract ${prompt}`;
   const contextResult = await getStylusContext(vectorize, ai, {
     query: searchQuery,
-    nResults: 5,
+    nResults: 3, // Reduced since we have a template as base
     rerank: true,
-    targetVersion, // Pass version for boosted search
+    targetVersion,
   });
 
-  // Build context string
+  // Build context string (for additional patterns only)
   const contextStr = contextResult.contexts
     .map((c, i) => `[${i + 1}] (${c.source})\n${c.content}`)
     .join("\n\n---\n\n");
@@ -98,19 +108,32 @@ export async function generateStylusCode(
   // Enhance prompt with test request if needed
   let enhancedPrompt = prompt;
   if (includeTests) {
-    enhancedPrompt += "\n\nAlso include a #[cfg(test)] module with comprehensive unit tests.";
+    enhancedPrompt +=
+      "\n\nKeep the #[cfg(test)] module and update the tests to match the new functionality.";
+  } else {
+    enhancedPrompt += "\n\nYou may remove the #[cfg(test)] module if not needed.";
   }
 
-  // Generate code using LLM with version-aware prompts
-  const response = await generateCode(openrouterApiKey, enhancedPrompt, contextStr, targetVersion);
+  // Generate code using LLM with template as base
+  const response = await generateCodeFromTemplate(
+    openrouterApiKey,
+    enhancedPrompt,
+    template,
+    contextStr,
+    targetVersion
+  );
 
   // Parse response - extract code blocks and explanation
   const codeMatch = response.content.match(/```rust\n([\s\S]*?)```/);
   const code = codeMatch ? codeMatch[1].trim() : response.content;
 
-  // Extract explanation (text before or after code block)
+  // Extract Cargo.toml if provided, otherwise use template's
+  const cargoMatch = response.content.match(/```toml\n([\s\S]*?)```/);
+  const generatedCargo = cargoMatch ? cargoMatch[1].trim() : template.cargoToml;
+
+  // Extract explanation (text before or after code blocks)
   const explanation = response.content
-    .replace(/```rust\n[\s\S]*?```/g, "")
+    .replace(/```(?:rust|toml)\n[\s\S]*?```/g, "")
     .trim()
     .split("\n")
     .filter((line) => line.trim())
@@ -136,11 +159,13 @@ export async function generateStylusCode(
 
   return {
     code,
+    cargoToml: generatedCargo,
     explanation: explanation || "Contract generated based on your requirements.",
     dependencies,
     warnings,
     contextUsed: contextResult.contexts.map((c) => c.source),
     tokensUsed: response.usage.totalTokens,
     targetVersion,
+    templateUsed: template.name,
   };
 }
