@@ -185,7 +185,6 @@ export async function generateCodeFromTemplate(
   targetVersion?: string
 ): Promise<ChatCompletionResponse> {
   const version = targetVersion || getMainVersion();
-  const patterns = getVersionPatterns(version);
   const alloyVersion = getAlloyPrimitivesVersion(version);
 
   const systemPrompt = `You are an expert Stylus (Rust) smart contract developer for Arbitrum.
