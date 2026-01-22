@@ -35,11 +35,11 @@ export interface ChatCompletionResponse {
   };
 }
 
-// Default models
+// Default models - using Gemini for all operations
 export const MODELS = {
-  CODE_GEN: "deepseek/deepseek-chat",
+  CODE_GEN: "google/gemini-3-flash-preview",
   QA: "google/gemini-3-flash-preview",
-  FAST: "google/gemini-2.5-flash-lite",
+  FAST: "google/gemini-3-flash-preview",
 } as const;
 
 /**
