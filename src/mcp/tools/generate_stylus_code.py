@@ -52,8 +52,8 @@ except ImportError:
         "error_handling": "Result<T, Vec<u8>>",
         "cfg_attr": '#![cfg_attr(not(feature = "export-abi"), no_main)]'
     }
-    def get_alloy_primitives_version(v): return "0.9.2"
-    def get_alloy_sol_types_version(v): return "0.9.2"
+    def get_alloy_primitives_version(v): return "=0.8.20"
+    def get_alloy_sol_types_version(v): return "=0.8.20"
     def detect_version_from_cargo_toml(c): return None
     def get_deprecation_warning(v): return None
 

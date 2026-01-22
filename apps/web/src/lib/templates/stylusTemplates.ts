@@ -26,7 +26,7 @@ export const COUNTER_TEMPLATE: StylusTemplate = {
   name: "Counter",
   description: "Simple counter with increment, add, multiply operations",
   contractType: "utility",
-  sdkVersion: "0.9.0",
+  sdkVersion: "0.9.2",
   features: ["storage", "public functions", "payable", "tests"],
   libRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
@@ -104,7 +104,7 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-stylus-sdk = "0.9.0"
+stylus-sdk = "0.9.2"
 alloy-primitives = "=0.8.20"
 alloy-sol-types = "=0.8.20"
 ruint = "=1.15.0"
@@ -137,7 +137,7 @@ export const VENDING_MACHINE_TEMPLATE: StylusTemplate = {
   name: "VendingMachine",
   description: "Mapping storage with time-based distribution logic",
   contractType: "defi",
-  sdkVersion: "0.9.0", // Updated to 0.9.0 patterns
+  sdkVersion: "0.9.2", // Updated to 0.9.0 patterns
   features: ["mappings", "timestamps", "rate limiting", "tests"],
   libRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
@@ -236,7 +236,7 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-stylus-sdk = "0.9.0"
+stylus-sdk = "0.9.2"
 alloy-primitives = "=0.8.20"
 alloy-sol-types = "=0.8.20"
 ruint = "=1.15.0"
@@ -269,7 +269,7 @@ export const SIMPLE_ERC20_TEMPLATE: StylusTemplate = {
   name: "SimpleERC20",
   description: "Basic ERC20 token with transfer, approve, transferFrom",
   contractType: "token",
-  sdkVersion: "0.9.0",
+  sdkVersion: "0.9.2",
   features: ["ERC20", "mappings", "events", "error handling"],
   libRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
@@ -454,7 +454,7 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-stylus-sdk = "0.9.0"
+stylus-sdk = "0.9.2"
 alloy-primitives = "=0.8.20"
 alloy-sol-types = "=0.8.20"
 ruint = "=1.15.0"
@@ -486,7 +486,7 @@ export const ACCESS_CONTROL_TEMPLATE: StylusTemplate = {
   name: "AccessControl",
   description: "Contract with owner-only functions and ownership transfer",
   contractType: "utility",
-  sdkVersion: "0.9.0",
+  sdkVersion: "0.9.2",
   features: ["access control", "ownership", "modifiers"],
   libRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
@@ -627,7 +627,7 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-stylus-sdk = "0.9.0"
+stylus-sdk = "0.9.2"
 alloy-primitives = "=0.8.20"
 alloy-sol-types = "=0.8.20"
 ruint = "=1.15.0"
