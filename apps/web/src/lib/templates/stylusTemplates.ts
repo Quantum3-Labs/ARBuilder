@@ -133,8 +133,11 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"`,
-  mainRs: `fn main() {
-    stylus_counter::print_abi();
+  mainRs: `#![cfg_attr(not(feature = "export-abi"), no_main)]
+
+#[cfg(feature = "export-abi")]
+fn main() {
+    stylus_counter::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
 }`,
 };
 
@@ -272,8 +275,11 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"`,
-  mainRs: `fn main() {
-    stylus_vending_machine::print_abi();
+  mainRs: `#![cfg_attr(not(feature = "export-abi"), no_main)]
+
+#[cfg(feature = "export-abi")]
+fn main() {
+    stylus_vending_machine::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
 }`,
 };
 
@@ -289,6 +295,7 @@ export const SIMPLE_ERC20_TEMPLATE: StylusTemplate = {
   features: ["ERC20", "mappings", "events", "error handling"],
   libRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
+#![allow(deprecated)] // msg::sender() and evm::log() are deprecated but still work
 #[macro_use]
 extern crate alloc;
 
@@ -497,8 +504,11 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"`,
-  mainRs: `fn main() {
-    stylus_erc20::print_abi();
+  mainRs: `#![cfg_attr(not(feature = "export-abi"), no_main)]
+
+#[cfg(feature = "export-abi")]
+fn main() {
+    stylus_erc20::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
 }`,
 };
 
@@ -513,6 +523,7 @@ export const ACCESS_CONTROL_TEMPLATE: StylusTemplate = {
   features: ["access control", "ownership", "modifiers"],
   libRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
+#![allow(deprecated)] // msg::sender() and evm::log() are deprecated but still work
 #[macro_use]
 extern crate alloc;
 
@@ -677,8 +688,11 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"`,
-  mainRs: `fn main() {
-    stylus_ownable::print_abi();
+  mainRs: `#![cfg_attr(not(feature = "export-abi"), no_main)]
+
+#[cfg(feature = "export-abi")]
+fn main() {
+    stylus_ownable::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
 }`,
 };
 
