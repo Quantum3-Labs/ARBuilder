@@ -112,7 +112,7 @@ license = "MIT OR Apache-2.0"
 stylus-sdk = "0.9.2"
 alloy-primitives = "=0.8.20"
 alloy-sol-types = "=0.8.20"
-ruint = "=1.15.0"
+ruint = "=1.12.3"
 [dev-dependencies]
 tokio = { version = "1.21.0", features = ["full"] }
 ethers = "2.0"
@@ -251,7 +251,7 @@ license = "MIT OR Apache-2.0"
 stylus-sdk = "0.9.2"
 alloy-primitives = "=0.8.20"
 alloy-sol-types = "=0.8.20"
-ruint = "=1.15.0"
+ruint = "=1.12.3"
 [dev-dependencies]
 tokio = { version = "1.21.0", features = ["full"] }
 ethers = "2.0"
@@ -477,7 +477,7 @@ license = "MIT OR Apache-2.0"
 stylus-sdk = "0.9.2"
 alloy-primitives = "=0.8.20"
 alloy-sol-types = "=0.8.20"
-ruint = "=1.15.0"
+ruint = "=1.12.3"
 [dev-dependencies]
 tokio = { version = "1.21.0", features = ["full"] }
 ethers = "2.0"
@@ -659,7 +659,7 @@ license = "MIT OR Apache-2.0"
 stylus-sdk = "0.9.2"
 alloy-primitives = "=0.8.20"
 alloy-sol-types = "=0.8.20"
-ruint = "=1.15.0"
+ruint = "=1.12.3"
 [dev-dependencies]
 tokio = { version = "1.21.0", features = ["full"] }
 ethers = "2.0"
