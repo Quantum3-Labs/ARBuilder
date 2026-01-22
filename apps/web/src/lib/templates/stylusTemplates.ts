@@ -19,13 +19,6 @@ export interface StylusTemplate {
   features: string[];
 }
 
-// Standard main.rs for ABI export - works with any contract
-const STANDARD_MAIN_RS = `fn main() {
-    // This file is only used for ABI export
-    // Run: cargo run --features export-abi
-    <CONTRACT_NAME>::print_abi();
-}
-`;
 
 /**
  * Counter template - Simple storage pattern

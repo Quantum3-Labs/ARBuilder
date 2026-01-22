@@ -82,63 +82,6 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
   return fixed;
 }
 
-/**
- * Validate and fix common LLM mistakes in generated Cargo.toml.
- */
-function validateAndFixCargo(
-  cargo: string,
-  template: StylusTemplate,
-  targetVersion: string
-): string {
-  let fixed = cargo;
-
-  // Ensure correct stylus-sdk version
-  fixed = fixed.replace(
-    /stylus-sdk\s*=\s*"[^"]+"/g,
-    `stylus-sdk = "${targetVersion}"`
-  );
-
-  // Ensure alloy-primitives uses exact version pin
-  if (!fixed.includes('alloy-primitives = "=')) {
-    fixed = fixed.replace(
-      /alloy-primitives\s*=\s*"([^"=][^"]*)"/g,
-      'alloy-primitives = "=$1"'
-    );
-  }
-
-  // Ensure alloy-sol-types uses exact version pin
-  if (!fixed.includes('alloy-sol-types = "=')) {
-    fixed = fixed.replace(
-      /alloy-sol-types\s*=\s*"([^"=][^"]*)"/g,
-      'alloy-sol-types = "=$1"'
-    );
-  }
-
-  // Ensure [profile.release] section exists
-  if (!fixed.includes("[profile.release]")) {
-    fixed += `
-
-[profile.release]
-codegen-units = 1
-strip = true
-lto = true
-panic = "abort"
-opt-level = "s"`;
-  }
-
-  // Ensure [lib] section exists with cdylib
-  if (!fixed.includes('crate-type = ["lib", "cdylib"]')) {
-    if (!fixed.includes("[lib]")) {
-      fixed = fixed.replace(
-        /\[features\]/,
-        '[lib]\ncrate-type = ["lib", "cdylib"]\n\n[features]'
-      );
-    }
-  }
-
-  return fixed;
-}
-
 export interface GenerateStylusCodeInput {
   prompt: string;
   contextQuery?: string;
@@ -247,7 +190,7 @@ export async function generateStylusCode(
 
   // ALWAYS use template's Cargo.toml - don't trust LLM-generated Cargo.toml
   // LLM often makes typos (alloy-sol_types) or misses deps (ruint)
-  let generatedCargo = template.cargoToml;
+  const generatedCargo = template.cargoToml;
 
   // Validate and fix common LLM mistakes in code
   code = validateAndFixCode(code, template);
