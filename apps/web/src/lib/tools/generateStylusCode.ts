@@ -22,6 +22,118 @@ import {
 } from "../stylusVersions";
 import { selectTemplate, StylusTemplate } from "../templates/stylusTemplates";
 
+/**
+ * Validate and fix common LLM mistakes in generated code.
+ */
+function validateAndFixCode(code: string, template: StylusTemplate): string {
+  let fixed = code;
+
+  // Fix 1: Remove empty sol_storage! blocks
+  fixed = fixed.replace(/sol_storage!\s*\{\s*\}/g, "");
+
+  // Fix 2: Ensure proper cfg_attr if missing
+  if (!fixed.includes("#![cfg_attr(not(any(test")) {
+    const templateStart = template.libRs.split("extern crate alloc")[0];
+    if (!fixed.startsWith("#![cfg_attr")) {
+      fixed = templateStart + fixed;
+    }
+  }
+
+  // Fix 3: Ensure extern crate alloc if missing
+  if (!fixed.includes("extern crate alloc")) {
+    fixed = fixed.replace(
+      /^(#!\[cfg_attr.*\n)+/m,
+      "$&#[macro_use]\nextern crate alloc;\n\n"
+    );
+  }
+
+  // Fix 4: Remove incorrect imports (sol! is in prelude)
+  fixed = fixed.replace(/use alloy_sol_types::sol;\n?/g, "");
+  fixed = fixed.replace(/use stylus_sdk::alloy_sol_types::sol;\n?/g, "");
+
+  // Fix 5: Ensure alloc::vec::Vec import if Vec is used
+  if (fixed.includes("Vec<u8>") && !fixed.includes("use alloc::vec::Vec")) {
+    fixed = fixed.replace(
+      /(extern crate alloc;)/,
+      "$1\n\nuse alloc::vec::Vec;"
+    );
+  }
+
+  // Fix 6: Ensure there's exactly one sol_storage! block with #[entrypoint]
+  const solStorageCount = (fixed.match(/sol_storage!\s*\{/g) || []).length;
+  if (solStorageCount === 0) {
+    // If no sol_storage! block, the code is likely broken - use template
+    return template.libRs;
+  }
+
+  // Fix 7: Ensure #[entrypoint] is inside sol_storage! if missing
+  if (!fixed.includes("#[entrypoint]")) {
+    fixed = fixed.replace(
+      /sol_storage!\s*\{\s*(\n?\s*pub struct)/,
+      "sol_storage! {\n    #[entrypoint]$1"
+    );
+  }
+
+  return fixed;
+}
+
+/**
+ * Validate and fix common LLM mistakes in generated Cargo.toml.
+ */
+function validateAndFixCargo(
+  cargo: string,
+  template: StylusTemplate,
+  targetVersion: string
+): string {
+  let fixed = cargo;
+
+  // Ensure correct stylus-sdk version
+  fixed = fixed.replace(
+    /stylus-sdk\s*=\s*"[^"]+"/g,
+    `stylus-sdk = "${targetVersion}"`
+  );
+
+  // Ensure alloy-primitives uses exact version pin
+  if (!fixed.includes('alloy-primitives = "=')) {
+    fixed = fixed.replace(
+      /alloy-primitives\s*=\s*"([^"=][^"]*)"/g,
+      'alloy-primitives = "=$1"'
+    );
+  }
+
+  // Ensure alloy-sol-types uses exact version pin
+  if (!fixed.includes('alloy-sol-types = "=')) {
+    fixed = fixed.replace(
+      /alloy-sol-types\s*=\s*"([^"=][^"]*)"/g,
+      'alloy-sol-types = "=$1"'
+    );
+  }
+
+  // Ensure [profile.release] section exists
+  if (!fixed.includes("[profile.release]")) {
+    fixed += `
+
+[profile.release]
+codegen-units = 1
+strip = true
+lto = true
+panic = "abort"
+opt-level = "s"`;
+  }
+
+  // Ensure [lib] section exists with cdylib
+  if (!fixed.includes('crate-type = ["lib", "cdylib"]')) {
+    if (!fixed.includes("[lib]")) {
+      fixed = fixed.replace(
+        /\[features\]/,
+        '[lib]\ncrate-type = ["lib", "cdylib"]\n\n[features]'
+      );
+    }
+  }
+
+  return fixed;
+}
+
 export interface GenerateStylusCodeInput {
   prompt: string;
   contextQuery?: string;
@@ -125,11 +237,15 @@ export async function generateStylusCode(
 
   // Parse response - extract code blocks and explanation
   const codeMatch = response.content.match(/```rust\n([\s\S]*?)```/);
-  const code = codeMatch ? codeMatch[1].trim() : response.content;
+  let code = codeMatch ? codeMatch[1].trim() : response.content;
 
   // Extract Cargo.toml if provided, otherwise use template's
   const cargoMatch = response.content.match(/```toml\n([\s\S]*?)```/);
-  const generatedCargo = cargoMatch ? cargoMatch[1].trim() : template.cargoToml;
+  let generatedCargo = cargoMatch ? cargoMatch[1].trim() : template.cargoToml;
+
+  // Validate and fix common LLM mistakes
+  code = validateAndFixCode(code, template);
+  generatedCargo = validateAndFixCargo(generatedCargo, template, targetVersion);
 
   // Extract explanation (text before or after code blocks)
   const explanation = response.content
