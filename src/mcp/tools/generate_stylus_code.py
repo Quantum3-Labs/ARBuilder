@@ -139,7 +139,8 @@ IMPORTS - USE THESE PATTERNS:
 Output format:
 1. Brief explanation of changes (1-2 sentences)
 2. Complete lib.rs in a ```rust code block
-3. Cargo.toml in a ```toml code block (only if dependencies changed)"""
+
+IMPORTANT: Do NOT output Cargo.toml - the template's Cargo.toml will be used as-is."""
 
 
 # Legacy templates for backwards compatibility (when templates module not available)
@@ -454,14 +455,9 @@ class GenerateStylusCodeTool(BaseTool):
         if rust_matches:
             code = rust_matches[0].strip()
 
-        # Extract toml code blocks
-        toml_pattern = r"```toml\s*([\s\S]*?)```"
-        toml_matches = re.findall(toml_pattern, response)
-
-        if toml_matches:
-            cargo_toml = toml_matches[0].strip()
-        elif template:
-            # Use template's cargo.toml if not provided
+        # ALWAYS use template's Cargo.toml - don't trust LLM-generated Cargo.toml
+        # LLM often makes typos (alloy-sol_types) or misses deps (ruint)
+        if template:
             cargo_toml = template.cargo_toml
 
         # Extract explanation (text before first code block or after last)
@@ -483,10 +479,9 @@ class GenerateStylusCodeTool(BaseTool):
         if not explanation:
             explanation = "Contract customized based on your requirements."
 
-        # Apply fixes for common LLM mistakes
+        # Apply fixes for common LLM mistakes in code only
+        # Cargo.toml comes directly from template, no fixes needed
         code = self._fix_code(code, template)
-        if template:
-            cargo_toml = self._fix_cargo_toml(cargo_toml, template, template.sdk_version)
 
         return code, cargo_toml, explanation
 
@@ -570,8 +565,12 @@ class GenerateStylusCodeTool(BaseTool):
         fixed = re.sub(r'use alloy_sol_types::sol;\n?', '', fixed)
         fixed = re.sub(r'use stylus_sdk::alloy_sol_types::sol;\n?', '', fixed)
 
-        # Fix 5: Ensure alloc::vec::Vec import if Vec is used
-        if "Vec<u8>" in fixed and "use alloc::vec::Vec" not in fixed:
+        # Fix 5: Handle Vec imports - avoid duplicates
+        # If we have both "use alloc::vec::Vec" and "use alloc::{...vec::Vec...}", remove the standalone
+        if "use alloc::vec::Vec;" in fixed and "use alloc::{" in fixed and "vec::Vec" in fixed:
+            fixed = re.sub(r'use alloc::vec::Vec;\n?', '', fixed)
+        # If Vec<u8> is used but no import, add it
+        if "Vec<u8>" in fixed and "alloc::vec::Vec" not in fixed and "alloc::{" not in fixed:
             fixed = re.sub(
                 r'(extern crate alloc;)',
                 r'\1\n\nuse alloc::vec::Vec;',

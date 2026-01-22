@@ -51,8 +51,13 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
   fixed = fixed.replace(/use alloy_sol_types::sol;\n?/g, "");
   fixed = fixed.replace(/use stylus_sdk::alloy_sol_types::sol;\n?/g, "");
 
-  // Fix 5: Ensure alloc::vec::Vec import if Vec is used
-  if (fixed.includes("Vec<u8>") && !fixed.includes("use alloc::vec::Vec")) {
+  // Fix 5: Handle Vec imports - avoid duplicates
+  // If we have both "use alloc::vec::Vec" and "use alloc::{...vec::Vec...}", remove the standalone
+  if (fixed.includes("use alloc::vec::Vec;") && fixed.includes("use alloc::{") && fixed.includes("vec::Vec")) {
+    fixed = fixed.replace(/use alloc::vec::Vec;\n?/g, "");
+  }
+  // If Vec<u8> is used but no import, add it
+  if (fixed.includes("Vec<u8>") && !fixed.includes("alloc::vec::Vec") && !fixed.includes("alloc::{") ) {
     fixed = fixed.replace(
       /(extern crate alloc;)/,
       "$1\n\nuse alloc::vec::Vec;"
@@ -149,6 +154,7 @@ export interface GenerateStylusCodeInput {
 export interface GenerateStylusCodeOutput {
   code: string;
   cargoToml: string;
+  mainRs: string; // For ABI export: cargo run --features export-abi
   explanation: string;
   dependencies: string[];
   warnings: string[];
@@ -239,13 +245,12 @@ export async function generateStylusCode(
   const codeMatch = response.content.match(/```rust\n([\s\S]*?)```/);
   let code = codeMatch ? codeMatch[1].trim() : response.content;
 
-  // Extract Cargo.toml if provided, otherwise use template's
-  const cargoMatch = response.content.match(/```toml\n([\s\S]*?)```/);
-  let generatedCargo = cargoMatch ? cargoMatch[1].trim() : template.cargoToml;
+  // ALWAYS use template's Cargo.toml - don't trust LLM-generated Cargo.toml
+  // LLM often makes typos (alloy-sol_types) or misses deps (ruint)
+  let generatedCargo = template.cargoToml;
 
-  // Validate and fix common LLM mistakes
+  // Validate and fix common LLM mistakes in code
   code = validateAndFixCode(code, template);
-  generatedCargo = validateAndFixCargo(generatedCargo, template, targetVersion);
 
   // Extract explanation (text before or after code blocks)
   const explanation = response.content
@@ -276,6 +281,7 @@ export async function generateStylusCode(
   return {
     code,
     cargoToml: generatedCargo,
+    mainRs: template.mainRs,
     explanation: explanation || "Contract generated based on your requirements.",
     dependencies,
     warnings,

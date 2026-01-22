@@ -22,6 +22,7 @@ class StylusTemplate:
     features: List[str]
     lib_rs: str
     cargo_toml: str
+    main_rs: str  # For ABI export: cargo run --features export-abi
 
 
 # Counter template - Simple storage pattern
@@ -125,12 +126,19 @@ mini-alloc = ["stylus-sdk/mini-alloc"]
 [lib]
 crate-type = ["lib", "cdylib"]
 
+[[bin]]
+name = "stylus-counter"
+path = "src/main.rs"
+
 [profile.release]
 codegen-units = 1
 strip = true
 lto = true
 panic = "abort"
 opt-level = "s"''',
+    main_rs='''fn main() {
+    stylus_counter::print_abi();
+}''',
 )
 
 # Vending Machine template - Mappings and time-based logic
@@ -254,12 +262,19 @@ mini-alloc = ["stylus-sdk/mini-alloc"]
 [lib]
 crate-type = ["lib", "cdylib"]
 
+[[bin]]
+name = "stylus-vending-machine"
+path = "src/main.rs"
+
 [profile.release]
 codegen-units = 1
 strip = true
 lto = true
 panic = "abort"
 opt-level = "s"''',
+    main_rs='''fn main() {
+    stylus_vending_machine::print_abi();
+}''',
 )
 
 # Simple ERC20 template - Basic token without OpenZeppelin
@@ -469,12 +484,19 @@ mini-alloc = ["stylus-sdk/mini-alloc"]
 [lib]
 crate-type = ["lib", "cdylib"]
 
+[[bin]]
+name = "stylus-erc20"
+path = "src/main.rs"
+
 [profile.release]
 codegen-units = 1
 strip = true
 lto = true
 panic = "abort"
 opt-level = "s"''',
+    main_rs='''fn main() {
+    stylus_erc20::print_abi();
+}''',
 )
 
 # Access Control template - Owner-only functions
@@ -640,12 +662,19 @@ mini-alloc = ["stylus-sdk/mini-alloc"]
 [lib]
 crate-type = ["lib", "cdylib"]
 
+[[bin]]
+name = "stylus-ownable"
+path = "src/main.rs"
+
 [profile.release]
 codegen-units = 1
 strip = true
 lto = true
 panic = "abort"
 opt-level = "s"''',
+    main_rs='''fn main() {
+    stylus_ownable::print_abi();
+}''',
 )
 
 # All available templates indexed by contract type

@@ -226,7 +226,8 @@ IMPORTS - USE THESE PATTERNS:
 Output format:
 1. Brief explanation of changes (1-2 sentences)
 2. Complete lib.rs in a \`\`\`rust code block
-3. Cargo.toml in a \`\`\`toml code block (only if dependencies changed)`;
+
+IMPORTANT: Do NOT output Cargo.toml - the template's Cargo.toml will be used as-is.`;
 
   const userPrompt = `BASE TEMPLATE (lib.rs):
 \`\`\`rust

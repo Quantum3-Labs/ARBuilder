@@ -15,8 +15,17 @@ export interface StylusTemplate {
   sdkVersion: string;
   libRs: string;
   cargoToml: string;
+  mainRs: string; // For ABI export: cargo run --features export-abi
   features: string[];
 }
+
+// Standard main.rs for ABI export - works with any contract
+const STANDARD_MAIN_RS = `fn main() {
+    // This file is only used for ABI export
+    // Run: cargo run --features export-abi
+    <CONTRACT_NAME>::print_abi();
+}
+`;
 
 /**
  * Counter template - Simple storage pattern
@@ -121,12 +130,19 @@ mini-alloc = ["stylus-sdk/mini-alloc"]
 [lib]
 crate-type = ["lib", "cdylib"]
 
+[[bin]]
+name = "stylus-counter"
+path = "src/main.rs"
+
 [profile.release]
 codegen-units = 1
 strip = true
 lto = true
 panic = "abort"
 opt-level = "s"`,
+  mainRs: `fn main() {
+    stylus_counter::print_abi();
+}`,
 };
 
 /**
@@ -253,12 +269,19 @@ mini-alloc = ["stylus-sdk/mini-alloc"]
 [lib]
 crate-type = ["lib", "cdylib"]
 
+[[bin]]
+name = "stylus-vending-machine"
+path = "src/main.rs"
+
 [profile.release]
 codegen-units = 1
 strip = true
 lto = true
 panic = "abort"
 opt-level = "s"`,
+  mainRs: `fn main() {
+    stylus_vending_machine::print_abi();
+}`,
 };
 
 /**
@@ -471,12 +494,19 @@ mini-alloc = ["stylus-sdk/mini-alloc"]
 [lib]
 crate-type = ["lib", "cdylib"]
 
+[[bin]]
+name = "stylus-erc20"
+path = "src/main.rs"
+
 [profile.release]
 codegen-units = 1
 strip = true
 lto = true
 panic = "abort"
 opt-level = "s"`,
+  mainRs: `fn main() {
+    stylus_erc20::print_abi();
+}`,
 };
 
 /**
@@ -644,12 +674,19 @@ mini-alloc = ["stylus-sdk/mini-alloc"]
 [lib]
 crate-type = ["lib", "cdylib"]
 
+[[bin]]
+name = "stylus-ownable"
+path = "src/main.rs"
+
 [profile.release]
 codegen-units = 1
 strip = true
 lto = true
 panic = "abort"
 opt-level = "s"`,
+  mainRs: `fn main() {
+    stylus_ownable::print_abi();
+}`,
 };
 
 /**
