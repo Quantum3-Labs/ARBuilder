@@ -156,9 +156,9 @@ impl MyContract {
 ### Dependencies (Cargo.toml)
 ```toml
 [dependencies]
-stylus-sdk = "0.8.4"
-alloy-primitives = "0.8.14"
-alloy-sol-types = "0.8.14"
+stylus-sdk = "0.9.2"
+alloy-primitives = "=0.8.20"
+alloy-sol-types = "=0.8.20"
 
 [lib]
 crate-type = ["cdylib"]

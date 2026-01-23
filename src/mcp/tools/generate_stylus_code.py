@@ -52,8 +52,8 @@ except ImportError:
         "error_handling": "Result<T, Vec<u8>>",
         "cfg_attr": '#![cfg_attr(not(feature = "export-abi"), no_main)]'
     }
-    def get_alloy_primitives_version(v): return "0.9.2"
-    def get_alloy_sol_types_version(v): return "0.9.2"
+    def get_alloy_primitives_version(v): return "=0.8.20"
+    def get_alloy_sol_types_version(v): return "=0.8.20"
     def detect_version_from_cargo_toml(c): return None
     def get_deprecation_warning(v): return None
 
@@ -103,8 +103,8 @@ def get_template_system_prompt(template: "StylusTemplate", target_version: str) 
 
     return f"""You are an expert Stylus (Rust) smart contract developer for Arbitrum.
 
-IMPORTANT: You are customizing a WORKING template. The template below compiles and deploys correctly.
-Your job is to MODIFY this template to match the user's requirements while keeping the structure intact.
+CRITICAL: You are customizing a WORKING template. The template below compiles and deploys correctly.
+Your job is to MODIFY this template to match the user's requirements while keeping the EXACT structure intact.
 
 Base Template: {template.name}
 Template Description: {template.description}
@@ -113,22 +113,34 @@ Template Features: {', '.join(template.features)}
 Target SDK Version: stylus-sdk {target_version}
 Alloy Primitives: {alloy_version}
 
-RULES:
-1. KEEP the #![cfg_attr...] attributes exactly as they are - they are required
-2. KEEP the extern crate alloc; declaration
-3. KEEP the sol_storage! macro structure - modify the fields inside
-4. KEEP the #[public] attribute on the impl block
-5. KEEP the [profile.release] section in Cargo.toml
-6. You MAY add new functions, modify existing ones, add storage fields
-7. You MAY add events using sol! macro
-8. You MAY add error types using sol! macro
-9. ALWAYS use proper error handling with Result<T, Vec<u8>>
-10. NEVER use unwrap() - use proper error handling
+ABSOLUTE RULES - NEVER VIOLATE THESE:
+1. KEEP the EXACT first 4 lines: #![cfg_attr...], #![cfg_attr...], #[macro_use], extern crate alloc;
+2. KEEP all use statements from the template - you may ADD more but NEVER remove
+3. There must be EXACTLY ONE sol_storage! block - NEVER create empty sol_storage! blocks
+4. KEEP the #[entrypoint] attribute inside sol_storage!
+5. KEEP the #[public] attribute on the impl block
+6. NEVER add "use alloy_sol_types::sol;" - it's already available via stylus_sdk::prelude::*
+7. If adding events/errors with sol! macro, they must be BEFORE sol_storage!
+8. KEEP the Cargo.toml [profile.release] section exactly as provided
+
+WHAT YOU MAY DO:
+- Add/modify storage fields inside sol_storage!
+- Add/modify functions inside the #[public] impl block
+- Add events using sol! {{ event EventName(...); }} BEFORE sol_storage!
+- Add error types using sol! {{ error ErrorName(...); }} BEFORE sol_storage!
+- Add internal helper functions (without #[public])
+
+IMPORTS - USE THESE PATTERNS:
+- Types from stylus_sdk::alloy_primitives::{{Address, U256, U8, ...}}
+- sol! macro is available from stylus_sdk::prelude::*
+- For events: evm::log(EventName {{ field1, field2 }})
+- For errors: return Err(ErrorName {{ ... }}.abi_encode())
 
 Output format:
-1. First provide a brief explanation of changes
-2. Then the complete lib.rs in a ```rust code block
-3. Then the Cargo.toml in a ```toml code block (only if dependencies changed)"""
+1. Brief explanation of changes (1-2 sentences)
+2. Complete lib.rs in a ```rust code block
+
+IMPORTANT: Do NOT output Cargo.toml - the template's Cargo.toml will be used as-is."""
 
 
 # Legacy templates for backwards compatibility (when templates module not available)
@@ -443,14 +455,9 @@ class GenerateStylusCodeTool(BaseTool):
         if rust_matches:
             code = rust_matches[0].strip()
 
-        # Extract toml code blocks
-        toml_pattern = r"```toml\s*([\s\S]*?)```"
-        toml_matches = re.findall(toml_pattern, response)
-
-        if toml_matches:
-            cargo_toml = toml_matches[0].strip()
-        elif template:
-            # Use template's cargo.toml if not provided
+        # ALWAYS use template's Cargo.toml - don't trust LLM-generated Cargo.toml
+        # LLM often makes typos (alloy-sol_types) or misses deps (ruint)
+        if template:
             cargo_toml = template.cargo_toml
 
         # Extract explanation (text before first code block or after last)
@@ -471,6 +478,10 @@ class GenerateStylusCodeTool(BaseTool):
 
         if not explanation:
             explanation = "Contract customized based on your requirements."
+
+        # Apply fixes for common LLM mistakes in code only
+        # Cargo.toml comes directly from template, no fixes needed
+        code = self._fix_code(code, template)
 
         return code, cargo_toml, explanation
 
@@ -526,3 +537,107 @@ class GenerateStylusCodeTool(BaseTool):
             warnings.append("Potential unchecked subtraction - consider using checked_sub")
 
         return warnings
+
+    def _fix_code(self, code: str, template: Optional["StylusTemplate"]) -> str:
+        """Fix common LLM mistakes in generated code."""
+        fixed = code
+
+        # Fix 1: Remove empty sol_storage! blocks
+        fixed = re.sub(r'sol_storage!\s*\{\s*\}', '', fixed)
+
+        # Fix 2: Ensure proper cfg_attr if missing
+        if "#![cfg_attr(not(any(test" not in fixed:
+            if template:
+                template_start = template.lib_rs.split("extern crate alloc")[0]
+                if not fixed.startswith("#![cfg_attr"):
+                    fixed = template_start + fixed
+
+        # Fix 3: Ensure extern crate alloc if missing
+        if "extern crate alloc" not in fixed:
+            fixed = re.sub(
+                r'^(#!\[cfg_attr.*\n)+',
+                r'\g<0>#[macro_use]\nextern crate alloc;\n\n',
+                fixed,
+                flags=re.MULTILINE
+            )
+
+        # Fix 4: Remove incorrect imports (sol! is in prelude)
+        fixed = re.sub(r'use alloy_sol_types::sol;\n?', '', fixed)
+        fixed = re.sub(r'use stylus_sdk::alloy_sol_types::sol;\n?', '', fixed)
+
+        # Fix 5: Handle Vec imports - avoid duplicates
+        # If we have both "use alloc::vec::Vec" and "use alloc::{...vec::Vec...}", remove the standalone
+        if "use alloc::vec::Vec;" in fixed and "use alloc::{" in fixed and "vec::Vec" in fixed:
+            fixed = re.sub(r'use alloc::vec::Vec;\n?', '', fixed)
+        # If Vec<u8> is used but no import, add it
+        if "Vec<u8>" in fixed and "alloc::vec::Vec" not in fixed and "alloc::{" not in fixed:
+            fixed = re.sub(
+                r'(extern crate alloc;)',
+                r'\1\n\nuse alloc::vec::Vec;',
+                fixed
+            )
+
+        # Fix 6: Ensure there's exactly one sol_storage! block with #[entrypoint]
+        sol_storage_count = len(re.findall(r'sol_storage!\s*\{', fixed))
+        if sol_storage_count == 0 and template:
+            # If no sol_storage! block, the code is likely broken - use template
+            return template.lib_rs
+
+        # Fix 7: Ensure #[entrypoint] is inside sol_storage! if missing
+        if "#[entrypoint]" not in fixed:
+            fixed = re.sub(
+                r'sol_storage!\s*\{\s*(\n?\s*pub struct)',
+                r'sol_storage! {\n    #[entrypoint]\1',
+                fixed
+            )
+
+        return fixed
+
+    def _fix_cargo_toml(self, cargo: str, template: Optional["StylusTemplate"], target_version: str) -> str:
+        """Fix common LLM mistakes in generated Cargo.toml."""
+        fixed = cargo
+
+        # Ensure correct stylus-sdk version
+        fixed = re.sub(
+            r'stylus-sdk\s*=\s*"[^"]+"',
+            f'stylus-sdk = "{target_version}"',
+            fixed
+        )
+
+        # Ensure alloy-primitives uses exact version pin
+        if 'alloy-primitives = "=' not in fixed:
+            fixed = re.sub(
+                r'alloy-primitives\s*=\s*"([^"=][^"]*)"',
+                r'alloy-primitives = "=\1"',
+                fixed
+            )
+
+        # Ensure alloy-sol-types uses exact version pin
+        if 'alloy-sol-types = "=' not in fixed:
+            fixed = re.sub(
+                r'alloy-sol-types\s*=\s*"([^"=][^"]*)"',
+                r'alloy-sol-types = "=\1"',
+                fixed
+            )
+
+        # Ensure [profile.release] section exists
+        if "[profile.release]" not in fixed:
+            fixed += """
+
+[profile.release]
+codegen-units = 1
+strip = true
+lto = true
+panic = "abort"
+opt-level = "s" """
+
+        # Ensure [lib] section exists with cdylib
+        if 'crate-type = ["lib", "cdylib"]' not in fixed:
+            if "[lib]" not in fixed:
+                fixed = re.sub(
+                    r'\[features\]',
+                    '[lib]\ncrate-type = ["lib", "cdylib"]\n\n[features]',
+                    fixed
+                )
+
+        return fixed

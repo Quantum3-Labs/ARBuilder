@@ -1,12 +1,21 @@
 {
-  "main_version": "0.9.0",
+  "main_version": "0.9.2",
   "minimum_version": "0.8.0",
   "deprecated_below": "0.8.0",
   "versions": {
-    "0.9.0": {
+    "0.9.2": {
       "status": "main",
-      "alloy_primitives": "0.8.20",
-      "alloy_sol_types": "0.8.20",
+      "alloy_primitives": "=0.8.20",
+      "alloy_sol_types": "=0.8.20",
+      "breaking_changes": [
+        "Latest stable release with alloy 0.8.x compatibility"
+      ],
+      "released": "2025-01"
+    },
+    "0.9.0": {
+      "status": "supported",
+      "alloy_primitives": "=0.8.20",
+      "alloy_sol_types": "=0.8.20",
       "breaking_changes": [
         "Updated to alloy 0.9.x ecosystem"
       ],

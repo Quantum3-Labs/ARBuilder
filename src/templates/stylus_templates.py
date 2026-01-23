@@ -22,6 +22,7 @@ class StylusTemplate:
     features: List[str]
     lib_rs: str
     cargo_toml: str
+    main_rs: str  # For ABI export: cargo run --features export-abi
 
 
 # Counter template - Simple storage pattern
@@ -30,7 +31,7 @@ COUNTER_TEMPLATE = StylusTemplate(
     name="Counter",
     description="Simple counter with increment, add, multiply operations",
     contract_type="utility",
-    sdk_version="0.9.0",
+    sdk_version="0.9.2",
     features=["storage", "public functions", "payable", "tests"],
     lib_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
@@ -108,10 +109,10 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-stylus-sdk = "0.9.0"
+stylus-sdk = "0.9.2"
 alloy-primitives = "=0.8.20"
 alloy-sol-types = "=0.8.20"
-ruint = "=1.15.0"
+ruint = "=1.12.3"
 [dev-dependencies]
 tokio = { version = "1.21.0", features = ["full"] }
 ethers = "2.0"
@@ -125,12 +126,22 @@ mini-alloc = ["stylus-sdk/mini-alloc"]
 [lib]
 crate-type = ["lib", "cdylib"]
 
+[[bin]]
+name = "stylus-counter"
+path = "src/main.rs"
+
 [profile.release]
 codegen-units = 1
 strip = true
 lto = true
 panic = "abort"
 opt-level = "s"''',
+    main_rs='''#![cfg_attr(not(feature = "export-abi"), no_main)]
+
+#[cfg(feature = "export-abi")]
+fn main() {
+    stylus_counter::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
+}''',
 )
 
 # Vending Machine template - Mappings and time-based logic
@@ -138,7 +149,7 @@ VENDING_MACHINE_TEMPLATE = StylusTemplate(
     name="VendingMachine",
     description="Mapping storage with time-based distribution logic",
     contract_type="defi",
-    sdk_version="0.9.0",
+    sdk_version="0.9.2",
     features=["mappings", "timestamps", "rate limiting", "tests"],
     lib_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
@@ -237,10 +248,10 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-stylus-sdk = "0.9.0"
+stylus-sdk = "0.9.2"
 alloy-primitives = "=0.8.20"
 alloy-sol-types = "=0.8.20"
-ruint = "=1.15.0"
+ruint = "=1.12.3"
 [dev-dependencies]
 tokio = { version = "1.21.0", features = ["full"] }
 ethers = "2.0"
@@ -254,12 +265,22 @@ mini-alloc = ["stylus-sdk/mini-alloc"]
 [lib]
 crate-type = ["lib", "cdylib"]
 
+[[bin]]
+name = "stylus-vending-machine"
+path = "src/main.rs"
+
 [profile.release]
 codegen-units = 1
 strip = true
 lto = true
 panic = "abort"
 opt-level = "s"''',
+    main_rs='''#![cfg_attr(not(feature = "export-abi"), no_main)]
+
+#[cfg(feature = "export-abi")]
+fn main() {
+    stylus_vending_machine::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
+}''',
 )
 
 # Simple ERC20 template - Basic token without OpenZeppelin
@@ -267,10 +288,11 @@ SIMPLE_ERC20_TEMPLATE = StylusTemplate(
     name="SimpleERC20",
     description="Basic ERC20 token with transfer, approve, transferFrom",
     contract_type="token",
-    sdk_version="0.9.0",
+    sdk_version="0.9.2",
     features=["ERC20", "mappings", "events", "error handling"],
     lib_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
+#![allow(deprecated)] // msg::sender() and evm::log() are deprecated but still work
 #[macro_use]
 extern crate alloc;
 
@@ -452,10 +474,10 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-stylus-sdk = "0.9.0"
+stylus-sdk = "0.9.2"
 alloy-primitives = "=0.8.20"
 alloy-sol-types = "=0.8.20"
-ruint = "=1.15.0"
+ruint = "=1.12.3"
 [dev-dependencies]
 tokio = { version = "1.21.0", features = ["full"] }
 ethers = "2.0"
@@ -469,12 +491,22 @@ mini-alloc = ["stylus-sdk/mini-alloc"]
 [lib]
 crate-type = ["lib", "cdylib"]
 
+[[bin]]
+name = "stylus-erc20"
+path = "src/main.rs"
+
 [profile.release]
 codegen-units = 1
 strip = true
 lto = true
 panic = "abort"
 opt-level = "s"''',
+    main_rs='''#![cfg_attr(not(feature = "export-abi"), no_main)]
+
+#[cfg(feature = "export-abi")]
+fn main() {
+    stylus_erc20::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
+}''',
 )
 
 # Access Control template - Owner-only functions
@@ -482,10 +514,11 @@ ACCESS_CONTROL_TEMPLATE = StylusTemplate(
     name="AccessControl",
     description="Contract with owner-only functions and ownership transfer",
     contract_type="utility",
-    sdk_version="0.9.0",
+    sdk_version="0.9.2",
     features=["access control", "ownership", "modifiers"],
     lib_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
+#![allow(deprecated)] // msg::sender() and evm::log() are deprecated but still work
 #[macro_use]
 extern crate alloc;
 
@@ -623,10 +656,10 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-stylus-sdk = "0.9.0"
+stylus-sdk = "0.9.2"
 alloy-primitives = "=0.8.20"
 alloy-sol-types = "=0.8.20"
-ruint = "=1.15.0"
+ruint = "=1.12.3"
 [dev-dependencies]
 tokio = { version = "1.21.0", features = ["full"] }
 ethers = "2.0"
@@ -640,12 +673,22 @@ mini-alloc = ["stylus-sdk/mini-alloc"]
 [lib]
 crate-type = ["lib", "cdylib"]
 
+[[bin]]
+name = "stylus-ownable"
+path = "src/main.rs"
+
 [profile.release]
 codegen-units = 1
 strip = true
 lto = true
 panic = "abort"
 opt-level = "s"''',
+    main_rs='''#![cfg_attr(not(feature = "export-abi"), no_main)]
+
+#[cfg(feature = "export-abi")]
+fn main() {
+    stylus_ownable::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
+}''',
 )
 
 # All available templates indexed by contract type

@@ -35,11 +35,11 @@ export interface ChatCompletionResponse {
   };
 }
 
-// Default models
+// Default models - using Gemini for all operations
 export const MODELS = {
-  CODE_GEN: "deepseek/deepseek-chat",
+  CODE_GEN: "google/gemini-3-flash-preview",
   QA: "google/gemini-3-flash-preview",
-  FAST: "google/gemini-2.5-flash-lite",
+  FAST: "google/gemini-3-flash-preview",
 } as const;
 
 /**
@@ -185,13 +185,12 @@ export async function generateCodeFromTemplate(
   targetVersion?: string
 ): Promise<ChatCompletionResponse> {
   const version = targetVersion || getMainVersion();
-  const patterns = getVersionPatterns(version);
   const alloyVersion = getAlloyPrimitivesVersion(version);
 
   const systemPrompt = `You are an expert Stylus (Rust) smart contract developer for Arbitrum.
 
-IMPORTANT: You are customizing a WORKING template. The template below compiles and deploys correctly.
-Your job is to MODIFY this template to match the user's requirements while keeping the structure intact.
+CRITICAL: You are customizing a WORKING template. The template below compiles and deploys correctly.
+Your job is to MODIFY this template to match the user's requirements while keeping the EXACT structure intact.
 
 Base Template: ${template.name}
 Template Description: ${template.description}
@@ -200,22 +199,34 @@ Template Features: ${template.features.join(", ")}
 Target SDK Version: stylus-sdk ${version}
 Alloy Primitives: ${alloyVersion}
 
-RULES:
-1. KEEP the #![cfg_attr...] attributes exactly as they are - they are required
-2. KEEP the extern crate alloc; declaration
-3. KEEP the sol_storage! macro structure - modify the fields inside
-4. KEEP the #[public] attribute on the impl block
-5. KEEP the [profile.release] section in Cargo.toml
-6. You MAY add new functions, modify existing ones, add storage fields
-7. You MAY add events using sol! macro
-8. You MAY add error types using sol! macro
-9. ALWAYS use proper error handling with Result<T, Vec<u8>>
-10. NEVER use unwrap() - use proper error handling
+ABSOLUTE RULES - NEVER VIOLATE THESE:
+1. KEEP the EXACT first 4 lines: #![cfg_attr...], #![cfg_attr...], #[macro_use], extern crate alloc;
+2. KEEP all use statements from the template - you may ADD more but NEVER remove
+3. There must be EXACTLY ONE sol_storage! block - NEVER create empty sol_storage! blocks
+4. KEEP the #[entrypoint] attribute inside sol_storage!
+5. KEEP the #[public] attribute on the impl block
+6. NEVER add "use alloy_sol_types::sol;" - it's already available via stylus_sdk::prelude::*
+7. If adding events/errors with sol! macro, they must be BEFORE sol_storage!
+8. KEEP the Cargo.toml [profile.release] section exactly as provided
+
+WHAT YOU MAY DO:
+- Add/modify storage fields inside sol_storage!
+- Add/modify functions inside the #[public] impl block
+- Add events using sol! { event EventName(...); } BEFORE sol_storage!
+- Add error types using sol! { error ErrorName(...); } BEFORE sol_storage!
+- Add internal helper functions (without #[public])
+
+IMPORTS - USE THESE PATTERNS:
+- Types from stylus_sdk::alloy_primitives::{Address, U256, U8, ...}
+- sol! macro is available from stylus_sdk::prelude::*
+- For events: evm::log(EventName { field1, field2 })
+- For errors: return Err(ErrorName { ... }.abi_encode())
 
 Output format:
-1. First provide a brief explanation of changes
-2. Then the complete lib.rs in a \`\`\`rust code block
-3. Then the Cargo.toml in a \`\`\`toml code block (only if dependencies changed)`;
+1. Brief explanation of changes (1-2 sentences)
+2. Complete lib.rs in a \`\`\`rust code block
+
+IMPORTANT: Do NOT output Cargo.toml - the template's Cargo.toml will be used as-is.`;
 
   const userPrompt = `BASE TEMPLATE (lib.rs):
 \`\`\`rust
@@ -252,6 +263,9 @@ export async function answerQuestion(
   question: string,
   context: string
 ): Promise<ChatCompletionResponse> {
+  const mainVersion = getMainVersion();
+  const alloyVersion = getAlloyPrimitivesVersion(mainVersion);
+
   const messages: Message[] = [
     {
       role: "system",
@@ -259,7 +273,16 @@ export async function answerQuestion(
 Answer questions about Stylus smart contract development on Arbitrum.
 Use the provided context to give accurate, up-to-date answers.
 Include code examples when relevant.
-Be concise but thorough.`,
+Be concise but thorough.
+
+CRITICAL VERSION INFORMATION (January 2025):
+ALWAYS use these versions - ignore any outdated version info in retrieved context:
+- stylus-sdk: ${mainVersion} (stable, recommended for new projects)
+- alloy-primitives: ${alloyVersion}
+- alloy-sol-types: ${alloyVersion}
+- Rust version: 1.81 (1.82+ may have compatibility issues)
+
+When asked about versions, ALWAYS use the version info above, NOT from retrieved context which may be outdated.`,
     },
     {
       role: "user",

@@ -22,6 +22,66 @@ import {
 } from "../stylusVersions";
 import { selectTemplate, StylusTemplate } from "../templates/stylusTemplates";
 
+/**
+ * Validate and fix common LLM mistakes in generated code.
+ */
+function validateAndFixCode(code: string, template: StylusTemplate): string {
+  let fixed = code;
+
+  // Fix 1: Remove empty sol_storage! blocks
+  fixed = fixed.replace(/sol_storage!\s*\{\s*\}/g, "");
+
+  // Fix 2: Ensure proper cfg_attr if missing
+  if (!fixed.includes("#![cfg_attr(not(any(test")) {
+    const templateStart = template.libRs.split("extern crate alloc")[0];
+    if (!fixed.startsWith("#![cfg_attr")) {
+      fixed = templateStart + fixed;
+    }
+  }
+
+  // Fix 3: Ensure extern crate alloc if missing
+  if (!fixed.includes("extern crate alloc")) {
+    fixed = fixed.replace(
+      /^(#!\[cfg_attr.*\n)+/m,
+      "$&#[macro_use]\nextern crate alloc;\n\n"
+    );
+  }
+
+  // Fix 4: Remove incorrect imports (sol! is in prelude)
+  fixed = fixed.replace(/use alloy_sol_types::sol;\n?/g, "");
+  fixed = fixed.replace(/use stylus_sdk::alloy_sol_types::sol;\n?/g, "");
+
+  // Fix 5: Handle Vec imports - avoid duplicates
+  // If we have both "use alloc::vec::Vec" and "use alloc::{...vec::Vec...}", remove the standalone
+  if (fixed.includes("use alloc::vec::Vec;") && fixed.includes("use alloc::{") && fixed.includes("vec::Vec")) {
+    fixed = fixed.replace(/use alloc::vec::Vec;\n?/g, "");
+  }
+  // If Vec<u8> is used but no import, add it
+  if (fixed.includes("Vec<u8>") && !fixed.includes("alloc::vec::Vec") && !fixed.includes("alloc::{") ) {
+    fixed = fixed.replace(
+      /(extern crate alloc;)/,
+      "$1\n\nuse alloc::vec::Vec;"
+    );
+  }
+
+  // Fix 6: Ensure there's exactly one sol_storage! block with #[entrypoint]
+  const solStorageCount = (fixed.match(/sol_storage!\s*\{/g) || []).length;
+  if (solStorageCount === 0) {
+    // If no sol_storage! block, the code is likely broken - use template
+    return template.libRs;
+  }
+
+  // Fix 7: Ensure #[entrypoint] is inside sol_storage! if missing
+  if (!fixed.includes("#[entrypoint]")) {
+    fixed = fixed.replace(
+      /sol_storage!\s*\{\s*(\n?\s*pub struct)/,
+      "sol_storage! {\n    #[entrypoint]$1"
+    );
+  }
+
+  return fixed;
+}
+
 export interface GenerateStylusCodeInput {
   prompt: string;
   contextQuery?: string;
@@ -37,6 +97,7 @@ export interface GenerateStylusCodeInput {
 export interface GenerateStylusCodeOutput {
   code: string;
   cargoToml: string;
+  mainRs: string; // For ABI export: cargo run --features export-abi
   explanation: string;
   dependencies: string[];
   warnings: string[];
@@ -125,11 +186,14 @@ export async function generateStylusCode(
 
   // Parse response - extract code blocks and explanation
   const codeMatch = response.content.match(/```rust\n([\s\S]*?)```/);
-  const code = codeMatch ? codeMatch[1].trim() : response.content;
+  let code = codeMatch ? codeMatch[1].trim() : response.content;
 
-  // Extract Cargo.toml if provided, otherwise use template's
-  const cargoMatch = response.content.match(/```toml\n([\s\S]*?)```/);
-  const generatedCargo = cargoMatch ? cargoMatch[1].trim() : template.cargoToml;
+  // ALWAYS use template's Cargo.toml - don't trust LLM-generated Cargo.toml
+  // LLM often makes typos (alloy-sol_types) or misses deps (ruint)
+  const generatedCargo = template.cargoToml;
+
+  // Validate and fix common LLM mistakes in code
+  code = validateAndFixCode(code, template);
 
   // Extract explanation (text before or after code blocks)
   const explanation = response.content
@@ -160,6 +224,7 @@ export async function generateStylusCode(
   return {
     code,
     cargoToml: generatedCargo,
+    mainRs: template.mainRs,
     explanation: explanation || "Contract generated based on your requirements.",
     dependencies,
     warnings,

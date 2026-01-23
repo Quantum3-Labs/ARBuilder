@@ -96,6 +96,7 @@ async function withdrawEth(amount: string) {
     amount: utils.parseEther(amount),
     childSigner: wallet,
     destinationAddress: wallet.address,
+    from: wallet.address,
   });
 
   console.log('Withdrawal initiated:', withdrawTx.hash);
