@@ -263,6 +263,9 @@ export async function answerQuestion(
   question: string,
   context: string
 ): Promise<ChatCompletionResponse> {
+  const mainVersion = getMainVersion();
+  const alloyVersion = getAlloyPrimitivesVersion(mainVersion);
+
   const messages: Message[] = [
     {
       role: "system",
@@ -270,7 +273,16 @@ export async function answerQuestion(
 Answer questions about Stylus smart contract development on Arbitrum.
 Use the provided context to give accurate, up-to-date answers.
 Include code examples when relevant.
-Be concise but thorough.`,
+Be concise but thorough.
+
+CRITICAL VERSION INFORMATION (January 2025):
+ALWAYS use these versions - ignore any outdated version info in retrieved context:
+- stylus-sdk: ${mainVersion} (stable, recommended for new projects)
+- alloy-primitives: ${alloyVersion}
+- alloy-sol-types: ${alloyVersion}
+- Rust version: 1.81 (1.82+ may have compatibility issues)
+
+When asked about versions, ALWAYS use the version info above, NOT from retrieved context which may be outdated.`,
     },
     {
       role: "user",

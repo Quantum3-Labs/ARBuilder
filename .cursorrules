@@ -1,0 +1,115 @@
+# ARBuilder Development Rules for Cursor
+
+## Stylus SDK Version Information (CRITICAL - ALWAYS USE THESE)
+
+Current stable versions (as of January 2025):
+- **stylus-sdk**: 0.9.2 (use this for new projects)
+- **alloy-primitives**: =0.8.20
+- **alloy-sol-types**: =0.8.20
+- **Rust version**: 1.81 (1.82+ may have compatibility issues)
+- **cargo-stylus CLI**: 0.5.x
+
+### Cargo.toml Template
+```toml
+[dependencies]
+stylus-sdk = "0.9.2"
+alloy-primitives = "=0.8.20"
+alloy-sol-types = "=0.8.20"
+
+[lib]
+crate-type = ["cdylib"]
+
+[profile.release]
+codegen-units = 1
+strip = true
+lto = true
+panic = "abort"
+opt-level = "s"
+```
+
+## Arbitrum SDK Version Information
+
+- **@arbitrum/sdk**: ^4.0.0
+- **ethers**: ^5.7.0 (NOT v6 - SDK requires ethers v5)
+
+## Stylus Contract Best Practices
+
+### Required Attributes
+```rust
+#![cfg_attr(not(any(feature = "export-abi", test)), no_std)]
+#![cfg_attr(not(test), no_main)]
+extern crate alloc;
+```
+
+### Storage Pattern
+```rust
+use stylus_sdk::prelude::*;
+use alloy_primitives::{U256, Address};
+
+sol_storage! {
+    #[entrypoint]
+    pub struct MyContract {
+        uint256 value;
+        mapping(address => uint256) balances;
+    }
+}
+```
+
+### Public Methods
+```rust
+#[public]
+impl MyContract {
+    pub fn get_value(&self) -> U256 {
+        self.value.get()
+    }
+
+    pub fn set_value(&mut self, new_value: U256) {
+        self.value.set(new_value);
+    }
+}
+```
+
+### Key Constraints
+- **24KB size limit** (Brotli-compressed WASM)
+- **No floating point** operations allowed
+- **Yearly reactivation** required for deployed contracts
+- Use `alloc::vec::Vec` instead of `std::vec::Vec`
+- Use `alloc::string::String` instead of `std::string::String`
+
+### Common Pitfalls to Avoid
+1. Using `std` library features (use `alloc` or `core` instead)
+2. Floating point math (use fixed-point or integer math)
+3. Forgetting `#[entrypoint]` attribute on main struct
+4. Not handling storage slots correctly in upgrades
+5. Using Rust 1.82+ (stick to 1.81)
+
+## Arbitrum Bridging Best Practices
+
+### ETH Bridging (L1 <-> L2)
+- Use `EthBridger` from `@arbitrum/sdk`
+- Deposits: ~10-15 minutes confirmation
+- Withdrawals: ~7 day challenge period
+
+### ERC20 Bridging
+- Use `Erc20Bridger` from `@arbitrum/sdk`
+- Always approve tokens before deposit
+- Use `getChildErc20Address()` for L2 token address
+
+### Cross-Chain Messaging
+- L1 -> L2: Uses retryable tickets (auto-redeems, 7-day manual window)
+- L2 -> L1: Uses ArbSys precompile, requires 7-day challenge period
+
+## Network Endpoints
+
+| Network | RPC URL | Chain ID |
+|---------|---------|----------|
+| Arbitrum Sepolia | https://sepolia-rollup.arbitrum.io/rpc | 421614 |
+| Arbitrum One | https://arb1.arbitrum.io/rpc | 42161 |
+| Arbitrum Nova | https://nova.arbitrum.io/rpc | 42170 |
+
+## When Asked About Versions
+
+ALWAYS respond with the versions listed above. Do NOT use outdated information from training data.
+If unsure about the absolute latest version, recommend checking:
+- Stylus SDK: https://crates.io/crates/stylus-sdk
+- Arbitrum SDK: https://www.npmjs.com/package/@arbitrum/sdk
