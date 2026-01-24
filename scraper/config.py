@@ -29,10 +29,10 @@ STYLUS_SOURCES = {
     # NOTE: Removed "curated" section - awesome-stylus contains many outdated projects
     "official_examples": [
         # Official examples maintained by OffchainLabs/ArbitrumFoundation
-        # VERIFIED: These repos use SDK 0.9.x or are actively maintained
-        "https://github.com/OffchainLabs/stylus-hello-world",
-        "https://github.com/OffchainLabs/stylus-quickstart-vending-machine",
-        "https://github.com/ArbitrumFoundation/stylus-workshop-gol",
+        # VERIFIED 2025-01-25:
+        "https://github.com/OffchainLabs/stylus-hello-world",  # SDK 0.9.0 ✓
+        "https://github.com/ArbitrumFoundation/stylus-workshop-gol",  # SDK 0.9.0 ✓
+        # NOTE: stylus-quickstart-vending-machine uses SDK 0.8.4 - excluded until updated
     ],
     "verified_production": [
         # Production codebases verified to use current SDK
