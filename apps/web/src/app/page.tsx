@@ -57,14 +57,14 @@ export default async function Home() {
             AI-Powered Development
           </div>
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 mb-6 leading-tight">
-            Build Arbitrum Stylus
+            Build on Arbitrum
             <br />
-            <span className="gradient-text">Contracts with AI</span>
+            <span className="gradient-text">with AI-Powered Tools</span>
           </h1>
           <p className="text-lg sm:text-xl text-gray-600 mb-10 max-w-2xl mx-auto leading-relaxed">
-            ARBuilder provides AI-powered tools to help you write, test, and
-            deploy Stylus smart contracts. Connect your IDE and start building
-            in minutes.
+            ARBuilder provides AI-powered tools for Stylus smart contracts,
+            cross-chain bridging, and L1/L2/L3 messaging. Connect your IDE and
+            start building in minutes.
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
             <Link
@@ -89,15 +89,19 @@ export default async function Home() {
       {/* Features Section */}
       <section className="py-20 bg-gray-50 px-4">
         <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-16">
+          {/* Stylus Tools */}
+          <div className="text-center mb-12">
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 rounded-full text-blue-700 text-sm font-medium mb-4">
+              Stylus Development
+            </div>
             <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
-              AI-Powered Development Tools
+              Smart Contract Tools
             </h2>
             <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              Everything you need to build production-ready Stylus contracts
+              Build production-ready Stylus contracts with AI assistance
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
             {[
               {
                 icon: (
@@ -152,6 +156,94 @@ export default async function Home() {
                 iconColor: "text-indigo-600",
                 title: "IDE Integration",
                 description: "Works with Cursor, Claude Desktop, and any MCP-compatible editor via mcp-remote.",
+              },
+            ].map((feature, index) => (
+              <div
+                key={feature.title}
+                className={`bg-white p-6 rounded-2xl border border-gray-100 shadow-sm card-hover opacity-0 animate-fade-in stagger-${index + 1}`}
+              >
+                <div className={`w-12 h-12 ${feature.iconBg} rounded-xl flex items-center justify-center mb-4`}>
+                  <svg className={`w-6 h-6 ${feature.iconColor}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    {feature.icon}
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  {feature.title}
+                </h3>
+                <p className="text-gray-600 leading-relaxed">
+                  {feature.description}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {/* Bridging & SDK Tools */}
+          <div className="text-center mb-12">
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-purple-50 rounded-full text-purple-700 text-sm font-medium mb-4">
+              Arbitrum SDK
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
+              Cross-Chain Bridging Tools
+            </h2>
+            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+              Generate TypeScript code for ETH/ERC20 bridging and cross-chain messaging
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[
+              {
+                icon: (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                ),
+                iconBg: "bg-purple-100",
+                iconColor: "text-purple-600",
+                title: "ETH Bridging",
+                description: "Generate code for ETH deposits and withdrawals between L1 and L2.",
+              },
+              {
+                icon: (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                ),
+                iconBg: "bg-pink-100",
+                iconColor: "text-pink-600",
+                title: "ERC20 Bridging",
+                description: "Bridge ERC20 tokens with automatic approval and gateway handling.",
+              },
+              {
+                icon: (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                ),
+                iconBg: "bg-cyan-100",
+                iconColor: "text-cyan-600",
+                title: "Cross-Chain Messaging",
+                description: "L1→L2 retryable tickets and L2→L1 messages via ArbSys.",
+              },
+              {
+                icon: (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                ),
+                iconBg: "bg-orange-100",
+                iconColor: "text-orange-600",
+                title: "L1 → L3 Bridging",
+                description: "Bridge assets directly from L1 to Orbit L3 chains.",
+              },
+              {
+                icon: (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                ),
+                iconBg: "bg-teal-100",
+                iconColor: "text-teal-600",
+                title: "Message Status",
+                description: "Track retryable ticket redemption and L2→L1 message confirmation.",
+              },
+              {
+                icon: (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                ),
+                iconBg: "bg-lime-100",
+                iconColor: "text-lime-600",
+                title: "Bridging Q&A",
+                description: "Get answers about bridging patterns, timing, and best practices.",
               },
             ].map((feature, index) => (
               <div
