@@ -10,8 +10,10 @@ CURATION POLICY:
 - No unverified community submissions
 """
 
-# Current SDK version requirement
-REQUIRED_STYLUS_SDK_VERSION = "0.9.0"
+# SDK version requirements (from shared/stylus-versions.json)
+MAIN_STYLUS_SDK_VERSION = "0.9.2"
+MIN_STYLUS_SDK_VERSION = "0.8.0"  # Minimum supported
+DEPRECATED_BELOW = "0.8.0"  # Anything below this is deprecated
 
 # M1: Stylus Documentation and Code Sources
 # VERIFIED: All code sources tested to compile with SDK 0.9.x
@@ -29,10 +31,10 @@ STYLUS_SOURCES = {
     # NOTE: Removed "curated" section - awesome-stylus contains many outdated projects
     "official_examples": [
         # Official examples maintained by OffchainLabs/ArbitrumFoundation
-        # VERIFIED 2025-01-25:
-        "https://github.com/OffchainLabs/stylus-hello-world",  # SDK 0.9.0 ✓
-        "https://github.com/ArbitrumFoundation/stylus-workshop-gol",  # SDK 0.9.0 ✓
-        # NOTE: stylus-quickstart-vending-machine uses SDK 0.8.4 - excluded until updated
+        # VERIFIED 2025-01-25 (all >= 0.8.0 minimum):
+        "https://github.com/OffchainLabs/stylus-hello-world",  # SDK 0.9.0
+        "https://github.com/OffchainLabs/stylus-quickstart-vending-machine",  # SDK 0.8.4
+        "https://github.com/ArbitrumFoundation/stylus-workshop-gol",  # SDK 0.9.0
     ],
     "verified_production": [
         # Production codebases verified to use current SDK

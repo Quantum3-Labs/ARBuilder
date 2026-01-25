@@ -14,7 +14,8 @@ ARBuilder's knowledge base must only contain **verified, working code** that com
 ### 2. Code Repositories
 
 **Inclusion criteria:**
-- Must compile with `stylus-sdk >= 0.9.0`
+- Must compile with `stylus-sdk >= 0.8.0` (minimum supported version)
+- Prefer `stylus-sdk >= 0.9.0` (main version)
 - Must be actively maintained (commits within 6 months)
 - Must be deployable and functional
 
@@ -26,24 +27,26 @@ ARBuilder's knowledge base must only contain **verified, working code** that com
 
 ### 3. Version Requirements
 
-| Component | Minimum Version |
-|-----------|-----------------|
-| stylus-sdk | 0.9.0 |
-| alloy-primitives | 0.8.20 |
-| alloy-sol-types | 0.8.20 |
-| Rust | 1.81 |
+| Component | Main Version | Minimum Version |
+|-----------|--------------|-----------------|
+| stylus-sdk | 0.9.2 | 0.8.0 |
+| alloy-primitives | =0.8.20 | 0.8.0 |
+| alloy-sol-types | =0.8.20 | 0.8.0 |
+| Rust | 1.81 | 1.81 |
+
+**Note:** Anything below stylus-sdk 0.8.0 is deprecated (uses `#[external]` instead of `#[public]`).
 
 ## Current Verified Sources
 
 ### M1: Stylus Development
 
-| Source | Type | Status | Notes |
-|--------|------|--------|-------|
-| docs.arbitrum.io/stylus/* | Docs | Verified | Official docs |
-| OffchainLabs/stylus-hello-world | Code | Verified | Official example |
-| OffchainLabs/stylus-quickstart-vending-machine | Code | Verified | Official example |
-| ArbitrumFoundation/stylus-workshop-gol | Code | Verified | Workshop material |
-| OpenZeppelin/rust-contracts-stylus | Code | Verified | Production library |
+| Source | Type | SDK Version | Status | Notes |
+|--------|------|-------------|--------|-------|
+| docs.arbitrum.io/stylus/* | Docs | N/A | Verified | Official docs |
+| OffchainLabs/stylus-hello-world | Code | 0.9.0 | Verified | Official example |
+| OffchainLabs/stylus-quickstart-vending-machine | Code | 0.8.4 | Verified | Official example |
+| ArbitrumFoundation/stylus-workshop-gol | Code | 0.9.0 | Verified | Workshop material |
+| OpenZeppelin/rust-contracts-stylus | Code | 0.9.0 | Verified | Production library |
 
 ### M2: Arbitrum SDK
 
@@ -56,12 +59,15 @@ ARBuilder's knowledge base must only contain **verified, working code** that com
 
 ## Removed Sources (and why)
 
-### Deprecated SDK Versions
-- `OffchainLabs/stylus-chess` - SDK v0.4.2
-- `OffchainLabs/stylus-by-example` - SDK v0.6.0
-- `fluidity-money/9lives.so` - SDK v0.7.0
-- `fluidity-money/long.so` - SDK v0.7.0
-- `hammertoe/ArbitrumOnchainAgent` - SDK v0.7.0
+### Deprecated SDK Versions (< 0.8.0)
+- `OffchainLabs/stylus-chess` - SDK v0.4.2 (deprecated)
+- `OffchainLabs/stylus-by-example` - SDK v0.6.0 (deprecated)
+- `fluidity-money/9lives.so` - SDK v0.7.0 (deprecated)
+- `fluidity-money/long.so` - SDK v0.7.0 (deprecated)
+- `hammertoe/ArbitrumOnchainAgent` - SDK v0.7.0 (deprecated)
+- `cygaar/inkmate` - SDK v0.4.3 (deprecated)
+- `malik672/open-stylus` - SDK v0.4.2 (deprecated)
+- `code-423n4/2024-10-superposition` - SDK v0.6.0 (deprecated)
 
 ### Meta-lists
 - `OffchainLabs/awesome-stylus` - Contains mixed versions, outdated projects
