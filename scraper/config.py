@@ -39,11 +39,40 @@ STYLUS_SOURCES = {
     "verified_production": [
         # Production codebases verified to use current SDK
         # OpenZeppelin: Actively maintained, follows latest SDK
-        "https://github.com/OpenZeppelin/rust-contracts-stylus",
+        "https://github.com/OpenZeppelin/rust-contracts-stylus",  # SDK 0.9.0
+        "https://github.com/stylus-developers-guild/reentrancy-transient-storage",  # SDK 0.9.0
     ],
-    # NOTE: Removed community_projects and community_challenges
-    # These were unverified and many used deprecated SDK versions
-    # TODO: Re-add after manual verification of SDK compatibility
+    "community_projects": [
+        # VERIFIED 2025-01-25 (all >= 0.8.0):
+        "https://github.com/philogicae/ethbuc2025-gyges",  # SDK 0.8.4
+        "https://github.com/Oluwatobilobaoke/erc6909-with-arbitrum-stylus",  # SDK 0.9.0
+        "https://github.com/hummusonrails/fortune-generator",  # SDK 0.8.0
+    ],
+    "scaffold_projects": [
+        # VERIFIED 2025-01-25 - scaffold-stylus based projects (all SDK 0.9.0):
+        "https://github.com/iyansr/cross-protocol-defi-tracker",
+        "https://github.com/Einarmig/WalletNaming-scaffold-stylus",
+        "https://github.com/mavix21/poap-scaffold-stylus",
+        "https://github.com/dchagast/scaffold-stylus-staking",
+        "https://github.com/cidkagenow/EmersonApp-scaffold-stylus",
+        "https://github.com/autodidacttrade/DeFi-Project-ERC20-scaffold-stylus",
+        "https://github.com/ByteToHex/VRF-scaffold-stylus",
+        # NOTE: Oyase-shinobi/scaffold-stylus excluded - has mixed SDK versions (0.9.0 + 0.6.1)
+    ],
+    "challenge_submissions": [
+        # VERIFIED 2025-01-25 - Arbitrum challenge submissions (all SDK 0.9.0):
+        "https://github.com/dante4rt/challenge-001",
+        "https://github.com/Huygon764/challenge-001",
+        "https://github.com/Fnz11/challenge-001",
+        "https://github.com/ndrewlex/challenge-001",
+        "https://github.com/athallarizky/challenge-001",
+        "https://github.com/dimasd-angga/challenge-001",
+        "https://github.com/ammar-rasyidi/challenge-001",
+        "https://github.com/rizkianakbar/challenge-001",
+        "https://github.com/math-marcellino/challenge-002",
+        "https://github.com/lucky-ivanius/challenge-001",
+        "https://github.com/lucky-ivanius/challenge-002",
+    ],
     "articles": [
         "https://blog.arbitrum.io/how-thirdweb-uses-arbitrum-stylus-to-power-the-next-wave-of-onchain-apps/",
     ],
