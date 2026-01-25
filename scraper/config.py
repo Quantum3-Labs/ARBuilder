@@ -40,16 +40,25 @@ STYLUS_SOURCES = {
         # Production codebases verified to use current SDK
         # OpenZeppelin: Actively maintained, follows latest SDK
         "https://github.com/OpenZeppelin/rust-contracts-stylus",  # SDK 0.9.0
+        "https://github.com/OpenZeppelin/stylus-test-helpers",  # SDK 0.9.0 (motsu testing framework)
         "https://github.com/stylus-developers-guild/reentrancy-transient-storage",  # SDK 0.9.0
+        # Oak Security: Solana-to-Stylus porting examples and case studies
+        "https://github.com/oak-security/stylusport",  # SDK 0.9.0
+        # Gnosis Guild: Reputable org building Stylus infrastructure
+        "https://github.com/gnosisguild/stylus-provider",  # SDK 0.8.4
     ],
     "community_projects": [
         # VERIFIED 2025-01-25 (all >= 0.8.0):
         "https://github.com/philogicae/ethbuc2025-gyges",  # SDK 0.8.4
         "https://github.com/Oluwatobilobaoke/erc6909-with-arbitrum-stylus",  # SDK 0.9.0
         "https://github.com/hummusonrails/fortune-generator",  # SDK 0.8.0
+        # Additional verified from deep research (2025-01-25):
+        "https://github.com/IndexMaker/vaultworks",  # SDK 0.9.0 - DeFi vault contracts
+        "https://github.com/Inteli-Club5/EdCation",  # SDK 0.8.0 - Education platform
     ],
     "scaffold_projects": [
         # VERIFIED 2025-01-25 - scaffold-stylus based projects (all SDK 0.9.0):
+        "https://github.com/Arb-Stylus/scaffold-stylus",  # SDK 0.9.0 - Main scaffold template
         "https://github.com/iyansr/cross-protocol-defi-tracker",
         "https://github.com/Einarmig/WalletNaming-scaffold-stylus",
         "https://github.com/mavix21/poap-scaffold-stylus",
