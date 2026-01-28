@@ -1,25 +1,33 @@
 /**
  * Public API for viewing available code templates.
  * Read-only, no authentication required.
- * Provides transparency into available Stylus templates.
+ * Provides transparency into available templates.
  *
  * Usage:
  * GET /api/public/templates - List all available templates
- * GET /api/public/templates?name=counter - Get specific template
+ * GET /api/public/templates?type=stylus - List only Stylus templates
+ * GET /api/public/templates?type=sdk - List only SDK templates
+ * GET /api/public/templates?name=counter - Get specific Stylus template
+ * GET /api/public/templates?name=eth_deposit - Get specific SDK template
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import {
-  listTemplates,
+  listTemplates as listStylusTemplates,
   COUNTER_TEMPLATE,
   VENDING_MACHINE_TEMPLATE,
   SIMPLE_ERC20_TEMPLATE,
   ACCESS_CONTROL_TEMPLATE,
   type StylusTemplate,
 } from "@/lib/templates/stylusTemplates";
+import {
+  listSdkTemplates,
+  SDK_TEMPLATES,
+  type SdkTemplate,
+} from "@/lib/templates/sdkTemplates";
 
-// Template names mapping
-const TEMPLATES_BY_NAME: Record<string, StylusTemplate> = {
+// Stylus template names mapping
+const STYLUS_TEMPLATES_BY_NAME: Record<string, StylusTemplate> = {
   counter: COUNTER_TEMPLATE,
   "vending-machine": VENDING_MACHINE_TEMPLATE,
   vendingmachine: VENDING_MACHINE_TEMPLATE,
@@ -30,23 +38,36 @@ const TEMPLATES_BY_NAME: Record<string, StylusTemplate> = {
   ownable: ACCESS_CONTROL_TEMPLATE,
 };
 
-// Public template view (summary without full code)
-interface PublicTemplateSummary {
+// Public Stylus template view
+interface PublicStylusTemplate {
+  type: "stylus";
   name: string;
   description: string;
   contractType: string;
   sdkVersion: string;
   features: string[];
-}
-
-// Full template view (includes code)
-interface PublicTemplateDetail extends PublicTemplateSummary {
-  files: {
+  files?: {
     libRs: string;
     cargoToml: string;
     mainRs: string;
   };
 }
+
+// Public SDK template view
+interface PublicSdkTemplate {
+  type: "sdk";
+  name: string;
+  description: string;
+  category: string;
+  subcategory: string;
+  sdkVersion: string;
+  dependencies: Record<string, string>;
+  envVars: string[];
+  notes: string[];
+  code?: string;
+}
+
+type PublicTemplate = PublicStylusTemplate | PublicSdkTemplate;
 
 /**
  * GET /api/public/templates
@@ -56,76 +77,110 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const templateName = searchParams.get("name");
+    const templateType = searchParams.get("type"); // "stylus" | "sdk" | null (all)
     const includeCode = searchParams.get("code") === "true";
 
     // If specific template requested
     if (templateName) {
-      const template = TEMPLATES_BY_NAME[templateName.toLowerCase()];
-
-      if (!template) {
-        return NextResponse.json(
-          { error: `Template not found: ${templateName}` },
-          { status: 404 }
-        );
+      // Check Stylus templates first
+      const stylusTemplate = STYLUS_TEMPLATES_BY_NAME[templateName.toLowerCase()];
+      if (stylusTemplate) {
+        const result: PublicStylusTemplate = {
+          type: "stylus",
+          name: stylusTemplate.name,
+          description: stylusTemplate.description,
+          contractType: stylusTemplate.contractType,
+          sdkVersion: stylusTemplate.sdkVersion,
+          features: stylusTemplate.features,
+          files: {
+            libRs: stylusTemplate.libRs,
+            cargoToml: stylusTemplate.cargoToml,
+            mainRs: stylusTemplate.mainRs,
+          },
+        };
+        return NextResponse.json({ status: "ok", template: result });
       }
 
-      const detail: PublicTemplateDetail = {
-        name: template.name,
-        description: template.description,
-        contractType: template.contractType,
-        sdkVersion: template.sdkVersion,
-        features: template.features,
-        files: {
-          libRs: template.libRs,
-          cargoToml: template.cargoToml,
-          mainRs: template.mainRs,
-        },
-      };
+      // Check SDK templates
+      const sdkTemplate = SDK_TEMPLATES[templateName.toLowerCase()];
+      if (sdkTemplate) {
+        const result: PublicSdkTemplate = {
+          type: "sdk",
+          name: sdkTemplate.name,
+          description: sdkTemplate.description,
+          category: sdkTemplate.category,
+          subcategory: sdkTemplate.subcategory,
+          sdkVersion: sdkTemplate.sdkVersion,
+          dependencies: sdkTemplate.dependencies,
+          envVars: sdkTemplate.envVars,
+          notes: sdkTemplate.notes,
+          code: sdkTemplate.code,
+        };
+        return NextResponse.json({ status: "ok", template: result });
+      }
 
-      return NextResponse.json({
-        status: "ok",
-        template: detail,
-      });
+      return NextResponse.json(
+        { error: `Template not found: ${templateName}` },
+        { status: 404 }
+      );
     }
 
-    // List all templates
-    const templates = listTemplates();
+    // Build templates list based on type filter
+    const templates: PublicTemplate[] = [];
 
-    if (includeCode) {
-      // Return full templates with code
-      const fullTemplates: PublicTemplateDetail[] = templates.map((t) => ({
-        name: t.name,
-        description: t.description,
-        contractType: t.contractType,
-        sdkVersion: t.sdkVersion,
-        features: t.features,
-        files: {
-          libRs: t.libRs,
-          cargoToml: t.cargoToml,
-          mainRs: t.mainRs,
-        },
-      }));
-
-      return NextResponse.json({
-        status: "ok",
-        templates: fullTemplates,
-        count: fullTemplates.length,
-      });
+    // Add Stylus templates
+    if (!templateType || templateType === "stylus") {
+      const stylusTemplates = listStylusTemplates();
+      for (const t of stylusTemplates) {
+        const template: PublicStylusTemplate = {
+          type: "stylus",
+          name: t.name,
+          description: t.description,
+          contractType: t.contractType,
+          sdkVersion: t.sdkVersion,
+          features: t.features,
+        };
+        if (includeCode) {
+          template.files = {
+            libRs: t.libRs,
+            cargoToml: t.cargoToml,
+            mainRs: t.mainRs,
+          };
+        }
+        templates.push(template);
+      }
     }
 
-    // Return summaries only (default)
-    const summaries: PublicTemplateSummary[] = templates.map((t) => ({
-      name: t.name,
-      description: t.description,
-      contractType: t.contractType,
-      sdkVersion: t.sdkVersion,
-      features: t.features,
-    }));
+    // Add SDK templates
+    if (!templateType || templateType === "sdk") {
+      const sdkTemplates = listSdkTemplates();
+      for (const t of sdkTemplates) {
+        const template: PublicSdkTemplate = {
+          type: "sdk",
+          name: t.name,
+          description: t.description,
+          category: t.category,
+          subcategory: t.subcategory,
+          sdkVersion: t.sdkVersion,
+          dependencies: t.dependencies,
+          envVars: t.envVars,
+          notes: t.notes,
+        };
+        if (includeCode) {
+          template.code = t.code;
+        }
+        templates.push(template);
+      }
+    }
 
     return NextResponse.json({
       status: "ok",
-      templates: summaries,
-      count: summaries.length,
+      templates,
+      count: templates.length,
+      stats: {
+        stylus: templateType === "sdk" ? 0 : listStylusTemplates().length,
+        sdk: templateType === "stylus" ? 0 : listSdkTemplates().length,
+      },
     });
   } catch (error) {
     console.error("Public templates error:", error);

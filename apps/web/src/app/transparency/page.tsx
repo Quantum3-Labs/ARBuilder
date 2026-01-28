@@ -29,29 +29,49 @@ interface SourcesResponse {
   stats: PublicStats;
 }
 
-interface TemplateSummary {
+// Stylus template
+interface StylusTemplate {
+  type: "stylus";
   name: string;
   description: string;
   contractType: string;
   sdkVersion: string;
   features: string[];
-}
-
-interface TemplateDetail extends TemplateSummary {
-  files: {
+  files?: {
     libRs: string;
     cargoToml: string;
     mainRs: string;
   };
 }
 
+// SDK template
+interface SdkTemplate {
+  type: "sdk";
+  name: string;
+  description: string;
+  category: string;
+  subcategory: string;
+  sdkVersion: string;
+  dependencies: Record<string, string>;
+  envVars: string[];
+  notes: string[];
+  code?: string;
+}
+
+type Template = StylusTemplate | SdkTemplate;
+
 interface TemplatesResponse {
   status: string;
-  templates: TemplateSummary[] | TemplateDetail[];
+  templates: Template[];
   count: number;
+  stats: {
+    stylus: number;
+    sdk: number;
+  };
 }
 
 type TabType = "sources" | "templates";
+type TemplateFilterType = "all" | "stylus" | "sdk";
 
 export default function TransparencyPage() {
   const [activeTab, setActiveTab] = useState<TabType>("sources");
@@ -63,11 +83,13 @@ export default function TransparencyPage() {
   const [sourcesError, setSourcesError] = useState<string | null>(null);
 
   // Templates state
-  const [templates, setTemplates] = useState<TemplateDetail[]>([]);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [templateStats, setTemplateStats] = useState<{ stylus: number; sdk: number } | null>(null);
   const [templatesLoading, setTemplatesLoading] = useState(true);
   const [templatesError, setTemplatesError] = useState<string | null>(null);
   const [expandedTemplate, setExpandedTemplate] = useState<string | null>(null);
-  const [activeFile, setActiveFile] = useState<"libRs" | "cargoToml" | "mainRs">("libRs");
+  const [activeFile, setActiveFile] = useState<string>("libRs");
+  const [templateFilter, setTemplateFilter] = useState<TemplateFilterType>("all");
 
   // Filters for sources
   const [categoryFilter, setCategoryFilter] = useState<string>("");
@@ -107,11 +129,17 @@ export default function TransparencyPage() {
       setTemplatesError(null);
 
       try {
-        const res = await fetch("/api/public/templates?code=true");
+        const params = new URLSearchParams({ code: "true" });
+        if (templateFilter !== "all") {
+          params.set("type", templateFilter);
+        }
+
+        const res = await fetch(`/api/public/templates?${params.toString()}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const data = (await res.json()) as TemplatesResponse;
-        setTemplates(data.templates as TemplateDetail[]);
+        setTemplates(data.templates);
+        setTemplateStats(data.stats);
       } catch (err) {
         setTemplatesError(`Failed to load templates: ${err}`);
       } finally {
@@ -120,7 +148,13 @@ export default function TransparencyPage() {
     }
 
     fetchTemplates();
-  }, []);
+  }, [templateFilter]);
+
+  // Filter displayed templates
+  const filteredTemplates = templates.filter((t) => {
+    if (templateFilter === "all") return true;
+    return t.type === templateFilter;
+  });
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -367,21 +401,58 @@ export default function TransparencyPage() {
           <div className="space-y-6">
             {/* Templates Overview */}
             <div className="bg-white rounded-xl border border-gray-200 p-6">
-              <h2 className="text-lg font-semibold mb-2">Verified Stylus Templates</h2>
+              <h2 className="text-lg font-semibold mb-2">Code Templates</h2>
               <p className="text-gray-600 text-sm mb-4">
-                These templates are verified to compile and deploy correctly on Arbitrum.
-                All templates use Stylus SDK 0.9.2 and follow best practices.
+                Verified templates for Stylus smart contracts (Rust) and Arbitrum SDK
+                bridging/messaging (TypeScript).
               </p>
               <div className="flex gap-3">
-                <div className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
-                  {templates.length} Templates
-                </div>
-                <div className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                  SDK 0.9.2
-                </div>
-                <div className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-medium">
-                  Unit Tests Included
-                </div>
+                {templateStats && (
+                  <>
+                    <div className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-medium">
+                      {templateStats.stylus} Stylus Templates
+                    </div>
+                    <div className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-medium">
+                      {templateStats.sdk} SDK Templates
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Template Filter */}
+            <div className="flex justify-center">
+              <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1">
+                <button
+                  onClick={() => setTemplateFilter("all")}
+                  className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    templateFilter === "all"
+                      ? "bg-gray-900 text-white"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  onClick={() => setTemplateFilter("stylus")}
+                  className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    templateFilter === "stylus"
+                      ? "bg-orange-600 text-white"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  Stylus (Rust)
+                </button>
+                <button
+                  onClick={() => setTemplateFilter("sdk")}
+                  className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    templateFilter === "sdk"
+                      ? "bg-purple-600 text-white"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  SDK (TypeScript)
+                </button>
               </div>
             </div>
 
@@ -400,126 +471,19 @@ export default function TransparencyPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {templates.map((template) => (
-                  <div
+                {filteredTemplates.map((template) => (
+                  <TemplateCard
                     key={template.name}
-                    className="bg-white rounded-xl border border-gray-200 overflow-hidden"
-                  >
-                    {/* Template Header */}
-                    <button
-                      onClick={() =>
-                        setExpandedTemplate(
-                          expandedTemplate === template.name ? null : template.name
-                        )
-                      }
-                      className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-red-600 rounded-lg flex items-center justify-center">
-                          <ContractTypeIcon type={template.contractType} />
-                        </div>
-                        <div className="text-left">
-                          <h3 className="font-semibold text-gray-900">
-                            {template.name}
-                          </h3>
-                          <p className="text-sm text-gray-600">
-                            {template.description}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">
-                          {template.contractType}
-                        </span>
-                        <svg
-                          className={`w-5 h-5 text-gray-400 transition-transform ${
-                            expandedTemplate === template.name ? "rotate-180" : ""
-                          }`}
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M19 9l-7 7-7-7"
-                          />
-                        </svg>
-                      </div>
-                    </button>
-
-                    {/* Expanded Content */}
-                    {expandedTemplate === template.name && (
-                      <div className="border-t border-gray-200">
-                        {/* Features */}
-                        <div className="px-6 py-4 bg-gray-50">
-                          <div className="flex flex-wrap gap-2">
-                            {template.features.map((feature) => (
-                              <span
-                                key={feature}
-                                className="px-2 py-1 bg-white border border-gray-200 rounded text-xs text-gray-600"
-                              >
-                                {feature}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* File Tabs */}
-                        <div className="border-t border-gray-200">
-                          <div className="flex border-b border-gray-200">
-                            <button
-                              onClick={() => setActiveFile("libRs")}
-                              className={`px-4 py-2 text-sm font-medium transition-colors ${
-                                activeFile === "libRs"
-                                  ? "border-b-2 border-blue-600 text-blue-600"
-                                  : "text-gray-600 hover:text-gray-900"
-                              }`}
-                            >
-                              src/lib.rs
-                            </button>
-                            <button
-                              onClick={() => setActiveFile("cargoToml")}
-                              className={`px-4 py-2 text-sm font-medium transition-colors ${
-                                activeFile === "cargoToml"
-                                  ? "border-b-2 border-blue-600 text-blue-600"
-                                  : "text-gray-600 hover:text-gray-900"
-                              }`}
-                            >
-                              Cargo.toml
-                            </button>
-                            <button
-                              onClick={() => setActiveFile("mainRs")}
-                              className={`px-4 py-2 text-sm font-medium transition-colors ${
-                                activeFile === "mainRs"
-                                  ? "border-b-2 border-blue-600 text-blue-600"
-                                  : "text-gray-600 hover:text-gray-900"
-                              }`}
-                            >
-                              src/main.rs
-                            </button>
-                          </div>
-
-                          {/* Code Block */}
-                          <div className="relative">
-                            <button
-                              onClick={() => {
-                                const code = template.files[activeFile];
-                                navigator.clipboard.writeText(code);
-                              }}
-                              className="absolute top-2 right-2 px-3 py-1 bg-gray-700 text-white text-xs rounded hover:bg-gray-600 transition-colors z-10"
-                            >
-                              Copy
-                            </button>
-                            <pre className="p-4 bg-gray-900 text-gray-100 text-sm overflow-x-auto max-h-96">
-                              <code>{template.files[activeFile]}</code>
-                            </pre>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                    template={template}
+                    expanded={expandedTemplate === template.name}
+                    onToggle={() =>
+                      setExpandedTemplate(
+                        expandedTemplate === template.name ? null : template.name
+                      )
+                    }
+                    activeFile={activeFile}
+                    onFileChange={setActiveFile}
+                  />
                 ))}
               </div>
             )}
@@ -545,6 +509,177 @@ export default function TransparencyPage() {
           </p>
         </div>
       </main>
+    </div>
+  );
+}
+
+// Template Card Component
+function TemplateCard({
+  template,
+  expanded,
+  onToggle,
+  activeFile,
+  onFileChange,
+}: {
+  template: Template;
+  expanded: boolean;
+  onToggle: () => void;
+  activeFile: string;
+  onFileChange: (file: string) => void;
+}) {
+  const isStylusTemplate = template.type === "stylus";
+  const stylusTemplate = template as StylusTemplate;
+  const sdkTemplate = template as SdkTemplate;
+
+  const bgGradient = isStylusTemplate
+    ? "from-orange-500 to-red-600"
+    : "from-purple-500 to-indigo-600";
+
+  const typeBadgeColor = isStylusTemplate
+    ? "bg-orange-100 text-orange-700"
+    : "bg-purple-100 text-purple-700";
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      {/* Template Header */}
+      <button
+        onClick={onToggle}
+        className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+      >
+        <div className="flex items-center gap-4">
+          <div
+            className={`w-10 h-10 bg-gradient-to-br ${bgGradient} rounded-lg flex items-center justify-center`}
+          >
+            {isStylusTemplate ? (
+              <TemplateTypeIcon type={stylusTemplate.contractType} />
+            ) : (
+              <SdkCategoryIcon category={sdkTemplate.category} />
+            )}
+          </div>
+          <div className="text-left">
+            <h3 className="font-semibold text-gray-900">{template.name}</h3>
+            <p className="text-sm text-gray-600">{template.description}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className={`px-2 py-1 rounded text-xs font-medium ${typeBadgeColor}`}>
+            {isStylusTemplate ? stylusTemplate.contractType : sdkTemplate.subcategory}
+          </span>
+          <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">
+            v{template.sdkVersion}
+          </span>
+          <svg
+            className={`w-5 h-5 text-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M19 9l-7 7-7-7"
+            />
+          </svg>
+        </div>
+      </button>
+
+      {/* Expanded Content */}
+      {expanded && (
+        <div className="border-t border-gray-200">
+          {/* Features/Notes */}
+          <div className="px-6 py-4 bg-gray-50">
+            <div className="flex flex-wrap gap-2">
+              {isStylusTemplate
+                ? stylusTemplate.features.map((feature) => (
+                    <span
+                      key={feature}
+                      className="px-2 py-1 bg-white border border-gray-200 rounded text-xs text-gray-600"
+                    >
+                      {feature}
+                    </span>
+                  ))
+                : sdkTemplate.notes.map((note, idx) => (
+                    <span
+                      key={idx}
+                      className="px-2 py-1 bg-white border border-gray-200 rounded text-xs text-gray-600"
+                    >
+                      {note}
+                    </span>
+                  ))}
+            </div>
+
+            {/* SDK-specific: Dependencies and Env Vars */}
+            {!isStylusTemplate && (
+              <div className="mt-3 flex flex-wrap gap-4 text-xs text-gray-500">
+                <div>
+                  <span className="font-medium">Dependencies:</span>{" "}
+                  {Object.entries(sdkTemplate.dependencies)
+                    .map(([k, v]) => `${k}@${v}`)
+                    .join(", ")}
+                </div>
+                <div>
+                  <span className="font-medium">Env vars:</span>{" "}
+                  {sdkTemplate.envVars.join(", ")}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* File Tabs / Code */}
+          <div className="border-t border-gray-200">
+            {isStylusTemplate && stylusTemplate.files ? (
+              <>
+                <div className="flex border-b border-gray-200">
+                  {(["libRs", "cargoToml", "mainRs"] as const).map((file) => (
+                    <button
+                      key={file}
+                      onClick={() => onFileChange(file)}
+                      className={`px-4 py-2 text-sm font-medium transition-colors ${
+                        activeFile === file
+                          ? "border-b-2 border-orange-600 text-orange-600"
+                          : "text-gray-600 hover:text-gray-900"
+                      }`}
+                    >
+                      {file === "libRs"
+                        ? "src/lib.rs"
+                        : file === "cargoToml"
+                        ? "Cargo.toml"
+                        : "src/main.rs"}
+                    </button>
+                  ))}
+                </div>
+                <CodeBlock
+                  code={
+                    stylusTemplate.files[activeFile as keyof typeof stylusTemplate.files]
+                  }
+                  language="rust"
+                />
+              </>
+            ) : !isStylusTemplate && sdkTemplate.code ? (
+              <CodeBlock code={sdkTemplate.code} language="typescript" />
+            ) : (
+              <div className="p-4 text-gray-500 text-sm">No code available</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CodeBlock({ code, language }: { code: string; language: string }) {
+  return (
+    <div className="relative">
+      <button
+        onClick={() => navigator.clipboard.writeText(code)}
+        className="absolute top-2 right-2 px-3 py-1 bg-gray-700 text-white text-xs rounded hover:bg-gray-600 transition-colors z-10"
+      >
+        Copy
+      </button>
+      <pre className="p-4 bg-gray-900 text-gray-100 text-sm overflow-x-auto max-h-96">
+        <code className={`language-${language}`}>{code}</code>
+      </pre>
     </div>
   );
 }
@@ -605,7 +740,7 @@ function TypeBadge({ type }: { type: "documentation" | "github" }) {
   );
 }
 
-function ContractTypeIcon({ type }: { type: string }) {
+function TemplateTypeIcon({ type }: { type: string }) {
   const icons: Record<string, ReactNode> = {
     token: (
       <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -626,6 +761,22 @@ function ContractTypeIcon({ type }: { type: string }) {
   };
 
   return icons[type] || icons.utility;
+}
+
+function SdkCategoryIcon({ category }: { category: string }) {
+  if (category === "bridging") {
+    return (
+      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+      </svg>
+    );
+  }
+  // messaging
+  return (
+    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+    </svg>
+  );
 }
 
 function LoadingSpinner() {
