@@ -102,10 +102,14 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Tools Overview */}
+      {/* Stylus Tools */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-6 py-5 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">Available Tools</h2>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+            <h2 className="text-lg font-semibold text-gray-900">Stylus Development Tools</h2>
+          </div>
+          <p className="text-sm text-gray-500 mt-1">Generate and debug Stylus smart contracts</p>
         </div>
         <div className="p-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -128,6 +132,33 @@ export default async function DashboardPage() {
             <ToolCard
               name="get_workflow"
               description="Get build, deploy, and test workflows"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Bridging & SDK Tools */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-6 py-5 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+            <h2 className="text-lg font-semibold text-gray-900">Arbitrum SDK Tools</h2>
+          </div>
+          <p className="text-sm text-gray-500 mt-1">Cross-chain bridging and messaging code generation</p>
+        </div>
+        <div className="p-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <ToolCard
+              name="generate_bridge_code"
+              description="ETH/ERC20 bridging L1↔L2 and L1→L3"
+            />
+            <ToolCard
+              name="generate_messaging_code"
+              description="Cross-chain messaging via retryables"
+            />
+            <ToolCard
+              name="ask_bridging"
+              description="Q&A about bridging patterns and timing"
             />
           </div>
         </div>

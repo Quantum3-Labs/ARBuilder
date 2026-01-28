@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 
-type Tool = "context" | "generate" | "ask" | "tests" | "workflow";
+type Tool = "context" | "generate" | "ask" | "tests" | "workflow" | "bridge" | "messaging" | "askBridging";
 
 interface ToolConfig {
   name: string;
@@ -154,6 +154,96 @@ const tools: Record<Tool, ToolConfig> = {
         options: [
           { value: "arbitrum_sepolia", label: "Arbitrum Sepolia (Testnet)" },
           { value: "arbitrum_one", label: "Arbitrum One (Mainnet)" },
+        ],
+      },
+    ],
+  },
+  bridge: {
+    name: "Generate Bridge Code",
+    description: "ETH/ERC20 bridging L1↔L2 and L1→L3",
+    endpoint: "/api/v1/tools/bridge",
+    icon: (
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+    ),
+    iconBg: "bg-purple-100",
+    iconColor: "text-purple-600",
+    inputs: [
+      {
+        name: "bridge_type",
+        label: "Bridge Type",
+        type: "select",
+        options: [
+          { value: "eth_deposit", label: "ETH Deposit (L1→L2)" },
+          { value: "eth_withdraw", label: "ETH Withdraw (L2→L1)" },
+          { value: "erc20_deposit", label: "ERC20 Deposit (L1→L2)" },
+          { value: "erc20_withdraw", label: "ERC20 Withdraw (L2→L1)" },
+          { value: "eth_l1_l3", label: "ETH L1→L3" },
+          { value: "erc20_l1_l3", label: "ERC20 L1→L3" },
+        ],
+        required: true,
+      },
+      {
+        name: "amount",
+        label: "Amount",
+        type: "text",
+        placeholder: "e.g., 0.1",
+      },
+      {
+        name: "token_address",
+        label: "Token Address (for ERC20)",
+        type: "text",
+        placeholder: "0x...",
+      },
+    ],
+  },
+  messaging: {
+    name: "Generate Messaging Code",
+    description: "Cross-chain messaging via retryables",
+    endpoint: "/api/v1/tools/messaging",
+    icon: (
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+    ),
+    iconBg: "bg-cyan-100",
+    iconColor: "text-cyan-600",
+    inputs: [
+      {
+        name: "message_type",
+        label: "Message Type",
+        type: "select",
+        options: [
+          { value: "l1_to_l2", label: "L1→L2 (Retryable Ticket)" },
+          { value: "l2_to_l1", label: "L2→L1 (ArbSys)" },
+          { value: "l2_to_l1_claim", label: "L2→L1 Claim" },
+          { value: "check_status", label: "Check Status" },
+        ],
+        required: true,
+      },
+    ],
+  },
+  askBridging: {
+    name: "Ask Bridging",
+    description: "Q&A about bridging patterns and timing",
+    endpoint: "/api/v1/tools/ask-bridging",
+    icon: (
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    ),
+    iconBg: "bg-teal-100",
+    iconColor: "text-teal-600",
+    inputs: [
+      {
+        name: "question",
+        label: "Your Question",
+        type: "textarea",
+        placeholder: "e.g., How long does an L2→L1 withdrawal take?",
+        required: true,
+      },
+      {
+        name: "include_code",
+        label: "Include Code Example",
+        type: "select",
+        options: [
+          { value: "false", label: "No" },
+          { value: "true", label: "Yes" },
         ],
       },
     ],
