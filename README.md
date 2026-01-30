@@ -340,6 +340,20 @@ https://arbbuilder.whymelabs.com/mcp
 - Usage tracked per API key
 - Rate limited per free tier (100 calls/day)
 
+### Transparency Page
+
+View all ingested sources and code templates at [arbbuilder.whymelabs.com/transparency](https://arbbuilder.whymelabs.com/transparency).
+
+This public page provides:
+- **Ingested Sources**: All documentation and GitHub repos in the knowledge base
+- **Code Templates**: Verified Stylus templates with full source code
+- **Statistics**: Chunk counts, SDK versions, and category breakdowns
+
+Public API endpoints (no authentication required):
+- `GET /api/public/sources` - List all active sources
+- `GET /api/public/templates` - List all code templates
+- `GET /api/public/templates?code=true` - Templates with full source code
+
 ### Internal Direct API (Testing Only)
 
 Direct API routes at `/api/v1/tools/*` are for **internal testing only**:

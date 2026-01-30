@@ -23,6 +23,12 @@ export default async function Home() {
               >
                 Playground
               </Link>
+              <Link
+                href="/transparency"
+                className="hidden sm:block text-gray-600 hover:text-gray-900 font-medium transition-colors"
+              >
+                Transparency
+              </Link>
               {session?.user ? (
                 <Link
                   href="/dashboard"
@@ -389,6 +395,9 @@ export default async function Home() {
               </a>
               <Link href="/playground" className="text-gray-500 hover:text-gray-900 transition-colors">
                 Playground
+              </Link>
+              <Link href="/transparency" className="text-gray-500 hover:text-gray-900 transition-colors">
+                Transparency
               </Link>
               <Link href="/dashboard" className="text-gray-500 hover:text-gray-900 transition-colors">
                 Dashboard
