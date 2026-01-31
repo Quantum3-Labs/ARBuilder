@@ -302,13 +302,13 @@ const BASE_DEPS = {
   "react": "^18.2.0",
   "react-dom": "^18.2.0",
   "wagmi": "^2.5.0",
-  "viem": "^2.0.0",
+  "viem": "^2.21.0",
   "@rainbow-me/rainbowkit": "^2.0.0",
   "@tanstack/react-query": "^5.0.0",
 };
 
 const BASE_DEV_DEPS = {
-  "typescript": "^5.0.0",
+  "typescript": "^5.3.0",
   "@types/node": "^20.0.0",
   "@types/react": "^18.0.0",
   "@types/react-dom": "^18.0.0",

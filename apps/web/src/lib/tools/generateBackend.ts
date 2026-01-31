@@ -237,7 +237,7 @@ const NESTJS_DEPS = {
   "@nestjs/core": "^10.0.0",
   "@nestjs/config": "^3.0.0",
   "@nestjs/platform-express": "^10.0.0",
-  "viem": "^2.0.0",
+  "viem": "^2.21.0",
   "reflect-metadata": "^0.1.13",
   "rxjs": "^7.8.0",
 };
@@ -246,7 +246,7 @@ const NESTJS_DEV_DEPS = {
   "@nestjs/cli": "^10.0.0",
   "@nestjs/testing": "^10.0.0",
   "@types/node": "^20.0.0",
-  "typescript": "^5.0.0",
+  "typescript": "^5.3.0",
   "ts-node": "^10.9.0",
 };
 
@@ -254,14 +254,14 @@ const EXPRESS_DEPS = {
   "express": "^4.18.0",
   "cors": "^2.8.5",
   "dotenv": "^16.0.0",
-  "viem": "^2.0.0",
+  "viem": "^2.21.0",
 };
 
 const EXPRESS_DEV_DEPS = {
   "@types/express": "^4.17.0",
   "@types/cors": "^2.8.0",
   "@types/node": "^20.0.0",
-  "typescript": "^5.0.0",
+  "typescript": "^5.3.0",
   "ts-node": "^10.9.0",
   "nodemon": "^3.0.0",
 };
