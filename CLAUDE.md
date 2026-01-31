@@ -18,12 +18,18 @@ ArbBuilder/
 ├── src/
 │   ├── mcp/                  # MCP server for IDE integration
 │   │   ├── server.py         # Main MCP server
-│   │   ├── tools/            # 8 MCP tools
-│   │   ├── resources/        # Static knowledge (CLI, workflows, networks)
+│   │   ├── tools/            # 13 MCP tools (M1: 5, M2: 3, M3: 5)
+│   │   ├── resources/        # Static knowledge (11 resources)
 │   │   └── prompts/          # Workflow templates
 │   ├── embeddings/           # Vector DB and retrieval
-│   │   ├── vectordb.py       # ChromaDB wrapper
+│   │   ├── vectordb.py       # ChromaDB wrapper with hybrid BM25+vector search
 │   │   └── reranker.py       # BM25 + LLM reranking
+│   ├── templates/            # Code generation templates
+│   │   ├── stylus_templates.py   # M1: Stylus contracts
+│   │   ├── backend_templates.py  # M3: NestJS/Express
+│   │   ├── frontend_templates.py # M3: Next.js + wagmi
+│   │   ├── indexer_templates.py  # M3: The Graph subgraphs
+│   │   └── oracle_templates.py   # M3: Chainlink integrations
 │   └── preprocessing/        # Text chunking and cleaning
 ├── scraper/                  # Data collection (web + GitHub)
 ├── data/
@@ -103,6 +109,15 @@ ruff check .
 | `generate_bridge_code` | ETH/ERC20 bridging (L1↔L2, L1→L3) |
 | `generate_messaging_code` | Cross-chain messaging via retryables |
 | `ask_bridging` | Bridging Q&A and patterns |
+
+### M3: Full dApp Builder (5 tools)
+| Tool | Purpose |
+|------|---------|
+| `generate_backend` | NestJS/Express backend with viem integration |
+| `generate_frontend` | Next.js + wagmi + RainbowKit frontend |
+| `generate_indexer` | The Graph subgraph generation |
+| `generate_oracle` | Chainlink oracle integrations |
+| `orchestrate_dapp` | Full dApp scaffolding coordinator |
 
 ## Architecture Notes
 

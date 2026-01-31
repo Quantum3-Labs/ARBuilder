@@ -4,7 +4,7 @@ MCP Server for ARBuilder.
 Exposes Stylus development tools, resources, and prompts via the Model Context Protocol.
 
 MCP Capabilities:
-- Tools: 8 development tools (M1: Stylus + M2: Arbitrum SDK)
+- Tools: 13 development tools (M1: Stylus + M2: Arbitrum SDK + M3: dApp Builder)
 - Resources: Static knowledge (CLI commands, network configs, workflows)
 - Prompts: Reusable workflow templates
 """
@@ -27,6 +27,15 @@ from .tools import (
     GenerateBridgeCodeTool,
     GenerateMessagingCodeTool,
     AskBridgingTool,
+)
+
+# M3: Full dApp Builder Tools
+from .tools import (
+    GenerateBackendTool,
+    GenerateFrontendTool,
+    GenerateIndexerTool,
+    GenerateOracleTool,
+    OrchestrateDappTool,
 )
 
 from .resources import RESOURCES
@@ -262,6 +271,197 @@ TOOL_DEFINITIONS = [
             "required": ["question"],
         },
     },
+    # M3: Full dApp Builder Tools
+    {
+        "name": "generate_backend",
+        "description": "Generate TypeScript backend code for Arbitrum dApps. Supports NestJS and Express with viem integration.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "Description of the backend functionality needed",
+                },
+                "framework": {
+                    "type": "string",
+                    "enum": ["nestjs", "express"],
+                    "description": "Backend framework to use",
+                    "default": "nestjs",
+                },
+                "template": {
+                    "type": "string",
+                    "enum": ["nestjs_stylus", "express_stylus", "nestjs_graphql", "api_gateway"],
+                    "description": "Specific template to use (auto-selected if not provided)",
+                },
+                "contract_abi": {
+                    "type": "string",
+                    "description": "Contract ABI JSON string (optional)",
+                },
+                "contract_address": {
+                    "type": "string",
+                    "description": "Contract address to integrate with",
+                },
+                "include_tests": {
+                    "type": "boolean",
+                    "description": "Include test files",
+                    "default": False,
+                },
+            },
+            "required": ["prompt"],
+        },
+    },
+    {
+        "name": "generate_frontend",
+        "description": "Generate Next.js frontend code for Arbitrum dApps. Uses wagmi v2 and RainbowKit.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "Description of the frontend functionality needed",
+                },
+                "template": {
+                    "type": "string",
+                    "enum": ["nextjs_wagmi", "daisyui_components", "contract_dashboard", "token_interface"],
+                    "description": "Specific template to use (auto-selected if not provided)",
+                },
+                "contract_abi": {
+                    "type": "string",
+                    "description": "Contract ABI JSON string for generating hooks",
+                },
+                "contract_address": {
+                    "type": "string",
+                    "description": "Contract address to integrate with",
+                },
+                "ui_framework": {
+                    "type": "string",
+                    "enum": ["tailwind", "daisyui"],
+                    "description": "UI framework to use",
+                    "default": "daisyui",
+                },
+            },
+            "required": ["prompt"],
+        },
+    },
+    {
+        "name": "generate_indexer",
+        "description": "Generate subgraph code for indexing Arbitrum contracts with The Graph.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "Description of the indexing requirements",
+                },
+                "template": {
+                    "type": "string",
+                    "enum": ["erc20", "erc721", "defi", "custom"],
+                    "description": "Type of subgraph template to use",
+                },
+                "contract_address": {
+                    "type": "string",
+                    "description": "Contract address to index",
+                },
+                "contract_abi": {
+                    "type": "string",
+                    "description": "Contract ABI JSON string for custom events",
+                },
+                "start_block": {
+                    "type": "integer",
+                    "description": "Block number to start indexing from",
+                    "default": 0,
+                },
+                "network": {
+                    "type": "string",
+                    "enum": ["arbitrum-one", "arbitrum-sepolia"],
+                    "description": "Network to deploy the subgraph",
+                    "default": "arbitrum-sepolia",
+                },
+            },
+            "required": ["prompt"],
+        },
+    },
+    {
+        "name": "generate_oracle",
+        "description": "Generate Chainlink oracle integration code for Arbitrum dApps.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "Description of the oracle functionality needed",
+                },
+                "oracle_type": {
+                    "type": "string",
+                    "enum": ["price_feed", "vrf", "automation", "functions"],
+                    "description": "Type of Chainlink oracle to integrate",
+                },
+                "network": {
+                    "type": "string",
+                    "enum": ["arbitrum", "arbitrumSepolia"],
+                    "description": "Network to deploy on",
+                    "default": "arbitrumSepolia",
+                },
+                "include_stylus": {
+                    "type": "boolean",
+                    "description": "Include Stylus (Rust) implementation if available",
+                    "default": False,
+                },
+                "include_frontend": {
+                    "type": "boolean",
+                    "description": "Include frontend React hooks",
+                    "default": True,
+                },
+            },
+            "required": ["prompt"],
+        },
+    },
+    {
+        "name": "orchestrate_dapp",
+        "description": "Generate a complete dApp with multiple components (contract, backend, frontend, indexer, oracle).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "Description of the dApp to generate",
+                },
+                "components": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": ["contract", "backend", "frontend", "indexer", "oracle"],
+                    },
+                    "description": "Components to generate (default: contract, backend, frontend)",
+                    "default": ["contract", "backend", "frontend"],
+                },
+                "network": {
+                    "type": "string",
+                    "enum": ["arbitrum", "arbitrumSepolia"],
+                    "description": "Target network",
+                    "default": "arbitrumSepolia",
+                },
+                "backend_framework": {
+                    "type": "string",
+                    "enum": ["nestjs", "express"],
+                    "description": "Backend framework to use",
+                    "default": "nestjs",
+                },
+                "contract_type": {
+                    "type": "string",
+                    "enum": ["counter", "token", "nft", "defi", "custom"],
+                    "description": "Type of smart contract",
+                    "default": "custom",
+                },
+                "include_tests": {
+                    "type": "boolean",
+                    "description": "Include test files for all components",
+                    "default": False,
+                },
+            },
+            "required": ["prompt"],
+        },
+    },
 ]
 
 
@@ -272,7 +472,7 @@ class MCPServer:
     Handles tool registration, resource access, prompt templates, and execution.
 
     Capabilities:
-    - tools/list, tools/call: 5 development tools
+    - tools/list, tools/call: 13 development tools (M1 + M2 + M3)
     - resources/list, resources/read: Static knowledge injection
     - prompts/list, prompts/get: Workflow templates
     """
@@ -294,6 +494,12 @@ class MCPServer:
             "generate_bridge_code": GenerateBridgeCodeTool(context_tool=self.context_tool),
             "generate_messaging_code": GenerateMessagingCodeTool(context_tool=self.context_tool),
             "ask_bridging": AskBridgingTool(context_tool=self.context_tool),
+            # M3: Full dApp Builder Tools
+            "generate_backend": GenerateBackendTool(),
+            "generate_frontend": GenerateFrontendTool(),
+            "generate_indexer": GenerateIndexerTool(),
+            "generate_oracle": GenerateOracleTool(),
+            "orchestrate_dapp": OrchestrateDappTool(),
         }
 
         # Resources are static knowledge

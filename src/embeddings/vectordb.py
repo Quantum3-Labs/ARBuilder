@@ -1,5 +1,7 @@
 """
 ChromaDB vector database management for ARBuilder.
+
+Supports true hybrid search with BM25 + vector retrieval and RRF fusion.
 """
 
 import json
@@ -12,6 +14,7 @@ from typing import Optional
 import chromadb
 from chromadb.config import Settings
 from dotenv import load_dotenv
+from rank_bm25 import BM25Okapi
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 
@@ -71,6 +74,12 @@ class VectorDB:
             name=collection_name,
             metadata={"hnsw:space": "cosine"},
         )
+
+        # BM25 index for hybrid search (lazy-loaded)
+        self._bm25_index: Optional[BM25Okapi] = None
+        self._bm25_doc_ids: list[str] = []
+        self._bm25_documents: list[str] = []
+        self._bm25_metadatas: list[dict] = []
 
     def ingest_chunks(
         self,
@@ -327,6 +336,225 @@ class VectorDB:
             "metadatas": [[r["metadata"] for r in top_results]],
             "distances": [[r["distance"] for r in top_results]],
         }
+
+    def _build_bm25_index(self, force_rebuild: bool = False) -> None:
+        """
+        Build or rebuild the BM25 index from all documents in the collection.
+
+        Args:
+            force_rebuild: Force rebuild even if index exists.
+        """
+        if self._bm25_index is not None and not force_rebuild:
+            return
+
+        logger.info("Building BM25 index for hybrid search...")
+
+        # Fetch all documents from collection
+        all_docs = self.collection.get(include=["documents", "metadatas"])
+
+        if not all_docs["ids"]:
+            logger.warning("No documents in collection for BM25 index")
+            self._bm25_index = None
+            return
+
+        self._bm25_doc_ids = all_docs["ids"]
+        self._bm25_documents = all_docs["documents"]
+        self._bm25_metadatas = all_docs["metadatas"]
+
+        # Tokenize documents for BM25
+        tokenized_docs = [
+            self._tokenize(doc) for doc in self._bm25_documents
+        ]
+
+        self._bm25_index = BM25Okapi(tokenized_docs)
+        logger.info(f"BM25 index built with {len(self._bm25_doc_ids)} documents")
+
+    def _tokenize(self, text: str) -> list[str]:
+        """
+        Tokenize text for BM25 indexing.
+
+        Args:
+            text: Text to tokenize.
+
+        Returns:
+            List of tokens.
+        """
+        import re
+
+        # Lowercase and split on non-alphanumeric
+        tokens = re.findall(r'\b[a-z0-9_]+\b', text.lower())
+        # Filter short tokens
+        return [t for t in tokens if len(t) > 2]
+
+    def _bm25_search(
+        self,
+        query_text: str,
+        n_results: int = 20,
+    ) -> list[dict]:
+        """
+        Search using BM25 index.
+
+        Args:
+            query_text: Query text.
+            n_results: Number of results.
+
+        Returns:
+            List of results with id, document, metadata, bm25_score.
+        """
+        self._build_bm25_index()
+
+        if self._bm25_index is None:
+            return []
+
+        query_tokens = self._tokenize(query_text)
+
+        if not query_tokens:
+            return []
+
+        # Get BM25 scores for all documents
+        scores = self._bm25_index.get_scores(query_tokens)
+
+        # Create scored results
+        results = []
+        for i, score in enumerate(scores):
+            if score > 0:  # Only include documents with positive scores
+                results.append({
+                    "id": self._bm25_doc_ids[i],
+                    "document": self._bm25_documents[i],
+                    "metadata": self._bm25_metadatas[i],
+                    "bm25_score": float(score),
+                })
+
+        # Sort by score descending
+        results.sort(key=lambda x: x["bm25_score"], reverse=True)
+
+        return results[:n_results]
+
+    def _rrf_fusion(
+        self,
+        bm25_results: list[dict],
+        vector_results: dict,
+        k: int = 60,
+    ) -> list[dict]:
+        """
+        Reciprocal Rank Fusion to combine BM25 and vector results.
+
+        RRF score = sum(1 / (k + rank)) for each ranking.
+
+        Args:
+            bm25_results: Results from BM25 search.
+            vector_results: Results from vector search (ChromaDB format).
+            k: RRF constant (default 60).
+
+        Returns:
+            Fused results sorted by RRF score.
+        """
+        rrf_scores: dict[str, float] = {}
+        doc_data: dict[str, dict] = {}
+
+        # Process BM25 results
+        for rank, result in enumerate(bm25_results, start=1):
+            doc_id = result["id"]
+            rrf_scores[doc_id] = rrf_scores.get(doc_id, 0) + 1 / (k + rank)
+            doc_data[doc_id] = {
+                "document": result["document"],
+                "metadata": result["metadata"],
+                "bm25_rank": rank,
+                "bm25_score": result["bm25_score"],
+            }
+
+        # Process vector results
+        if vector_results["ids"] and vector_results["ids"][0]:
+            for rank, (doc_id, doc, meta, dist) in enumerate(
+                zip(
+                    vector_results["ids"][0],
+                    vector_results["documents"][0],
+                    vector_results["metadatas"][0],
+                    vector_results["distances"][0],
+                ),
+                start=1,
+            ):
+                rrf_scores[doc_id] = rrf_scores.get(doc_id, 0) + 1 / (k + rank)
+                if doc_id not in doc_data:
+                    doc_data[doc_id] = {
+                        "document": doc,
+                        "metadata": meta,
+                    }
+                doc_data[doc_id]["vector_rank"] = rank
+                doc_data[doc_id]["vector_distance"] = dist
+
+        # Create fused results
+        fused_results = []
+        for doc_id, rrf_score in rrf_scores.items():
+            data = doc_data[doc_id]
+            fused_results.append({
+                "id": doc_id,
+                "document": data["document"],
+                "metadata": data["metadata"],
+                "rrf_score": rrf_score,
+                "bm25_rank": data.get("bm25_rank"),
+                "bm25_score": data.get("bm25_score"),
+                "vector_rank": data.get("vector_rank"),
+                "vector_distance": data.get("vector_distance"),
+            })
+
+        # Sort by RRF score descending
+        fused_results.sort(key=lambda x: x["rrf_score"], reverse=True)
+
+        return fused_results
+
+    def hybrid_search_v2(
+        self,
+        query_text: str,
+        n_results: int = 10,
+        alpha: float = 0.5,
+        where: Optional[dict] = None,
+    ) -> dict:
+        """
+        True hybrid search: BM25 retrieval + vector retrieval + RRF fusion.
+
+        This is the improved hybrid search that uses BM25 for actual retrieval
+        (not just reranking) and combines results using Reciprocal Rank Fusion.
+
+        Args:
+            query_text: Query text.
+            n_results: Number of results to return.
+            alpha: Weight for vector vs BM25 (0.5 = equal, >0.5 = more vector).
+            where: Metadata filter for vector search.
+
+        Returns:
+            Query results in ChromaDB format with additional ranking metadata.
+        """
+        # 1. BM25 retrieval (get more than needed for fusion)
+        bm25_results = self._bm25_search(query_text, n_results * 2)
+
+        # 2. Vector retrieval (get more than needed for fusion)
+        vector_results = self.query(
+            query_text=query_text,
+            n_results=n_results * 2,
+            where=where,
+        )
+
+        # 3. RRF fusion
+        fused = self._rrf_fusion(bm25_results, vector_results, k=60)
+
+        # Take top n_results
+        top_results = fused[:n_results]
+
+        # Format as ChromaDB-style results with extra metadata
+        return {
+            "ids": [[r["id"] for r in top_results]],
+            "documents": [[r["document"] for r in top_results]],
+            "metadatas": [[r["metadata"] for r in top_results]],
+            "distances": [[r.get("vector_distance", 0.5) for r in top_results]],
+            "rrf_scores": [[r["rrf_score"] for r in top_results]],
+            "bm25_ranks": [[r.get("bm25_rank") for r in top_results]],
+            "vector_ranks": [[r.get("vector_rank") for r in top_results]],
+        }
+
+    def rebuild_bm25_index(self) -> None:
+        """Force rebuild the BM25 index."""
+        self._build_bm25_index(force_rebuild=True)
 
     def get_stats(self) -> dict:
         """Get collection statistics."""

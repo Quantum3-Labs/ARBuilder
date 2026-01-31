@@ -62,7 +62,7 @@ python -m src.embeddings.vectordb
 
 # 4. Test MCP server
 python -m src.mcp.server
-# Should show: "Capabilities: 8 tools, 5 resources, 5 prompts"
+# Should show: "Capabilities: 13 tools, 11 resources, 5 prompts"
 
 # 5. Configure Cursor IDE (~/.cursor/mcp.json) - see Setup section below
 ```
@@ -78,7 +78,7 @@ Watch the tutorial to see ARBuilder in action:
 ```
 ArbBuilder/
 ├── scraper/              # Data collection module
-│   ├── config.py         # URLs and source configuration
+│   ├── config.py         # URLs and source configuration (M1-M3 sources)
 │   ├── scraper.py        # Web scraping with crawl4ai
 │   ├── github_scraper.py # GitHub repository cloning
 │   └── run.py            # Pipeline entry point
@@ -89,12 +89,40 @@ ArbBuilder/
 │   │   └── processor.py  # Main preprocessing pipeline
 │   ├── embeddings/       # Embedding and vector storage
 │   │   ├── embedder.py   # OpenRouter embedding client
-│   │   ├── vectordb.py   # ChromaDB wrapper with hybrid search
+│   │   ├── vectordb.py   # ChromaDB wrapper with hybrid search (BM25 + vector)
 │   │   └── reranker.py   # BM25, LLM, and hybrid reranking
+│   ├── templates/        # Code generation templates
+│   │   ├── stylus_templates.py   # M1: Stylus contract templates
+│   │   ├── backend_templates.py  # M3: NestJS/Express templates
+│   │   ├── frontend_templates.py # M3: Next.js + wagmi templates
+│   │   ├── indexer_templates.py  # M3: Subgraph templates
+│   │   └── oracle_templates.py   # M3: Chainlink templates
 │   ├── mcp/              # MCP server for IDE integration
 │   │   ├── server.py     # MCP server (tools, resources, prompts)
-│   │   ├── tools/        # MCP tool implementations (8 tools)
-│   │   ├── resources/    # Static knowledge (CLI, workflows, networks)
+│   │   ├── tools/        # MCP tool implementations (13 tools)
+│   │   │   ├── get_stylus_context.py   # M1
+│   │   │   ├── generate_stylus_code.py # M1
+│   │   │   ├── ask_stylus.py           # M1
+│   │   │   ├── generate_tests.py       # M1
+│   │   │   ├── get_workflow.py         # M1
+│   │   │   ├── generate_bridge_code.py # M2
+│   │   │   ├── generate_messaging_code.py # M2
+│   │   │   ├── ask_bridging.py         # M2
+│   │   │   ├── generate_backend.py     # M3
+│   │   │   ├── generate_frontend.py    # M3
+│   │   │   ├── generate_indexer.py     # M3
+│   │   │   ├── generate_oracle.py      # M3
+│   │   │   └── orchestrate_dapp.py     # M3
+│   │   ├── resources/    # Static knowledge (11 resources)
+│   │   │   ├── stylus_cli.py      # M1
+│   │   │   ├── workflows.py       # M1
+│   │   │   ├── networks.py        # M1
+│   │   │   ├── coding_rules.py    # M1
+│   │   │   ├── sdk_rules.py       # M2
+│   │   │   ├── backend_rules.py   # M3
+│   │   │   ├── frontend_rules.py  # M3
+│   │   │   ├── indexer_rules.py   # M3
+│   │   │   └── oracle_rules.py    # M3
 │   │   └── prompts/      # Workflow templates
 │   └── rag/              # RAG pipeline (TBD)
 ├── tests/
@@ -103,12 +131,15 @@ ArbBuilder/
 │   │   ├── test_generate_stylus_code.py
 │   │   ├── test_ask_stylus.py
 │   │   ├── test_generate_tests.py
-│   │   └── benchmark.py  # Evaluation framework
+│   │   ├── test_m2_e2e.py    # M2 end-to-end tests
+│   │   ├── test_m3_tools.py  # M3 full dApp tests
+│   │   └── benchmark.py      # Evaluation framework
 │   └── test_retrieval.py # Retrieval quality tests
 ├── docs/
 │   └── mcp_tools_spec.md # MCP tools specification
 ├── scripts/
-│   └── run_benchmarks.py # Benchmark runner
+│   ├── run_benchmarks.py     # Benchmark runner
+│   └── ingest_m3_sources.py  # M3 source ingestion
 ├── data/
 │   ├── raw/              # Raw scraped data (73 pages + 17 repos)
 │   ├── processed/        # Pre-processed chunks (8,692 chunks)
@@ -174,7 +205,7 @@ python -m src.mcp.server
 You should see:
 ```
 ARBuilder MCP Server started
-Capabilities: 8 tools, 5 resources, 5 prompts
+Capabilities: 13 tools, 11 resources, 5 prompts
 ```
 
 #### Optional: Refresh Data
@@ -364,7 +395,7 @@ Direct API routes at `/api/v1/tools/*` are for **internal testing only**:
 
 ## MCP Capabilities
 
-ARBuilder exposes a full MCP server with **8 tools**, **5 resources**, and **5 prompts** for Cursor/VS Code integration.
+ARBuilder exposes a full MCP server with **13 tools**, **11 resources**, and **5 prompts** for Cursor/VS Code integration.
 
 ### Tools
 
@@ -385,6 +416,16 @@ ARBuilder exposes a full MCP server with **8 tools**, **5 resources**, and **5 p
 | `generate_bridge_code` | Generate ETH/ERC20 bridging code (L1<->L2, L1->L3) |
 | `generate_messaging_code` | Generate cross-chain messaging code |
 | `ask_bridging` | Q&A about bridging patterns and SDK usage |
+
+**M3: Full dApp Builder (5 tools)**
+
+| Tool | Description |
+|------|-------------|
+| `generate_backend` | Generate NestJS/Express backends with Web3 integration |
+| `generate_frontend` | Generate Next.js + wagmi + RainbowKit frontends |
+| `generate_indexer` | Generate The Graph subgraphs for indexing |
+| `generate_oracle` | Generate Chainlink oracle integrations |
+| `orchestrate_dapp` | Scaffold complete dApps with multiple components |
 
 #### Example: Get Build/Deploy Workflow
 
@@ -409,6 +450,8 @@ cargo stylus deploy --private-key-path=./key.txt --endpoint=https://sepolia-roll
 
 MCP Resources provide static knowledge that AI IDEs can load automatically:
 
+**M1: Stylus Resources**
+
 | Resource URI | Description |
 |--------------|-------------|
 | `stylus://cli/commands` | Complete cargo-stylus CLI reference |
@@ -416,6 +459,22 @@ MCP Resources provide static knowledge that AI IDEs can load automatically:
 | `stylus://workflows/deploy` | Deployment workflow with network configs |
 | `stylus://workflows/test` | Testing workflow (unit, integration, fuzz) |
 | `stylus://config/networks` | Arbitrum network configurations |
+| `stylus://rules/coding` | Stylus coding guidelines and patterns |
+
+**M2: Arbitrum SDK Resources**
+
+| Resource URI | Description |
+|--------------|-------------|
+| `arbitrum://rules/sdk` | Arbitrum SDK bridging and messaging guidelines |
+
+**M3: Full dApp Builder Resources**
+
+| Resource URI | Description |
+|--------------|-------------|
+| `dapp://rules/backend` | NestJS/Express Web3 backend patterns |
+| `dapp://rules/frontend` | Next.js + wagmi + RainbowKit patterns |
+| `dapp://rules/indexer` | The Graph subgraph development patterns |
+| `dapp://rules/oracle` | Chainlink oracle integration patterns |
 
 ### Prompts (Workflow Templates)
 
@@ -530,7 +589,7 @@ Returns: Commands for checking balance, deploying, and verifying
 |-----------|-------------|--------|
 | M1 | Stylus Smart Contract Builder | ✅ Complete |
 | M2 | Arbitrum SDK Integration (Bridging & Messaging) | ✅ Complete |
-| M3 | Full dApp Builder | In Progress |
+| M3 | Full dApp Builder | ✅ Complete |
 | M4 | Orbit Chain Integration | Planned |
 | M5 | Unified AI Assistant | Planned |
 
@@ -547,6 +606,51 @@ Cross-chain bridging and messaging support:
 ```bash
 # Example: Generate ETH deposit code
 echo '{"method": "tools/call", "id": 1, "params": {"name": "generate_bridge_code", "arguments": {"bridge_type": "eth_deposit", "amount": "0.5"}}}' | python -m src.mcp.server
+```
+
+### M3: Full dApp Builder
+
+Complete dApp scaffolding with all components:
+
+- **Backend Generation**: NestJS or Express with viem/wagmi integration
+- **Frontend Generation**: Next.js 14 + wagmi v2 + RainbowKit v2 + DaisyUI
+- **Indexer Generation**: The Graph subgraphs (ERC20, ERC721, DeFi, custom events)
+- **Oracle Integration**: Chainlink Price Feeds, VRF, Automation, Functions
+- **Full Orchestration**: Scaffold complete dApps with monorepo structure
+
+**Backend Templates:**
+- NestJS + Stylus contract integration
+- Express + Stylus (lightweight)
+- NestJS + GraphQL (for subgraph querying)
+- API Gateway (cross-chain proxy)
+
+**Frontend Templates:**
+- Next.js + wagmi + RainbowKit base
+- DaisyUI component library
+- Contract Dashboard (admin panel)
+- Token Interface (ERC20/721 UI)
+
+**Indexer Templates:**
+- ERC20 Subgraph (transfers, balances)
+- ERC721 Subgraph (ownership, metadata)
+- DeFi Subgraph (swaps, liquidity)
+- Custom Events Subgraph
+
+**Oracle Templates:**
+- Chainlink Price Feed
+- Chainlink VRF (randomness)
+- Chainlink Automation (keepers)
+- Chainlink Functions
+
+```bash
+# Example: Generate full dApp scaffold
+echo '{"method": "tools/call", "params": {"name": "orchestrate_dapp", "arguments": {"prompt": "Create a token staking dApp", "components": ["contract", "backend", "frontend", "indexer"]}}}' | python -m src.mcp.server
+
+# Example: Generate backend only
+echo '{"method": "tools/call", "params": {"name": "generate_backend", "arguments": {"prompt": "Create a staking API", "framework": "nestjs"}}}' | python -m src.mcp.server
+
+# Example: Generate frontend with contract ABI
+echo '{"method": "tools/call", "params": {"name": "generate_frontend", "arguments": {"prompt": "Create token dashboard", "contract_abi": "[...]"}}}' | python -m src.mcp.server
 ```
 
 ## Development
