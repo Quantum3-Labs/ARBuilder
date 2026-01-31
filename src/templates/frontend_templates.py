@@ -361,7 +361,7 @@ module.exports = nextConfig;
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
         "wagmi": "^2.5.0",
-        "viem": "^2.0.0",
+        "viem": "^2.21.0",
         "@rainbow-me/rainbowkit": "^2.0.0",
         "@tanstack/react-query": "^5.0.0",
     },
@@ -723,7 +723,7 @@ export default config;
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
         "wagmi": "^2.5.0",
-        "viem": "^2.0.0",
+        "viem": "^2.21.0",
         "@rainbow-me/rainbowkit": "^2.0.0",
         "@tanstack/react-query": "^5.0.0",
         "daisyui": "^4.0.0",
@@ -962,7 +962,7 @@ export function RecentTransactions() {
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
         "wagmi": "^2.5.0",
-        "viem": "^2.0.0",
+        "viem": "^2.21.0",
         "@rainbow-me/rainbowkit": "^2.0.0",
         "@tanstack/react-query": "^5.0.0",
         "daisyui": "^4.0.0",
@@ -1245,13 +1245,142 @@ export const TOKEN_ABI = parseAbi([
 export { TokenTransfer } from './TokenTransfer';
 export { TokenApprove } from './TokenApprove';
 ''',
+        # Essential Next.js config files
+        "tsconfig.json": '''{
+  "compilerOptions": {
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
+''',
+        "next.config.js": '''/** @type {import('next').NextConfig} */
+const nextConfig = {
+  reactStrictMode: true,
+  webpack: (config) => {
+    config.resolve.fallback = { fs: false, net: false, tls: false };
+    return config;
+  },
+};
+
+module.exports = nextConfig;
+''',
+        "tailwind.config.js": '''/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: ['./src/**/*.{js,ts,jsx,tsx,mdx}'],
+  theme: { extend: {} },
+  plugins: [require('daisyui')],
+  daisyui: { themes: ['dark'] },
+};
+''',
+        "postcss.config.js": '''module.exports = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+};
+''',
+        "src/app/globals.css": '''@tailwind base;
+@tailwind components;
+@tailwind utilities;
+''',
+        "src/app/layout.tsx": '''import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import './globals.css';
+import { Providers } from './providers';
+
+const inter = Inter({ subsets: ['latin'] });
+
+export const metadata: Metadata = {
+  title: 'Token Interface',
+  description: 'ERC20 Token Interface',
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en" data-theme="dark">
+      <body className={inter.className}>
+        <Providers>{children}</Providers>
+      </body>
+    </html>
+  );
+}
+''',
+        "src/app/providers.tsx": '''"use client";
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { WagmiProvider } from 'wagmi';
+import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit';
+import { config } from '@/config/wagmi';
+import '@rainbow-me/rainbowkit/styles.css';
+
+const queryClient = new QueryClient();
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  return (
+    <WagmiProvider config={config}>
+      <QueryClientProvider client={queryClient}>
+        <RainbowKitProvider theme={darkTheme()}>
+          {children}
+        </RainbowKitProvider>
+      </QueryClientProvider>
+    </WagmiProvider>
+  );
+}
+''',
+        "src/app/page.tsx": '''"use client";
+
+import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { TokenBalance, TokenTransfer, TokenApprove } from '@/components/token';
+
+export default function Home() {
+  return (
+    <main className="min-h-screen p-8 bg-base-100">
+      <div className="max-w-4xl mx-auto">
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold">Token Interface</h1>
+          <ConnectButton />
+        </div>
+        <div className="grid gap-6 md:grid-cols-2">
+          <TokenBalance />
+          <TokenTransfer />
+          <TokenApprove />
+        </div>
+      </div>
+    </main>
+  );
+}
+''',
+        "src/config/wagmi.ts": '''import { getDefaultConfig } from '@rainbow-me/rainbowkit';
+import { arbitrum, arbitrumSepolia } from 'wagmi/chains';
+
+export const config = getDefaultConfig({
+  appName: 'Token Interface',
+  projectId: process.env.NEXT_PUBLIC_WALLET_CONNECT_ID || '',
+  chains: [arbitrumSepolia, arbitrum],
+  ssr: true,
+});
+''',
     },
     dependencies={
         "next": "^14.0.0",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
         "wagmi": "^2.5.0",
-        "viem": "^2.0.0",
+        "viem": "^2.21.0",
         "@rainbow-me/rainbowkit": "^2.0.0",
         "@tanstack/react-query": "^5.0.0",
         "daisyui": "^4.0.0",

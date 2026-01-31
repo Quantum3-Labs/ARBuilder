@@ -96,81 +96,87 @@ import {
   createPublicClient,
   createWalletClient,
   http,
-  parseAbi,
-  type PublicClient,
-  type WalletClient,
-  type Chain,
+  getContract,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { arbitrumSepolia } from 'viem/chains';
 
+// Contract ABI - update this with your actual contract ABI
+const CONTRACT_ABI = [
+  {
+    type: 'function',
+    name: 'number',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'setNumber',
+    inputs: [{ name: 'newNumber', type: 'uint256' }],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'increment',
+    inputs: [],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+] as const;
+
 @Injectable()
 export class ContractService implements OnModuleInit {
-  private publicClient: PublicClient;
-  private walletClient: WalletClient;
-  private contractAddress: `0x${string}`;
-  private contractAbi: readonly unknown[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private publicClient: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private contract: any;
 
   constructor(private configService: ConfigService) {}
 
   async onModuleInit() {
     const rpcUrl = this.configService.get<string>('RPC_URL');
     const privateKey = this.configService.get<string>('PRIVATE_KEY');
-    this.contractAddress = this.configService.get<string>('CONTRACT_ADDRESS') as `0x${string}`;
-
-    // Configure chain (default to Arbitrum Sepolia)
-    const chain: Chain = arbitrumSepolia;
+    const contractAddress = this.configService.get<string>('CONTRACT_ADDRESS') as `0x${string}`;
 
     // Create public client for read operations
     this.publicClient = createPublicClient({
-      chain,
+      chain: arbitrumSepolia,
       transport: http(rpcUrl),
     });
 
     // Create wallet client for write operations
     if (privateKey) {
       const account = privateKeyToAccount(privateKey as `0x${string}`);
-      this.walletClient = createWalletClient({
+      const walletClient = createWalletClient({
         account,
-        chain,
+        chain: arbitrumSepolia,
         transport: http(rpcUrl),
       });
-    }
 
-    // Define your contract ABI here
-    this.contractAbi = parseAbi([
-      'function number() view returns (uint256)',
-      'function setNumber(uint256 newNumber)',
-      'function increment()',
-    ]);
+      // Create contract instance for easy read/write
+      this.contract = getContract({
+        address: contractAddress,
+        abi: CONTRACT_ABI,
+        client: {
+          public: this.publicClient,
+          wallet: walletClient,
+        },
+      });
+    }
   }
 
   async readNumber(): Promise<bigint> {
-    const result = await this.publicClient.readContract({
-      address: this.contractAddress,
-      abi: this.contractAbi,
-      functionName: 'number',
-    });
-    return result as bigint;
+    return await this.contract.read.number();
   }
 
   async setNumber(newNumber: bigint): Promise<`0x${string}`> {
-    const hash = await this.walletClient.writeContract({
-      address: this.contractAddress,
-      abi: this.contractAbi,
-      functionName: 'setNumber',
-      args: [newNumber],
-    });
-    return hash;
+    return await this.contract.write.setNumber([newNumber]);
   }
 
   async increment(): Promise<`0x${string}`> {
-    const hash = await this.walletClient.writeContract({
-      address: this.contractAddress,
-      abi: this.contractAbi,
-      functionName: 'increment',
-    });
-    return hash;
+    return await this.contract.write.increment([]);
   }
 
   async waitForTransaction(hash: `0x${string}`) {
@@ -307,7 +313,7 @@ PORT=3001
         "@nestjs/config": "^3.1.0",
         "class-validator": "^0.14.0",
         "class-transformer": "^0.5.1",
-        "viem": "^2.0.0",
+        "viem": "^2.21.0",
         "reflect-metadata": "^0.1.13",
         "rxjs": "^7.8.1",
     },
@@ -315,7 +321,7 @@ PORT=3001
         "@nestjs/cli": "^10.0.0",
         "@nestjs/testing": "^10.0.0",
         "@types/node": "^20.0.0",
-        "typescript": "^5.0.0",
+        "typescript": "^5.3.0",
         "ts-node": "^10.9.0",
     },
     env_vars=["RPC_URL", "CONTRACT_ADDRESS", "PRIVATE_KEY", "PORT"],
