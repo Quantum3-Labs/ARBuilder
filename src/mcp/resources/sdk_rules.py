@@ -4,7 +4,7 @@ Arbitrum SDK Coding Rules Resource.
 Provides coding guidelines for Arbitrum SDK bridging and cross-chain messaging.
 """
 
-ARBITRUM_SDK_RULES = {
+SDK_CODING_RULES = {
     "name": "Arbitrum SDK Rules",
     "version": "1.0.0",
     "description": "Guidelines for AI assistants generating Arbitrum SDK bridging code",

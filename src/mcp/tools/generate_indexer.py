@@ -22,7 +22,7 @@ from ...templates.indexer_templates import (
     DEFI_SUBGRAPH_TEMPLATE,
     CUSTOM_EVENTS_SUBGRAPH_TEMPLATE,
 )
-from ...embeddings.agentic_rag import get_context_for_generation
+# Removed: agentic_rag import (template-based generation)
 
 
 class GenerateIndexerTool(BaseTool):
@@ -106,18 +106,8 @@ The generated code includes schema.graphql, mappings, and configuration."""
         else:
             template = select_indexer_template(prompt)
 
-        # Get RAG context for customization
+        # Context retrieval (template-based generation doesn't require RAG)
         context = []
-        if self.vectordb:
-            try:
-                context = get_context_for_generation(
-                    f"subgraph thegraph indexer {prompt}",
-                    vectordb=self.vectordb,
-                    n_results=5,
-                    use_agentic=True,
-                )
-            except Exception:
-                pass  # Use template without context
 
         # Customize template
         files = self._customize_template(

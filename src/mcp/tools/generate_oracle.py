@@ -22,7 +22,7 @@ from ...templates.oracle_templates import (
     AUTOMATION_TEMPLATE,
     FUNCTIONS_TEMPLATE,
 )
-from ...embeddings.agentic_rag import get_context_for_generation
+# Removed: agentic_rag import (template-based generation)
 
 
 class GenerateOracleTool(BaseTool):
@@ -102,18 +102,8 @@ Generates both Solidity contracts and frontend integration hooks."""
         else:
             template = select_oracle_template(prompt)
 
-        # Get RAG context for customization
+        # Context retrieval (template-based generation doesn't require RAG)
         context = []
-        if self.vectordb:
-            try:
-                context = get_context_for_generation(
-                    f"chainlink oracle {template.oracle_type} {prompt}",
-                    vectordb=self.vectordb,
-                    n_results=5,
-                    use_agentic=True,
-                )
-            except Exception:
-                pass  # Use template without context
 
         # Build files
         files = {}

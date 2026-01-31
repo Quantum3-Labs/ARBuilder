@@ -22,7 +22,7 @@ from ...templates.frontend_templates import (
     CONTRACT_DASHBOARD_TEMPLATE,
     TOKEN_INTERFACE_TEMPLATE,
 )
-from ...embeddings.agentic_rag import get_context_for_generation
+# Removed: agentic_rag import (template-based generation)
 
 
 class GenerateFrontendTool(BaseTool):
@@ -100,18 +100,8 @@ The generated code includes React components, hooks, and configuration."""
         else:
             template = select_frontend_template(prompt)
 
-        # Get RAG context for customization
+        # Context retrieval (template-based generation doesn't require RAG)
         context = []
-        if self.vectordb:
-            try:
-                context = get_context_for_generation(
-                    f"frontend nextjs wagmi rainbowkit {prompt}",
-                    vectordb=self.vectordb,
-                    n_results=5,
-                    use_agentic=True,
-                )
-            except Exception:
-                pass  # Use template without context
 
         # Customize template based on prompt
         files = self._customize_template(template, prompt, contract_abi, contract_address)

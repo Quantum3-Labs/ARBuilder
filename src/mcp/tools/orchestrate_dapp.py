@@ -22,7 +22,7 @@ from ...templates import (
     select_indexer_template,
     select_oracle_template,
 )
-from ...embeddings.agentic_rag import get_context_for_generation
+# Removed: agentic_rag import (template-based generation)
 
 
 class OrchestrateDappTool(BaseTool):
@@ -101,18 +101,8 @@ Use this for full-stack dApp scaffolding with coordinated configurations."""
         if not prompt:
             return {"error": "prompt is required"}
 
-        # Get RAG context for the overall dApp
+        # Context retrieval (template-based generation doesn't require RAG)
         context = []
-        if self.vectordb:
-            try:
-                context = get_context_for_generation(
-                    f"dapp fullstack {prompt}",
-                    vectordb=self.vectordb,
-                    n_results=10,
-                    use_agentic=True,
-                )
-            except Exception:
-                pass
 
         # Generate project structure
         project = {

@@ -22,7 +22,6 @@ from ...templates.backend_templates import (
     NESTJS_GRAPHQL_TEMPLATE,
     API_GATEWAY_TEMPLATE,
 )
-from ...embeddings.agentic_rag import get_context_for_generation
 
 
 class GenerateBackendTool(BaseTool):
@@ -100,18 +99,8 @@ The generated code includes controllers, services, and configuration files."""
         else:
             template = select_backend_template(framework, prompt)
 
-        # Get RAG context for customization
+        # Context retrieval (template-based generation doesn't require RAG)
         context = []
-        if self.vectordb:
-            try:
-                context = get_context_for_generation(
-                    f"backend {framework} web3 viem {prompt}",
-                    vectordb=self.vectordb,
-                    n_results=5,
-                    use_agentic=True,
-                )
-            except Exception:
-                pass  # Use template without context
 
         # Customize template based on prompt
         files = self._customize_template(template, prompt, contract_abi, contract_address)
