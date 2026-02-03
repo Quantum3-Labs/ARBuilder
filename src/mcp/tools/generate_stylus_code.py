@@ -273,6 +273,7 @@ class GenerateStylusCodeTool(BaseTool):
                 n_results=3,  # Reduced since we have a template as base
                 content_type="code",
                 rerank=True,
+                category_boosts=None,  # Use default Stylus-focused boosts
             )
 
             if "contexts" in context_result:

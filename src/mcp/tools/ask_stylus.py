@@ -127,6 +127,7 @@ class AskStylusTool(BaseTool):
                 n_results=5,
                 content_type="all",
                 rerank=True,
+                category_boosts=None,  # Use default Stylus-focused boosts
             )
 
             references = []

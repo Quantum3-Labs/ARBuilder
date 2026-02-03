@@ -190,7 +190,18 @@ Uses knowledge base and optional RAG for accurate answers."""
         rag_context = ""
         if self.context_tool:
             try:
-                ctx_result = self.context_tool.run(query=question, n_results=3)
+                # Use execute() method with custom boosting for bridging/SDK content
+                ctx_result = self.context_tool.execute(
+                    query=question,
+                    n_results=3,
+                    rerank=True,
+                    category_boosts={
+                        "arbitrum_docs": 1.3,    
+                        "arbitrum_sdk": 1.5,    
+                        "orbit_sdk": 1.0,       
+                        "stylus": 0.8,          
+                    },
+                )
                 if ctx_result.get("contexts"):
                     rag_context = "\n\n".join(
                         c.get("content", "") for c in ctx_result["contexts"][:2]

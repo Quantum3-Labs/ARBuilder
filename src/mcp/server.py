@@ -52,7 +52,7 @@ TOOL_DEFINITIONS = [
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Search query (concept, function name, or code pattern)",
+                    "description": "Search query (concept, function name, or code pattern). Include specific technical terms for best results.",
                 },
                 "n_results": {
                     "type": "integer",
@@ -67,7 +67,7 @@ TOOL_DEFINITIONS = [
                 },
                 "rerank": {
                     "type": "boolean",
-                    "description": "Whether to rerank results for relevance (default: true)",
+                    "description": "Whether to apply advanced reranking with BM25 and metadata boosting (default: true, recommended)",
                     "default": True,
                 },
                 "target_version": {

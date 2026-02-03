@@ -1,19 +1,22 @@
 """
 Reranking module for ARBuilder.
-Uses LLM-based reranking for improved retrieval quality.
+Uses cross-encoder and MMR for improved retrieval quality and diversity.
 """
 
 import os
 from typing import Optional
 
 import httpx
+import numpy as np
 from dotenv import load_dotenv
 from tenacity import retry, stop_after_attempt, wait_exponential
+from .embedder import EmbeddingClient
 
 load_dotenv()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "deepseek/deepseek-chat")
+DEFAULT_CROSS_ENCODER = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 
 class Reranker:
@@ -202,22 +205,27 @@ No explanations, just the JSON array."""
         self.close()
 
 
-class BM25Reranker:
+class CrossEncoderReranker:
     """
-    Simple BM25-based reranker for keyword matching.
-    Lighter weight alternative to LLM reranking.
+    Cross-encoder based reranker for high-accuracy relevance scoring.
+    More accurate than bi-encoder approaches as it processes query-document pairs jointly.
     """
 
-    def __init__(self, k1: float = 1.5, b: float = 0.75):
+    def __init__(self, model_name: str = DEFAULT_CROSS_ENCODER):
         """
-        Initialize BM25 reranker.
+        Initialize cross-encoder reranker.
 
         Args:
-            k1: Term frequency saturation parameter.
-            b: Length normalization parameter.
+            model_name: Name of the cross-encoder model to use.
         """
-        self.k1 = k1
-        self.b = b
+        try:
+            from sentence_transformers import CrossEncoder
+            self.model = CrossEncoder(model_name)
+            self.available = True
+        except ImportError:
+            self.model = None
+            self.available = False
+            print("sentence-transformers not installed. CrossEncoder reranking unavailable.")
 
     def rerank(
         self,
@@ -226,7 +234,7 @@ class BM25Reranker:
         top_k: int = 5,
     ) -> list[dict]:
         """
-        Rerank documents using BM25 scoring.
+        Rerank documents using cross-encoder model.
 
         Args:
             query: The search query.
@@ -234,19 +242,20 @@ class BM25Reranker:
             top_k: Number of top results to return.
 
         Returns:
-            List of reranked results.
+            List of reranked results with relevance scores.
         """
-        from rank_bm25 import BM25Okapi
+        if not self.available or not documents:
+            # Fallback: return documents with neutral scores
+            return [
+                {"index": i, "document": doc, "score": 0.5}
+                for i, doc in enumerate(documents[:top_k])
+            ]
 
-        # Tokenize
-        query_tokens = query.lower().split()
-        doc_tokens = [doc.lower().split() for doc in documents]
+        # Create query-document pairs
+        pairs = [[query, doc] for doc in documents]
 
-        # Create BM25 index
-        bm25 = BM25Okapi(doc_tokens)
-
-        # Get scores
-        scores = bm25.get_scores(query_tokens)
+        # Get cross-encoder scores
+        scores = self.model.predict(pairs)
 
         # Create results
         results = [
@@ -264,96 +273,298 @@ class BM25Reranker:
         return results[:top_k]
 
 
-class HybridReranker:
+class MMRReranker:
     """
-    Combines vector similarity, BM25, and optional LLM reranking.
-    Uses Reciprocal Rank Fusion (RRF) for combining scores.
+    Maximal Marginal Relevance (MMR) reranker for diversity.
+    Balances relevance and diversity by penalizing documents similar to already selected ones.
     """
 
     def __init__(
-        self,
-        use_llm: bool = False,
-        llm_reranker: Optional[Reranker] = None,
-        rrf_k: int = 60,
+        self, 
+        lambda_param: float = 0.5,
+        embedding_client: Optional[EmbeddingClient] = None
     ):
         """
-        Initialize hybrid reranker.
+        Initialize MMR reranker.
 
         Args:
-            use_llm: Whether to use LLM for final reranking.
-            llm_reranker: LLM reranker instance.
-            rrf_k: RRF constant (default 60).
+            lambda_param: Trade-off between relevance (1.0) and diversity (0.0). Default 0.5 for balance.
+            embedding_client: EmbeddingClient instance for generating embeddings. If None, creates new instance.
         """
-        self.bm25_reranker = BM25Reranker()
-        self.use_llm = use_llm
-        self.llm_reranker = llm_reranker
-        self.rrf_k = rrf_k
+        self.lambda_param = lambda_param
+        self.embedding_client = embedding_client or EmbeddingClient()
 
     def rerank(
         self,
         query: str,
         documents: list[str],
-        vector_distances: list[float],
+        embeddings: Optional[np.ndarray] = None,
+        query_embedding: Optional[np.ndarray] = None,
         top_k: int = 5,
     ) -> list[dict]:
         """
-        Hybrid reranking using RRF.
+        Rerank documents using MMR for diversity.
 
         Args:
             query: The search query.
-            documents: List of documents.
-            vector_distances: Original vector search distances.
-            top_k: Number of results to return.
+            documents: List of documents to rerank.
+            embeddings: Document embeddings (optional, will compute if not provided).
+            query_embedding: Query embedding (optional, will compute if not provided).
+            top_k: Number of top results to return.
 
         Returns:
-            Reranked results.
+            List of reranked results with MMR scores.
         """
-        n = len(documents)
+        if not documents:
+            return []
 
-        # Get BM25 rankings
-        bm25_results = self.bm25_reranker.rerank(query, documents, top_k=n)
-        bm25_ranks = {r["index"]: i + 1 for i, r in enumerate(bm25_results)}
+        # If embeddings not provided, compute them using EmbeddingClient
+        if embeddings is None:
+            try:
+                # Generate embeddings for documents
+                doc_embeddings = self.embedding_client.embed_batch(documents)
+                embeddings = np.array(doc_embeddings)
+            except Exception as e:
+                # Fallback: return documents without reranking
+                import logging
+                logging.warning(f"Failed to generate embeddings for MMR: {e}")
+                return [
+                    {"index": i, "document": doc, "score": 1.0 / (i + 1)}
+                    for i, doc in enumerate(documents[:top_k])
+                ]
+        
+        # If query embedding not provided, compute it
+        if query_embedding is None:
+            try:
+                query_emb = self.embedding_client.embed(query)
+                query_embedding = np.array(query_emb)
+            except Exception as e:
+                # Fallback: use first doc as reference
+                import logging
+                logging.warning(f"Failed to generate query embedding for MMR: {e}")
+                query_embedding = embeddings[0]
 
-        # Get vector rankings (lower distance = better rank)
-        vector_sorted = sorted(range(n), key=lambda i: vector_distances[i])
-        vector_ranks = {idx: rank + 1 for rank, idx in enumerate(vector_sorted)}
+        # Compute cosine similarity between query and documents
+        def cosine_similarity(a, b):
+            return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
-        # Compute RRF scores
-        rrf_scores = {}
-        for i in range(n):
-            rrf_scores[i] = (
-                1 / (self.rrf_k + vector_ranks[i]) +
-                1 / (self.rrf_k + bm25_ranks[i])
-            )
+        # Initial relevance scores
+        relevance_scores = [
+            cosine_similarity(query_embedding, doc_emb)
+            for doc_emb in embeddings
+        ]
 
-        # Sort by RRF score
-        sorted_indices = sorted(rrf_scores.keys(), key=lambda i: rrf_scores[i], reverse=True)
+        # MMR selection
+        selected_indices = []
+        selected_embeddings = []
+        remaining_indices = list(range(len(documents)))
 
+        for _ in range(min(top_k, len(documents))):
+            if not remaining_indices:
+                break
+
+            # Compute MMR scores for remaining documents
+            mmr_scores = []
+            for idx in remaining_indices:
+                # Relevance component
+                relevance = relevance_scores[idx]
+
+                # Diversity component (similarity to already selected)
+                if selected_embeddings:
+                    max_sim = max(
+                        cosine_similarity(embeddings[idx], sel_emb)
+                        for sel_emb in selected_embeddings
+                    )
+                else:
+                    max_sim = 0.0
+
+                # MMR score: balance relevance and diversity
+                mmr_score = self.lambda_param * relevance - (1 - self.lambda_param) * max_sim
+                mmr_scores.append((idx, mmr_score))
+
+            # Select document with highest MMR score
+            best_idx, best_score = max(mmr_scores, key=lambda x: x[1])
+            selected_indices.append(best_idx)
+            selected_embeddings.append(embeddings[best_idx])
+            remaining_indices.remove(best_idx)
+
+        # Create results
         results = [
             {
                 "index": idx,
                 "document": documents[idx],
-                "vector_rank": vector_ranks[idx],
-                "bm25_rank": bm25_ranks[idx],
-                "rrf_score": rrf_scores[idx],
+                "score": relevance_scores[idx],  # Original relevance score
+                "mmr_rank": i + 1,
             }
-            for idx in sorted_indices[:top_k]
+            for i, idx in enumerate(selected_indices)
         ]
 
-        # Optional LLM reranking on top results
+        return results
+
+
+class HybridReranker:
+    """
+    Combines cross-encoder reranking with MMR for diversity.
+    Default reranking strategy for ARBuilder (BM25 is handled in retrieval phase).
+    """
+
+    def __init__(
+        self,
+        use_cross_encoder: bool = True,
+        use_mmr: bool = True,
+        cross_encoder_model: Optional[str] = None,
+        mmr_lambda: float = 0.5,
+        use_llm: bool = False,
+        llm_reranker: Optional[Reranker] = None,
+        embedding_client: Optional[EmbeddingClient] = None,
+    ):
+        """
+        Initialize hybrid reranker.
+
+        Args:
+            use_cross_encoder: Whether to use cross-encoder for relevance scoring (default True).
+            use_mmr: Whether to apply MMR for diversity (default True).
+            cross_encoder_model: Cross-encoder model name (default: ms-marco-MiniLM-L-6-v2).
+            mmr_lambda: MMR trade-off parameter (1.0 = relevance, 0.0 = diversity, 0.5 = balanced).
+            use_llm: Whether to use LLM for final reranking (optional, slower).
+            llm_reranker: LLM reranker instance.
+            embedding_client: EmbeddingClient instance for MMR embeddings. If None, creates new instance.
+        """
+        self.use_cross_encoder = use_cross_encoder
+        self.use_mmr = use_mmr
+        self.use_llm = use_llm
+        self.llm_reranker = llm_reranker
+        self.embedding_client = embedding_client or EmbeddingClient()
+
+        # Initialize cross-encoder
+        if use_cross_encoder:
+            model_name = cross_encoder_model or DEFAULT_CROSS_ENCODER
+            self.cross_encoder = CrossEncoderReranker(model_name)
+        else:
+            self.cross_encoder = None
+
+        # Initialize MMR with shared embedding client
+        if use_mmr:
+            self.mmr_reranker = MMRReranker(
+                lambda_param=mmr_lambda,
+                embedding_client=self.embedding_client
+            )
+        else:
+            self.mmr_reranker = None
+
+    def rerank(
+        self,
+        query: str,
+        documents: list[str],
+        embeddings: Optional[np.ndarray] = None,
+        query_embedding: Optional[np.ndarray] = None,
+        top_k: int = 5,
+    ) -> list[dict]:
+        """
+        Hybrid reranking using cross-encoder and MMR.
+
+        Args:
+            query: The search query.
+            documents: List of documents to rerank.
+            embeddings: Document embeddings for MMR (optional, computed once if not provided).
+            query_embedding: Query embedding for MMR (optional, computed once if not provided).
+            top_k: Number of results to return.
+
+        Returns:
+            Reranked results with scores and diversity.
+        """
+        if not documents:
+            return []
+
+        results = documents
+
+        # Stage 1: Cross-encoder reranking for relevance
+        if self.use_cross_encoder and self.cross_encoder:
+            # Get more candidates for MMR to work with
+            ce_top_k = top_k * 2 if self.use_mmr else top_k
+            ce_results = self.cross_encoder.rerank(query, documents, top_k=ce_top_k)
+            
+            # Reorder documents by cross-encoder scores
+            results = ce_results
+        else:
+            # No cross-encoder: create results with indices
+            results = [
+                {"index": i, "document": doc, "score": 1.0 / (i + 1)}
+                for i, doc in enumerate(documents)
+            ]
+
+        # Stage 2: Apply MMR for diversity
+        if self.use_mmr and self.mmr_reranker and len(results) > 1:
+            # Extract documents for MMR
+            reranked_docs = [r["document"] for r in results]
+            
+            # Compute embeddings once if not provided (to avoid recalculation in MMR)
+            if embeddings is None and self.embedding_client:
+                try:
+                    # Generate embeddings for all documents at once
+                    doc_embeddings = self.embedding_client.embed_batch(documents)
+                    embeddings = np.array(doc_embeddings)
+                except Exception as e:
+                    import logging
+                    logging.warning(f"Failed to generate embeddings for MMR: {e}")
+                    embeddings = None
+            
+            # Compute query embedding once if not provided
+            if query_embedding is None and self.embedding_client and embeddings is not None:
+                try:
+                    query_emb = self.embedding_client.embed(query)
+                    query_embedding = np.array(query_emb)
+                except Exception as e:
+                    import logging
+                    logging.warning(f"Failed to generate query embedding for MMR: {e}")
+                    query_embedding = None
+            
+            # Reorder embeddings based on cross-encoder results if provided
+            if embeddings is not None:
+                doc_to_embedding = {documents[i]: embeddings[i] for i in range(len(documents))}
+                reordered_embeddings = np.array([doc_to_embedding[doc] for doc in reranked_docs])
+            else:
+                reordered_embeddings = None
+            
+            # Apply MMR with pre-computed embeddings
+            mmr_results = self.mmr_reranker.rerank(
+                query, 
+                reranked_docs,
+                embeddings=reordered_embeddings,
+                query_embedding=query_embedding,
+                top_k=top_k
+            )
+            
+            # Merge cross-encoder scores with MMR rankings
+            final_results = []
+            for mmr_r in mmr_results:
+                ce_score = results[mmr_r["index"]]["score"]
+                final_results.append({
+                    "original_index": results[mmr_r["index"]].get("index", mmr_r["index"]),
+                    "document": mmr_r["document"],
+                    "cross_encoder_score": ce_score,
+                    "mmr_rank": mmr_r["mmr_rank"],
+                    "relevance_score": mmr_r["score"],
+                })
+            
+            results = final_results
+        else:
+            # No MMR: just take top_k from cross-encoder results
+            results = results[:top_k]
+
+        # Stage 3: Optional LLM reranking (for highest quality)
         if self.use_llm and self.llm_reranker:
             top_docs = [r["document"] for r in results]
             llm_results = self.llm_reranker.rerank(query, top_docs, top_k=top_k)
 
             # Merge LLM scores
+            final_results = []
             for i, llm_r in enumerate(llm_results):
-                orig_idx = results[llm_r["index"]]["index"]
-                results[i] = {
-                    **results[llm_r["index"]],
-                    "llm_score": llm_r["score"],
-                    "final_rank": i + 1,
-                }
-
-            results = sorted(results, key=lambda x: x.get("llm_score", 0), reverse=True)
+                result_data = results[llm_r["index"]].copy()
+                result_data["llm_score"] = llm_r["score"]
+                result_data["final_rank"] = i + 1
+                final_results.append(result_data)
+            
+            results = final_results
 
         return results
