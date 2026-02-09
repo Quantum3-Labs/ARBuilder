@@ -3,6 +3,14 @@
   "minimum_version": "0.8.0",
   "deprecated_below": "0.8.0",
   "versions": {
+    "0.10.0": {
+      "status": "pending_research",
+      "alloy_primitives": "",
+      "alloy_sol_types": "",
+      "breaking_changes": [],
+      "released": "",
+      "notes": "Placeholder — requires research to fill in details"
+    },
     "0.9.2": {
       "status": "main",
       "alloy_primitives": "=0.8.20",

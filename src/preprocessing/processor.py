@@ -39,6 +39,13 @@ try:
 except ImportError:
     HAS_VERSION_MANAGER = False
 
+# Import config for repo filtering
+try:
+    from scraper.config import get_all_config_repo_urls, get_config_repo_info
+    HAS_CONFIG = True
+except ImportError:
+    HAS_CONFIG = False
+
 load_dotenv()
 
 console = Console()
@@ -176,6 +183,8 @@ class DataProcessor:
     ) -> list[dict]:
         """
         Process GitHub repository data.
+        Uses config-based filtering to skip repos not in the current config.
+        Reads sdk_version from input JSON first, falls back to Cargo.toml extraction.
 
         Args:
             input_file: Path to GitHub repos JSON file. If None, uses latest.
@@ -196,8 +205,29 @@ class DataProcessor:
         with open(input_file, "r", encoding="utf-8") as f:
             raw_data = json.load(f)
 
+        # Build config-based filter: only process repos that are in the config
+        config_urls = set()
+        config_info = {}
+        if HAS_CONFIG:
+            config_urls = get_all_config_repo_urls()
+            config_info = get_config_repo_info()
+
         all_chunks = []
-        total_files = sum(len(repo.get("files", [])) for repo in raw_data)
+        skipped_repos = []
+        total_files = 0
+
+        # Pre-filter repos based on config
+        filtered_data = []
+        for repo in raw_data:
+            repo_url = repo.get("repo_url", "")
+            if HAS_CONFIG and config_urls and repo_url not in config_urls:
+                skipped_repos.append(repo.get("repo_name", repo_url))
+                continue
+            filtered_data.append(repo)
+            total_files += len(repo.get("files", []))
+
+        if skipped_repos:
+            console.print(f"[yellow]Skipped {len(skipped_repos)} repos not in config: {', '.join(skipped_repos)}[/yellow]")
 
         with Progress(
             SpinnerColumn(),
@@ -208,20 +238,42 @@ class DataProcessor:
         ) as progress:
             task = progress.add_task("Processing code files...", total=total_files)
 
-            for repo in raw_data:
+            for repo in filtered_data:
                 repo_name = repo.get("repo_name", "")
                 repo_url = repo.get("repo_url", "")
                 category = repo.get("category", "")
                 subcategory = repo.get("subcategory", "")
 
-                # Try to get SDK version for this repo
-                repo_sdk_version = None
-                if HAS_VERSION_EXTRACTOR and repo_name:
+                # SDK version resolution:
+                # 1. From input JSON (set by scraper from config — source of truth)
+                # 2. Fallback to Cargo.toml extraction
+                # 3. "N/A" for non-Rust repos (TypeScript SDK, tutorials, etc.)
+                repo_sdk_version = repo.get("sdk_version") or None
+
+                # Also check config info as a secondary source
+                if not repo_sdk_version and repo_url in config_info:
+                    repo_sdk_version = config_info[repo_url].get("sdk_version") or None
+
+                # Fallback: extract from Cargo.toml on disk
+                if not repo_sdk_version and HAS_VERSION_EXTRACTOR and repo_name:
                     repo_dir = RAW_DATA_DIR / "repos" / repo_name
                     if repo_dir.exists():
                         repo_sdk_version = extract_sdk_version_from_repo(repo_dir)
-                        if repo_sdk_version:
-                            self._repo_sdk_versions[repo_name] = repo_sdk_version
+
+                # For non-Rust repos, use "N/A" instead of empty string
+                if repo_sdk_version == "N/A":
+                    display_sdk_version = "N/A"
+                elif repo_sdk_version:
+                    display_sdk_version = repo_sdk_version
+                else:
+                    # Check if this repo has any .rs files — if not, it's non-Rust
+                    has_rust = any(
+                        f.get("extension") == ".rs" for f in repo.get("files", [])
+                    )
+                    display_sdk_version = "" if has_rust else "N/A"
+
+                if repo_sdk_version and repo_sdk_version != "N/A":
+                    self._repo_sdk_versions[repo_name] = repo_sdk_version
 
                 for file_info in repo.get("files", []):
                     content = file_info.get("content", "")
@@ -250,17 +302,21 @@ class DataProcessor:
                     # Check if repo SDK version is current
                     latest_sdk = self._get_latest_sdk_version()
                     is_current = True
-                    if repo_sdk_version and latest_sdk and HAS_VERSION_EXTRACTOR:
-                        is_current = is_version_current(repo_sdk_version, latest_sdk)
+                    effective_version = repo_sdk_version if repo_sdk_version and repo_sdk_version != "N/A" else None
+                    if effective_version and latest_sdk and HAS_VERSION_EXTRACTOR:
+                        is_current = is_version_current(effective_version, latest_sdk)
 
                     # Check if version is deprecated (below minimum)
                     version_deprecated = False
-                    if repo_sdk_version and HAS_VERSION_MANAGER:
-                        version_deprecated = check_version_deprecated(repo_sdk_version)
+                    if effective_version and HAS_VERSION_MANAGER:
+                        version_deprecated = check_version_deprecated(effective_version)
+
+                    # Determine source type for cleaner classification
+                    source_type = "project" if category in ("stylus",) and subcategory not in ("official", "articles") else "github"
 
                     # Metadata for code files
                     metadata = {
-                        "source": "github",
+                        "source": source_type,
                         "repo_name": repo_name,
                         "repo_url": repo_url,
                         "file_path": file_path,
@@ -268,8 +324,8 @@ class DataProcessor:
                         "category": category,
                         "subcategory": subcategory,
                         # SDK version tracking
-                        "sdk_version": repo_sdk_version or "",
-                        "stylus_version": repo_sdk_version or "",  # Explicit field for clarity
+                        "sdk_version": display_sdk_version,
+                        "stylus_version": display_sdk_version,
                         "is_current": is_current,
                         "is_version_deprecated": version_deprecated,
                         "deprecated_patterns": deprecated_patterns,
@@ -371,8 +427,8 @@ class DataProcessor:
             category = chunk.get("category", "unknown")
             by_category[category] = by_category.get(category, 0) + 1
 
-            # By language (for code)
-            if chunk.get("source") == "github":
+            # By language (for code — includes "project" and "github" sources)
+            if chunk.get("source") in ("github", "project"):
                 lang = chunk.get("language", "unknown")
                 by_language[lang] = by_language.get(lang, 0) + 1
 
