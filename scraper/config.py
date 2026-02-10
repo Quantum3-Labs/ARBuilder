@@ -17,12 +17,15 @@ INCLUSION CRITERIA:
 - Projects (community_projects): Verified compilation with SDK >= 0.8.0, date-stamped
 - Projects (scaffold_projects): scaffold-stylus based, SDK 0.9.0, must compile
 - Projects (official_repos): SDK/tutorial repos maintained by OffchainLabs
+- Projects (community_examples): Third-party @arbitrum/sdk usage, verified SDK version
 
 LAST VERIFICATION: 2026-02-10
   Tool: scripts/verify_source.py --all --steps 1,2,4
-  Before: 34 repos | After cleanup: 16 repos
+  Before: 34 repos | After cleanup: 16 repos | After M2 additions: 19 repos
   Removed: 10 challenge submissions (98% identical), 5 broken scaffold forks,
            2 broken community projects, 1 broken verified_production repo
+  Added: 3 community @arbitrum/sdk repos (kevinb1003/arbitrum-api,
+         gelatodigital/how-tos-18, gelatodigital/clink-bridging)
 """
 
 # SDK version requirements (from shared/stylus-versions.json)
@@ -130,6 +133,18 @@ PROJECT_EXAMPLES = {
             {"url": "https://github.com/OffchainLabs/arbitrum-sdk", "sdk_version": "N/A", "verified": "2026-02-10"},
             # Tutorials - working examples for bridging/messaging (@arbitrum/sdk 4.0.1)
             {"url": "https://github.com/OffchainLabs/arbitrum-tutorials", "sdk_version": "4.0.1", "verified": "2026-02-10"},
+        ],
+        "community_examples": [
+            # VERIFIED 2026-02-10 with verify_source.py --steps 1,2,4:
+            # Production REST API wrapping EthBridger/Erc20Bridger (32 stars, active)
+            {"url": "https://github.com/kevinb1003/arbitrum-api", "sdk_version": "4.0.4", "verified": "2026-02-10",
+             "note": "Tests need env vars (DB, API keys) — SDK version verified, active repo"},
+            # Orbit chain deposit/withdrawal scripts using @arbitrum/sdk
+            {"url": "https://github.com/gelatodigital/how-tos-18-arbitrum-orbit-bridging", "sdk_version": "4.0.2", "verified": "2026-02-10",
+             "note": "Orbit bridging examples — no tests, active repo"},
+            # Cross-chain messaging examples (L1↔L2, L2↔L3)
+            {"url": "https://github.com/gelatodigital/clink-bridging-cross-messaging", "sdk_version": "4.0.2", "verified": "2026-02-10",
+             "note": "Cross-chain messaging patterns — no tests, abandoned but unique value"},
         ],
     },
     "orbit_sdk": {
