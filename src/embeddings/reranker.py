@@ -16,8 +16,8 @@ load_dotenv()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "deepseek/deepseek-chat")
-DEFAULT_CROSS_ENCODER = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-
+NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
+DEFAULT_CROSS_ENCODER = os.getenv("DEFAULT_CROSS_ENCODER", "nvidia/llama-3.2-nv-rerankqa-1b-v2")
 
 class Reranker:
     """
@@ -211,21 +211,59 @@ class CrossEncoderReranker:
     More accurate than bi-encoder approaches as it processes query-document pairs jointly.
     """
 
-    def __init__(self, model_name: str = DEFAULT_CROSS_ENCODER):
+    def __init__(
+        self,
+        model_name: str = DEFAULT_CROSS_ENCODER,
+        api_key: Optional[str] = None,
+        invoke_url: Optional[str] = None,
+    ):
         """
         Initialize cross-encoder reranker.
 
         Args:
             model_name: Name of the cross-encoder model to use.
+            api_key: NVIDIA API key. Defaults to NVIDIA_API_KEY from env.
+            invoke_url: NVIDIA reranking endpoint override.
         """
-        try:
-            from sentence_transformers import CrossEncoder
-            self.model = CrossEncoder(model_name)
-            self.available = True
-        except ImportError:
-            self.model = None
-            self.available = False
-            print("sentence-transformers not installed. CrossEncoder reranking unavailable.")
+        self.model_name = model_name
+        self.api_key = api_key or NVIDIA_API_KEY
+
+        model_slug = model_name.split("/")[-1].replace(".", "_")
+        self.invoke_url = invoke_url or os.getenv(
+            "NVIDIA_RERANK_URL",
+            f"https://ai.api.nvidia.com/v1/retrieval/nvidia/{model_slug}/reranking",
+        )
+
+        self.available = bool(self.api_key)
+        if not self.available:
+            print("NVIDIA_API_KEY not found. CrossEncoder reranking unavailable.")
+            self.client = None
+            return
+
+        self.client = httpx.Client(
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            },
+            timeout=60.0,
+        )
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+    )
+    def _request_rankings(self, query: str, documents: list[str]) -> list[dict]:
+        payload = {
+            "model": self.model_name,
+            "query": {"text": query},
+            "passages": [{"text": doc} for doc in documents],
+        }
+
+        response = self.client.post(self.invoke_url, json=payload)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("rankings", [])
 
     def rerank(
         self,
@@ -244,33 +282,57 @@ class CrossEncoderReranker:
         Returns:
             List of reranked results with relevance scores.
         """
-        if not self.available or not documents:
+        if not documents:
+            return []
+
+        if not self.available:
             # Fallback: return documents with neutral scores
             return [
                 {"index": i, "document": doc, "score": 0.5}
                 for i, doc in enumerate(documents[:top_k])
             ]
 
-        # Create query-document pairs
-        pairs = [[query, doc] for doc in documents]
+        try:
+            rankings = self._request_rankings(query, documents)
+        except Exception as e:
+            import logging
+            logging.warning(f"NVIDIA reranking failed: {e}")
+            return [
+                {"index": i, "document": doc, "score": 0.5}
+                for i, doc in enumerate(documents[:top_k])
+            ]
 
-        # Get cross-encoder scores
-        scores = self.model.predict(pairs)
+        results = []
+        seen_indices = set()
 
-        # Create results
-        results = [
-            {
-                "index": i,
-                "document": doc,
-                "score": float(scores[i]),
-            }
-            for i, doc in enumerate(documents)
-        ]
+        # NVIDIA response format:
+        # {"rankings": [{"index": 2, "logit": 6.82}, ...]}
+        for rank in rankings:
+            idx = rank.get("index")
+            if isinstance(idx, int) and 0 <= idx < len(documents):
+                results.append(
+                    {
+                        "index": idx,
+                        "document": documents[idx],
+                        "score": float(rank.get("logit", 0.0)),
+                    }
+                )
+                seen_indices.add(idx)
+
+        # Ensure stable output even if API omits some passages.
+        for i, doc in enumerate(documents):
+            if i not in seen_indices:
+                results.append({"index": i, "document": doc, "score": float("-inf")})
 
         # Sort by score descending
         results.sort(key=lambda x: x["score"], reverse=True)
 
         return results[:top_k]
+
+    def close(self):
+        """Close the HTTP client."""
+        if self.client:
+            self.client.close()
 
 
 class MMRReranker:
@@ -412,7 +474,6 @@ class HybridReranker:
         self,
         use_cross_encoder: bool = True,
         use_mmr: bool = True,
-        cross_encoder_model: Optional[str] = None,
         mmr_lambda: float = 0.5,
         use_llm: bool = False,
         llm_reranker: Optional[Reranker] = None,
@@ -424,7 +485,6 @@ class HybridReranker:
         Args:
             use_cross_encoder: Whether to use cross-encoder for relevance scoring (default True).
             use_mmr: Whether to apply MMR for diversity (default True).
-            cross_encoder_model: Cross-encoder model name (default: ms-marco-MiniLM-L-6-v2).
             mmr_lambda: MMR trade-off parameter (1.0 = relevance, 0.0 = diversity, 0.5 = balanced).
             use_llm: Whether to use LLM for final reranking (optional, slower).
             llm_reranker: LLM reranker instance.
@@ -438,7 +498,7 @@ class HybridReranker:
 
         # Initialize cross-encoder
         if use_cross_encoder:
-            model_name = cross_encoder_model or DEFAULT_CROSS_ENCODER
+            model_name = DEFAULT_CROSS_ENCODER
             self.cross_encoder = CrossEncoderReranker(model_name)
         else:
             self.cross_encoder = None

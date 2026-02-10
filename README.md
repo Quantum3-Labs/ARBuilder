@@ -55,7 +55,7 @@ conda activate arbbuilder
 
 # 2. Configure API key
 cp .env.example .env
-# Edit .env and add your OPENROUTER_API_KEY
+# Edit .env and add your OPENROUTER_API_KEY and NVIDIA_API_KEY
 
 # 3. Generate vector database (required)
 python -m src.embeddings.vectordb
@@ -90,7 +90,7 @@ ArbBuilder/
 │   ├── embeddings/       # Embedding and vector storage
 │   │   ├── embedder.py   # OpenRouter embedding client
 │   │   ├── vectordb.py   # ChromaDB wrapper with hybrid search (BM25 + vector)
-│   │   └── reranker.py   # BM25, LLM, and hybrid reranking
+│   │   └── reranker.py   # CrossEncoder, MMR, LLM reranking
 │   ├── templates/        # Code generation templates
 │   │   ├── stylus_templates.py   # M1: Stylus contract templates
 │   │   ├── backend_templates.py  # M3: NestJS/Express templates
@@ -176,8 +176,10 @@ Edit `.env` with your credentials:
 
 ```env
 OPENROUTER_API_KEY=your-api-key
+NVIDIA_API_KEY=your-nvidia-api-key
 DEFAULT_MODEL=deepseek/deepseek-v3.2
 DEFAULT_EMBEDDING=google/gemini-embedding-001
+DEFAULT_CROSS_ENCODER=nvidia/llama-3.2-nv-rerankqa-1b-v2
 ```
 
 ### 3. Setup Data

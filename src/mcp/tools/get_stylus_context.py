@@ -5,6 +5,7 @@ Retrieves relevant documentation and code examples from the RAG database.
 """
 
 import sys
+import math
 from pathlib import Path
 from typing import Optional
 
@@ -13,7 +14,7 @@ project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.embeddings.vectordb import VectorDB
-from src.embeddings.reranker import HybridReranker, Reranker
+from src.embeddings.reranker import HybridReranker
 from src.mcp.tools.base import BaseTool
 
 
@@ -45,9 +46,8 @@ class GetStylusContextTool(BaseTool):
 
         if use_reranking:
             # Cross-encoder + MMR for relevance and diversity
-            # BM25 is handled in hybrid_search (vectordb.py)
             self.reranker = HybridReranker(
-                use_cross_encoder=False,
+                use_cross_encoder=True,
                 use_mmr=True,
                 use_llm=False
             )
@@ -247,10 +247,10 @@ class GetStylusContextTool(BaseTool):
                     
                 metadata = metadatas[orig_idx] if orig_idx < len(metadatas) else {}
 
-                # Extract relevance score (cross-encoder score if available)
+                # Prefer the hybrid combined score (cross-encoder + MMR) when available.
                 ce_score = item.get("cross_encoder_score", item.get("relevance_score", 0.5))
-                # Normalize cross-encoder score to 0-1 range
-                relevance = max(0.0, min(1.0, (ce_score + 1) / 2))  # Assuming CE scores are in [-1, 1]
+                # NVIDIA reranker returns unbounded logits; map to [0, 1] with sigmoid.
+                relevance = 1.0 / (1.0 + math.exp(-float(ce_score)))
 
                 contexts.append(self._build_context(
                     content=documents[orig_idx],
