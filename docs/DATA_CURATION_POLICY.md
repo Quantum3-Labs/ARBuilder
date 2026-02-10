@@ -18,240 +18,173 @@ ARBuilder's knowledge base must only contain **verified, working code** that com
 - Prefer `stylus-sdk >= 0.10.0` (main version)
 - Must be actively maintained (commits within 6 months)
 - Must be deployable and functional
+- Verified with `scripts/verify_source.py --steps 1,2,4`
 
 **Exclusion criteria:**
 - Meta-lists (e.g., awesome-stylus) - contain mixed quality/versions
 - Unverified community submissions
-- Deprecated SDK versions
+- Deprecated SDK versions (< 0.8.0)
 - Non-Arbitrum code (e.g., general Rust libs, UI frameworks)
+- Challenge submissions with identical template code (zero unique value)
+- Scaffold forks that don't compile
 
 ### 3. Version Requirements
 
 | Component | Main Version | Minimum Version |
 |-----------|--------------|-----------------|
 | stylus-sdk | 0.10.0 | 0.8.0 |
+| @arbitrum/sdk | 4.0.4 | 4.0.0 |
 | alloy-primitives | 1.0.1 | 0.8.0 |
 | alloy-sol-types | 1.0.1 | 0.8.0 |
 | Rust | 1.88.0 | 1.81 |
 
 **Note:** Anything below stylus-sdk 0.8.0 is deprecated (uses `#[external]` instead of `#[public]`).
 
-## Current Verified Sources
+## Current Verified Sources (19 repos, verified 2026-02-10)
 
 ### M1: Stylus Development
 
-**Official Sources:**
-| Source | Type | SDK Version | Status | Notes |
-|--------|------|-------------|--------|-------|
-| docs.arbitrum.io/stylus/* | Docs | N/A | Verified | Official docs |
-| OffchainLabs/stylus-hello-world | Code | 0.9.0 | Verified | Official example |
-| OffchainLabs/stylus-quickstart-vending-machine | Code | 0.8.4 | Verified | Official example |
-| ArbitrumFoundation/stylus-workshop-gol | Code | 0.9.0 | Verified | Workshop material |
+**Official Examples:**
+| Source | SDK Version | Status | Notes |
+|--------|-------------|--------|-------|
+| OffchainLabs/stylus-hello-world | 0.9.0 | Verified | Official example |
+| OffchainLabs/stylus-quickstart-vending-machine | 0.8.4 | Verified | Official example |
+| ArbitrumFoundation/stylus-workshop-gol | 0.9.0 | Verified | Tests fail (needs devnode) |
 
 **Production Libraries:**
-| Source | Type | SDK Version | Status | Notes |
-|--------|------|-------------|--------|-------|
-| OpenZeppelin/rust-contracts-stylus | Code | 0.9.0 | Verified | Production library |
-| OpenZeppelin/stylus-test-helpers | Code | 0.9.0 | Verified | Motsu testing framework |
-| stylus-developers-guild/reentrancy-transient-storage | Code | 0.9.0 | Verified | Security patterns |
-| oak-security/stylusport | Code | 0.9.0 | Verified | Solana-to-Stylus porting |
-| gnosisguild/stylus-provider | Code | 0.8.4 | Verified | Infrastructure tooling |
+| Source | SDK Version | Status | Notes |
+|--------|-------------|--------|-------|
+| OpenZeppelin/rust-contracts-stylus | 0.9.0 | Verified | Production library (146 stars) |
+| OpenZeppelin/stylus-test-helpers | 0.9.0 | Verified | Motsu testing framework (47 tests) |
+| oak-security/stylusport | 0.9.0 | Verified | Linker error on arm64, compiles to wasm32 |
+| gnosisguild/stylus-provider | 0.8.4 | Verified | Tests fail, production library |
 
-**Community Projects (Verified 2025-01-25):**
-| Source | Type | SDK Version | Status | Notes |
-|--------|------|-------------|--------|-------|
-| philogicae/ethbuc2025-gyges | Code | 0.8.4 | Verified | Hackathon project |
-| Oluwatobilobaoke/erc6909-with-arbitrum-stylus | Code | 0.9.0 | Verified | ERC6909 implementation |
-| hummusonrails/fortune-generator | Code | 0.8.0 | Verified | Randomness example |
-| IndexMaker/vaultworks | Code | 0.9.0 | Verified | DeFi vault contracts |
-| Inteli-Club5/EdCation | Code | 0.8.0 | Verified | Education platform |
+**Community Projects:**
+| Source | SDK Version | Status | Notes |
+|--------|-------------|--------|-------|
+| philogicae/ethbuc2025-gyges | 0.8.4 | Verified | Hackathon project |
+| Oluwatobilobaoke/erc6909-with-arbitrum-stylus | 0.9.0 | Verified | ERC6909 implementation |
+| hummusonrails/fortune-generator | 0.8.0 | Verified | Randomness example |
 
-**Scaffold-Stylus Projects (All SDK 0.9.0):**
-- Arb-Stylus/scaffold-stylus (main template)
-- iyansr/cross-protocol-defi-tracker
-- Einarmig/WalletNaming-scaffold-stylus
-- mavix21/poap-scaffold-stylus
-- dchagast/scaffold-stylus-staking
-- cidkagenow/EmersonApp-scaffold-stylus
-- autodidacttrade/DeFi-Project-ERC20-scaffold-stylus
-- ByteToHex/VRF-scaffold-stylus
-
-**Challenge Submissions (All SDK 0.9.0):**
-- Huygon764/challenge-001, Fnz11/challenge-001
-- ndrewlex/challenge-001, athallarizky/challenge-001, dimasd-angga/challenge-001
-- ammar-rasyidi/challenge-001, rizkianakbar/challenge-001
-- math-marcellino/challenge-002, lucky-ivanius/challenge-001, lucky-ivanius/challenge-002
+**Scaffold-Stylus Projects:**
+| Source | SDK Version | Status | Notes |
+|--------|-------------|--------|-------|
+| Arb-Stylus/scaffold-stylus | 0.9.0 | Verified | Canonical scaffold template |
+| iyansr/cross-protocol-defi-tracker | 0.9.0 | Verified | DeFi tracker dApp |
+| Einarmig/WalletNaming-scaffold-stylus | 0.9.0 | Verified | Wallet naming dApp |
 
 ### M2: Arbitrum SDK
 
-| Source | Type | Status | Notes |
-|--------|------|--------|-------|
-| docs.arbitrum.io/sdk | Docs | Verified | Official docs |
-| docs.arbitrum.io/build-decentralized-apps/* | Docs | Verified | Bridging/messaging docs |
-| OffchainLabs/arbitrum-sdk | Code | Verified | Official SDK |
-| OffchainLabs/arbitrum-tutorials | Code | Verified | Working examples |
+**Official Repos:**
+| Source | SDK Version | Status | Notes |
+|--------|-------------|--------|-------|
+| OffchainLabs/arbitrum-sdk | N/A | Verified | Official SDK library |
+| OffchainLabs/arbitrum-tutorials | 4.0.1 | Verified | Working bridging/messaging examples |
 
-## Removed Sources (and why)
+**Community Examples:**
+| Source | SDK Version | Status | Notes |
+|--------|-------------|--------|-------|
+| kevinb1003/arbitrum-api | 4.0.4 | Verified | REST API wrapping EthBridger/Erc20Bridger (32 stars) |
+| gelatodigital/how-tos-18-arbitrum-orbit-bridging | 4.0.2 | Verified | Orbit chain bridging scripts |
+| gelatodigital/clink-bridging-cross-messaging | 4.0.2 | Verified | Cross-chain messaging (abandoned but unique) |
+
+### Orbit SDK
+
+| Source | SDK Version | Status | Notes |
+|--------|-------------|--------|-------|
+| OffchainLabs/arbitrum-orbit-sdk | 4.0.4 | Verified | Official Orbit SDK |
+
+## Removed Sources (2026-02-10 Cleanup)
+
+### Challenge Submissions (10 repos removed)
+All 98% identical template code with zero unique value. Added 4700+ duplicate chunks that polluted retrieval results.
+- Huygon764, Fnz11, ndrewlex, athallarizky, dimasd-angga, ammar-rasyidi, rizkianakbar, math-marcellino, lucky-ivanius (x2), dante4rt (404)
+
+### Broken Scaffold Forks (5 repos removed)
+All fail to compile due to OZ 0.3.0 incompatibility or linker errors:
+- mavix21/poap-scaffold-stylus (openzeppelin-stylus 0.3.0 incompatible)
+- dchagast/scaffold-stylus-staking (linker errors on arm64)
+- cidkagenow/EmersonApp-scaffold-stylus (non-exhaustive patterns)
+- autodidacttrade/DeFi-Project-ERC20 (linker errors)
+- ByteToHex/VRF-scaffold-stylus (linker errors)
+
+### Broken Community Projects (2 repos removed)
+- IndexMaker/vaultworks (archived, no stylus-sdk detected)
+- Inteli-Club5/EdCation (compile fails, StorageAddress::new wrong args)
+
+### Broken Production Repos (1 repo removed)
+- stylus-developers-guild/reentrancy-transient-storage (compile fails, trait bound error)
 
 ### Deprecated SDK Versions (< 0.8.0)
-- `OffchainLabs/stylus-chess` - SDK v0.4.2 (deprecated)
-- `OffchainLabs/stylus-by-example` - SDK v0.6.0 (deprecated)
-- `fluidity-money/9lives.so` - SDK v0.7.0 (deprecated)
-- `fluidity-money/long.so` - SDK v0.7.0 (deprecated)
-- `hammertoe/ArbitrumOnchainAgent` - SDK v0.7.0 (deprecated)
-- `cygaar/inkmate` - SDK v0.4.3 (deprecated)
-- `malik672/open-stylus` - SDK v0.4.2 (deprecated)
-- `code-423n4/2024-10-superposition` - SDK v0.6.0 (deprecated)
-
-### Deleted Repos
-- `dante4rt/challenge-001` - Repository deleted by owner (404)
-
-### Meta-lists
-- `OffchainLabs/awesome-stylus` - Contains mixed versions, outdated projects
-
-### Previously Unverified (Now Verified and Included)
-- Challenge submissions - VERIFIED 2025-01-25 (all SDK 0.9.0, now included)
-- Scaffold-stylus forks - VERIFIED 2025-01-25 (all SDK 0.9.0, now included)
-
-### Still Excluded (Failed Verification)
-- yahgwai/rkfall-nft - SDK v0.4.1 (deprecated)
-- gvladika/stylus-erc721 - SDK v0.4.1 (deprecated)
-- scarfish-dapps/integrum-swap - SDK v0.5.2 (deprecated)
-- OffchainLabs/stylus-tutorials - SDK v0.5.0 (deprecated)
-- LimeChain/stylus-toolkit - SDK v0.5.0 (deprecated)
+- OffchainLabs/stylus-chess (v0.4.2), OffchainLabs/stylus-by-example (v0.6.0)
+- fluidity-money/9lives.so (v0.7.0), fluidity-money/long.so (v0.7.0)
+- hammertoe/ArbitrumOnchainAgent (v0.7.0), cygaar/inkmate (v0.4.3)
+- malik672/open-stylus (v0.4.2), code-423n4/2024-10-superposition (v0.6.0)
 
 ### Irrelevant Code
-- `nestjs/nest` - Node.js framework, not Arbitrum
-- `saadeghi/daisyui` - CSS framework
-- `rainbow-me/rainbowkit` - Wallet UI kit
-- `smartcontractkit/chainlink` - Chainlink, not Arbitrum-specific
-- `messari/subgraphs` - Analytics, not SDK examples
+- nestjs/nest, saadeghi/daisyui, rainbow-me/rainbowkit
+- smartcontractkit/chainlink, messari/subgraphs
 
 ## Maintenance Runbook
 
+### Automated Tools
+
+| Script | Purpose | Usage |
+|--------|---------|-------|
+| `scripts/verify_source.py` | Verify repos compile and pass tests | `python scripts/verify_source.py --all --steps 1,2,4` |
+| `scripts/maintain_sources.py monitor` | Check crates.io/npm for new SDK releases | Flags all outdated repos |
+| `scripts/maintain_sources.py discover` | Search GitHub for new community repos | Returns candidates to verify |
+| `scripts/maintain_sources.py health` | Check GitHub health of all config repos | Finds archived/deleted repos |
+| `scripts/audit_data.py` | Detect orphans and config drift | Compare disk vs config |
+
 ### Scenario 1: Adding New Sources
 
-When you find a new repo or doc page to add:
-
-**For a code repository:**
-
 ```bash
-# 1. Verify the repo first
-git clone <repo-url> /tmp/verify-repo
-cd /tmp/verify-repo
-cat Cargo.toml | grep stylus-sdk   # Must be >= 0.8.0
-cargo stylus check                  # Optional: verify it compiles
+# 1. Verify the repo
+python scripts/verify_source.py https://github.com/org/repo --steps 1,2,4
 
 # 2. Add to scraper/config.py under the right section
-#    - DOCS dict → for documentation pages
-#    - PROJECT_EXAMPLES dict → for code repos
 #    Each repo entry needs: url, sdk_version, verified (date)
-```
 
-Example entry in `PROJECT_EXAMPLES`:
-```python
-{"url": "https://github.com/org/repo", "sdk_version": "0.9.0", "verified": "2026-02-09"},
-```
-
-**For a documentation page:**
-
-Add the URL to the appropriate category in the `DOCS` dict in `scraper/config.py`.
-
-**Then run the pipeline:**
-
-```bash
-# Local pipeline
-python -m scraper.run --skip-web         # Clone new repos (add --force-reclone if updating)
-python -m src.preprocessing.processor    # Re-process all chunks
-python -m src.embeddings.vectordb --reset  # Reset local ChromaDB and re-ingest
-
-# Remote (production Cloudflare)
-python scripts/sync_remote_db.py --dry-run    # Preview changes
-python scripts/sync_remote_db.py --reingest   # Trigger batch re-ingestion of all sources
-```
-
-**Finally:** Update the source tables in this doc and commit.
-
----
-
-### Scenario 2: Removing Unmaintained Sources
-
-When a repo is archived, deleted, or no longer compiles:
-
-```bash
-# 1. Run audit to see current state
-python scripts/audit_data.py
-
-# 2. Remove the entry from scraper/config.py
-#    - Delete from DOCS or PROJECT_EXAMPLES
-
-# 3. Prune orphan repo directories from disk
-python scripts/audit_data.py --prune --confirm
-
-# 4. Re-run the local pipeline
+# 3. Run the pipeline
+python -m scraper.run --skip-web
 python -m src.preprocessing.processor
 python -m src.embeddings.vectordb --reset
 
-# 5. Sync remote — removes stale sources from production
-python scripts/sync_remote_db.py --dry-run       # Preview: shows stale sources to delete
-python scripts/sync_remote_db.py --delete-stale   # Delete stale from KV registry
-python scripts/sync_remote_db.py --reingest       # Re-ingest clean sources
-```
-
-If there are many stale vectors in Vectorize that won't clear (CPU timeout), recreate the index:
-
-```bash
-cd apps/web
-npx wrangler vectorize delete arbbuilder
-npx wrangler vectorize create arbbuilder --dimensions 1024 --metric cosine
-cd ../..
-python scripts/sync_remote_db.py --reingest   # Re-populate fresh index
-```
-
-**Finally:** Move the removed source to the "Removed Sources" section in this doc with the reason.
-
----
-
-### Scenario 3: New Stylus SDK Version Released (e.g., 0.10.0)
-
-When a new `stylus-sdk` version is published on crates.io:
-
-```bash
-# 1. Update shared/stylus-versions.json
-#    - Add the new version entry with breaking changes, migration notes
-#    - Update main_version if this is the new recommended version
-#    - Update deprecated_below if older versions are no longer supported
-
-# 2. Update scraper/config.py version constants
-#    - MAIN_STYLUS_SDK_VERSION = "0.10.0"  (if it's the new recommended)
-#    - MIN_STYLUS_SDK_VERSION = "0.9.0"    (if raising the minimum)
-
-# 3. Verify existing repos compile with the new SDK
-#    For each repo in PROJECT_EXAMPLES:
-git clone <repo-url> /tmp/verify
-cd /tmp/verify
-# Update Cargo.toml to new SDK version
-cargo stylus check
-
-# 4. Update sdk_version in config entries for repos that upgraded
-#    Remove repos that no longer compile and won't be updated
-
-# 5. Re-run the full pipeline
-python -m scraper.run                        # Re-scrape all (repos + web)
-python -m src.preprocessing.processor        # Re-process with new version metadata
-python -m src.embeddings.vectordb --reset    # Reset and re-ingest locally
-
-# 6. Sync remote
+# 4. Sync remote (production)
 python scripts/sync_remote_db.py --dry-run
 python scripts/sync_remote_db.py --reingest
 ```
 
-**Also update:**
-- Version table in this doc (section 3)
-- `CLAUDE.md` Stylus dependencies section
-- Any MCP tool prompts that reference specific SDK versions
+### Scenario 2: Removing Unmaintained Sources
 
----
+```bash
+# 1. Run health check to identify issues
+python scripts/maintain_sources.py health
+
+# 2. Remove from scraper/config.py
+# 3. Prune orphan repos from disk
+python scripts/audit_data.py --prune --confirm
+
+# 4. Re-run pipeline and sync remote
+python -m src.preprocessing.processor
+python -m src.embeddings.vectordb --reset
+python scripts/sync_remote_db.py --delete-stale
+python scripts/sync_remote_db.py --reingest
+```
+
+### Scenario 3: New SDK Version Released
+
+```bash
+# 1. Check what's outdated
+python scripts/maintain_sources.py monitor
+
+# 2. Update scraper/config.py version constants
+# 3. Re-verify all repos with new SDK
+python scripts/verify_source.py --all --steps 1,2,4
+
+# 4. Update config, re-run pipeline, sync remote
+```
 
 ### Quick Reference: Key Files
 
@@ -259,22 +192,15 @@ python scripts/sync_remote_db.py --reingest
 |------|---------|
 | `scraper/config.py` | Source of truth for all data sources |
 | `shared/stylus-versions.json` | SDK version metadata and compatibility |
+| `scripts/verify_source.py` | 6-step repo verification pipeline |
+| `scripts/maintain_sources.py` | SDK monitoring, repo discovery, health checks |
 | `scripts/audit_data.py` | Detect orphans and config drift |
 | `scripts/sync_remote_db.py` | Sync remote Cloudflare DB with local config |
-| `docs/DATA_CURATION_POLICY.md` | This doc — curation rules and source registry |
 
 ### Quick Reference: Environment Variables
 
 | Variable | Purpose |
 |----------|---------|
+| `GITHUB_TOKEN` | GitHub API auth (for discovery + health checks) |
 | `ARBBUILDER_ADMIN_SECRET` | Admin API auth for remote sync |
 | `ARBBUILDER_API_URL` | Remote API URL (default: https://arbbuilder.whymelabs.com) |
-
----
-
-## TODO
-
-- [ ] Create SDK bridging examples (none exist as standalone projects)
-- [ ] Set up CI to verify sources on SDK releases
-- [ ] Re-evaluate removed community projects after manual verification
-- [ ] Automate SDK release monitoring (crates.io watch)
