@@ -271,7 +271,7 @@ const EXPRESS_DEV_DEPS = {
 };
 
 export function generateBackend(args: GenerateBackendArgs): GenerateBackendResult {
-  const { prompt, framework = "nestjs", contractAbi, features = [] } = args;
+  const { framework = "nestjs", contractAbi } = args;
 
   const isNestJS = framework === "nestjs";
   const baseFiles = isNestJS ? { ...NESTJS_BASE } : { ...EXPRESS_BASE };

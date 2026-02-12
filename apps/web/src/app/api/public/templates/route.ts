@@ -23,7 +23,6 @@ import {
 import {
   listSdkTemplates,
   SDK_TEMPLATES,
-  type SdkTemplate,
 } from "@/lib/templates/sdkTemplates";
 
 // Stylus template names mapping

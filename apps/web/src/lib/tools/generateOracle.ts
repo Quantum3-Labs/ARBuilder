@@ -335,7 +335,7 @@ export function generateOracle(args: GenerateOracleArgs): GenerateOracleResult {
       files["contracts/PriceConsumer.sol"] = PRICE_FEED_CONTRACT;
 
       // Add deployment script
-      const feedAddresses = feeds
+      feeds
         .map((feed) => networkAddresses.price_feeds[feed])
         .filter(Boolean);
 

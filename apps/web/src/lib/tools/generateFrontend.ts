@@ -227,15 +227,25 @@ export default function Dashboard() {
 `,
 };
 
+// ABI item shape for hook generation
+interface AbiItem {
+  type: string;
+  name: string;
+  inputs?: { name: string; type: string }[];
+  outputs?: { name: string; type: string }[];
+  stateMutability?: string;
+}
+
 // Hook template for contract interactions
 function generateContractHook(abi: unknown[]): string {
-  const readFunctions = abi.filter(
-    (item: any) =>
+  const items = abi as AbiItem[];
+  const readFunctions = items.filter(
+    (item) =>
       item.type === "function" &&
       (item.stateMutability === "view" || item.stateMutability === "pure")
   );
-  const writeFunctions = abi.filter(
-    (item: any) =>
+  const writeFunctions = items.filter(
+    (item) =>
       item.type === "function" &&
       item.stateMutability !== "view" &&
       item.stateMutability !== "pure"
@@ -249,11 +259,11 @@ import { CONTRACT_ADDRESS, CONTRACT_ABI } from '@/config/contract';
 `;
 
   // Generate read hooks
-  for (const fn of readFunctions as any[]) {
+  for (const fn of readFunctions) {
     const hookName = `useRead${fn.name.charAt(0).toUpperCase() + fn.name.slice(1)}`;
     const hasArgs = fn.inputs && fn.inputs.length > 0;
 
-    code += `export function ${hookName}(${hasArgs ? `args: [${fn.inputs.map((i: any) => `${i.name}: ${getTypeScriptType(i.type)}`).join(", ")}]` : ""}) {
+    code += `export function ${hookName}(${hasArgs ? `args: [${fn.inputs!.map((i) => `${i.name}: ${getTypeScriptType(i.type)}`).join(", ")}]` : ""}) {
   return useReadContract({
     address: CONTRACT_ADDRESS,
     abi: CONTRACT_ABI,
@@ -265,18 +275,18 @@ import { CONTRACT_ADDRESS, CONTRACT_ABI } from '@/config/contract';
   }
 
   // Generate write hooks
-  for (const fn of writeFunctions as any[]) {
+  for (const fn of writeFunctions) {
     const hookName = `use${fn.name.charAt(0).toUpperCase() + fn.name.slice(1)}`;
 
     code += `export function ${hookName}() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
-  const execute = (${fn.inputs?.map((i: any) => `${i.name}: ${getTypeScriptType(i.type)}`).join(", ") || ""}) => {
+  const execute = (${fn.inputs?.map((i) => `${i.name}: ${getTypeScriptType(i.type)}`).join(", ") || ""}) => {
     writeContract({
       address: CONTRACT_ADDRESS,
       abi: CONTRACT_ABI,
-      functionName: '${fn.name}',${fn.inputs?.length ? `\n      args: [${fn.inputs.map((i: any) => i.name).join(", ")}],` : ""}
+      functionName: '${fn.name}',${fn.inputs?.length ? `\n      args: [${fn.inputs.map((i) => i.name).join(", ")}],` : ""}
     });
   };
 
@@ -323,7 +333,7 @@ const DAISYUI_DEPS = {
 };
 
 export function generateFrontend(args: GenerateFrontendArgs): GenerateFrontendResult {
-  const { prompt, contractAbi, uiFramework = "daisyui", template = "base" } = args;
+  const { contractAbi, uiFramework = "daisyui", template = "base" } = args;
 
   const files: Record<string, string> = { ...BASE_FILES };
   const dependencies = { ...BASE_DEPS };
