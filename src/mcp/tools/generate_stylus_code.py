@@ -58,16 +58,17 @@ try:
 except ImportError:
     HAS_VERSION_MANAGER = False
     # Fallback defaults
-    def get_main_version(): return "0.9.0"
+    def get_main_version(): return "0.10.0"
     def get_minimum_version(): return "0.8.0"
     def is_version_deprecated(v): return False
     def get_version_patterns(v): return {
         "attributes": ["#[public]"],
         "error_handling": "Result<T, Vec<u8>>",
-        "cfg_attr": '#![cfg_attr(not(feature = "export-abi"), no_main)]'
+        "cfg_attr": '#![cfg_attr(not(feature = "export-abi"), no_main)]',
+        "sender": "self.vm().msg_sender()",
     }
-    def get_alloy_primitives_version(v): return "=0.8.20"
-    def get_alloy_sol_types_version(v): return "=0.8.20"
+    def get_alloy_primitives_version(v): return "1.0.1"
+    def get_alloy_sol_types_version(v): return "1.0.1"
     def detect_version_from_cargo_toml(c): return None
     def get_deprecation_warning(v): return None
 
@@ -80,6 +81,8 @@ def get_system_prompt(target_version: str) -> str:
     error_handling = patterns.get("error_handling", "Result<T, Vec<u8>>")
     cfg_attr = patterns.get("cfg_attr", '#![cfg_attr(not(feature = "export-abi"), no_main)]')
 
+    sender_pattern = patterns.get("sender", "self.vm().msg_sender()")
+
     return f"""You are an expert Stylus smart contract developer. You write high-quality Rust code for Arbitrum Stylus contracts.
 
 Target SDK Version: stylus-sdk {target_version}
@@ -89,14 +92,20 @@ Key Stylus patterns for v{target_version}:
 2. Use `#[entrypoint]` attribute on the main contract struct
 3. Use `{main_attr}` for public functions
 4. Use Stylus SDK types: `StorageVec`, `StorageMap`, `StorageU256`, `StorageAddress`, etc.
-5. Use `msg::sender()` to get the caller address
-6. Handle errors with {error_handling}
-7. Include {cfg_attr}
-8. Follow Rust naming conventions (snake_case for functions, PascalCase for types)
+5. Use `{sender_pattern}` to get the caller address
+6. Use `self.vm().msg_value()` to get sent ETH value
+7. Use `self.vm().log(Event {{ ... }})` to emit events (NOT evm::log)
+8. Handle errors with {error_handling}
+9. Include {cfg_attr}
+10. Follow Rust naming conventions (snake_case for functions, PascalCase for types)
 
 Dependencies for v{target_version}:
 - stylus-sdk = "{target_version}"
 - alloy-primitives = "{alloy_version}"
+
+Required project files (SDK 0.10.0+):
+- Stylus.toml with [contract] section
+- rust-toolchain.toml with channel = "1.88.0"
 
 When generating code:
 - Generate complete, compilable Rust code
@@ -104,6 +113,7 @@ When generating code:
 - Add helpful comments for complex logic
 - Use proper error handling
 - Follow security best practices (check for overflows, validate inputs)
+- Do NOT use deprecated msg::sender(), msg::value(), or evm::log() — use self.vm() methods
 """
 
 
@@ -147,7 +157,8 @@ WHAT YOU MAY DO:
 IMPORTS - USE THESE PATTERNS:
 - Types from stylus_sdk::alloy_primitives::{{Address, U256, U8, ...}}
 - sol! macro is available from stylus_sdk::prelude::*
-- For events: evm::log(EventName {{ field1, field2 }})
+- For events: self.vm().log(EventName {{ field1, field2 }}) (NOT evm::log)
+- For caller: self.vm().msg_sender() (NOT msg::sender())
 - For errors: return Err(ErrorName {{ ... }}.abi_encode())
 
 Output format:

@@ -79,14 +79,14 @@ impl MyContract {
     }
 
     pub fn deposit(&mut self) {
-        let sender = msg::sender();
-        let amount = msg::value();
+        let sender = self.vm().msg_sender();
+        let amount = self.vm().msg_value();
         let current = self.balances.get(sender);
         self.balances.insert(sender, current + amount);
     }
 
     pub fn withdraw(&mut self, amount: U256) {
-        let sender = msg::sender();
+        let sender = self.vm().msg_sender();
         let current = self.balances.get(sender);
         if current >= amount {
             self.balances.insert(sender, current - amount);
@@ -102,9 +102,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-stylus-sdk = "0.9.2"
-alloy-primitives = "=0.8.20"
-alloy-sol-types = "=0.8.20"
+stylus-sdk = "0.10.0"
+alloy-primitives = "1.0.1"
+alloy-sol-types = "1.0.1"
 
 [features]
 export-abi = ["stylus-sdk/export-abi"]
@@ -118,6 +118,14 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"
+`;
+
+const STYLUS_TOML = `[contract]
+`;
+
+const RUST_TOOLCHAIN_TOML = `[toolchain]
+channel = "1.88.0"
+targets = ["wasm32-unknown-unknown"]
 `;
 
 function generateProjectName(prompt: string): string {
@@ -308,6 +316,8 @@ export function orchestrateDapp(args: OrchestrateDappArgs): OrchestrateDappResul
       files: {
         "src/lib.rs": STYLUS_CONTRACT_TEMPLATE,
         "Cargo.toml": CARGO_TOML,
+        "Stylus.toml": STYLUS_TOML,
+        "rust-toolchain.toml": RUST_TOOLCHAIN_TOML,
         ".cargo/config.toml": `[build]
 target = "wasm32-unknown-unknown"
 

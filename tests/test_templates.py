@@ -160,12 +160,12 @@ class TestTemplateContent:
     @pytest.mark.parametrize("template", list_templates(), ids=lambda t: t.name)
     def test_template_cargo_toml_has_stylus_sdk(self, template: StylusTemplate):
         """Each template's Cargo.toml should have stylus-sdk dependency."""
-        assert 'stylus-sdk = "0.9.0"' in template.cargo_toml
+        assert 'stylus-sdk = "0.10.0"' in template.cargo_toml
 
     @pytest.mark.parametrize("template", list_templates(), ids=lambda t: t.name)
     def test_template_cargo_toml_has_alloy_primitives(self, template: StylusTemplate):
         """Each template's Cargo.toml should have alloy-primitives dependency."""
-        assert 'alloy-primitives = "=0.8.20"' in template.cargo_toml
+        assert 'alloy-primitives = "1.0.1"' in template.cargo_toml
 
     @pytest.mark.parametrize("template", list_templates(), ids=lambda t: t.name)
     def test_template_cargo_toml_has_release_profile(self, template: StylusTemplate):
@@ -192,13 +192,42 @@ class TestTemplateVersionConsistency:
         """All templates should use the same SDK version."""
         versions = {t.sdk_version for t in list_templates()}
         assert len(versions) == 1
-        assert "0.9.0" in versions
+        assert "0.10.0" in versions
 
     def test_all_templates_use_same_alloy_version(self):
         """All templates should use consistent alloy versions."""
         for template in list_templates():
-            assert 'alloy-primitives = "=0.8.20"' in template.cargo_toml
-            assert 'alloy-sol-types = "=0.8.20"' in template.cargo_toml
+            assert 'alloy-primitives = "1.0.1"' in template.cargo_toml
+            assert 'alloy-sol-types = "1.0.1"' in template.cargo_toml
+
+    def test_all_templates_have_stylus_toml(self):
+        """All templates should have stylus_toml field (SDK 0.10.0+)."""
+        for template in list_templates():
+            assert template.stylus_toml, f"{template.name} missing stylus_toml"
+            assert "[contract]" in template.stylus_toml
+
+    def test_all_templates_have_rust_toolchain_toml(self):
+        """All templates should have rust_toolchain_toml field (SDK 0.10.0+)."""
+        for template in list_templates():
+            assert template.rust_toolchain_toml, f"{template.name} missing rust_toolchain_toml"
+            assert "1.88.0" in template.rust_toolchain_toml
+
+    def test_no_deprecated_api_in_templates(self):
+        """No template should use deprecated msg::sender() or evm::log() APIs."""
+        for template in list_templates():
+            assert "msg::sender()" not in template.lib_rs, (
+                f"{template.name} still uses deprecated msg::sender()"
+            )
+            assert "evm::log(" not in template.lib_rs, (
+                f"{template.name} still uses deprecated evm::log()"
+            )
+
+    def test_no_ruint_pin_in_templates(self):
+        """No template should pin ruint (alloy 1.0 manages it)."""
+        for template in list_templates():
+            assert "ruint" not in template.cargo_toml, (
+                f"{template.name} still pins ruint"
+            )
 
 
 # Integration tests that require cargo-stylus
@@ -239,12 +268,20 @@ class TestTemplateCompilation:
         cargo_toml = project_dir / "Cargo.toml"
         cargo_toml.write_text(template.cargo_toml)
 
-        # Write rust-toolchain.toml (required by cargo-stylus)
-        rust_toolchain = project_dir / "rust-toolchain.toml"
-        rust_toolchain.write_text('[toolchain]\nchannel = "1.87.0"\n')
+        # Write Stylus.toml (required since SDK 0.10.0)
+        if template.stylus_toml:
+            stylus_toml = project_dir / "Stylus.toml"
+            stylus_toml.write_text(template.stylus_toml)
+
+        # Write rust-toolchain.toml (required since SDK 0.10.0)
+        if template.rust_toolchain_toml:
+            rust_toolchain = project_dir / "rust-toolchain.toml"
+            rust_toolchain.write_text(template.rust_toolchain_toml)
+        else:
+            rust_toolchain = project_dir / "rust-toolchain.toml"
+            rust_toolchain.write_text('[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n')
 
         # Generate Cargo.lock by running cargo update
-        # (The ruint = "=1.15.0" dependency ensures correct version resolution)
         subprocess.run(
             ["cargo", "update"],
             cwd=project_dir,

@@ -17,6 +17,8 @@ export interface StylusTemplate {
   cargoToml: string;
   mainRs: string; // For ABI export: cargo run --features export-abi
   features: string[];
+  stylusToml: string; // Required since SDK 0.10.0
+  rustToolchainToml: string; // Required since SDK 0.10.0
 }
 
 
@@ -28,7 +30,7 @@ export const COUNTER_TEMPLATE: StylusTemplate = {
   name: "Counter",
   description: "Simple counter with increment, add, multiply operations",
   contractType: "utility",
-  sdkVersion: "0.9.2",
+  sdkVersion: "0.10.0",
   features: ["storage", "public functions", "payable", "tests"],
   libRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
@@ -106,10 +108,9 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-stylus-sdk = "0.9.2"
-alloy-primitives = "=0.8.20"
-alloy-sol-types = "=0.8.20"
-ruint = "=1.12.3"
+stylus-sdk = "0.10.0"
+alloy-primitives = "1.0.1"
+alloy-sol-types = "1.0.1"
 [dev-dependencies]
 tokio = { version = "1.21.0", features = ["full"] }
 ethers = "2.0"
@@ -139,6 +140,8 @@ opt-level = "s"`,
 fn main() {
     stylus_counter::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
 }`,
+  stylusToml: `[contract]\n`,
+  rustToolchainToml: `[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
 };
 
 /**
@@ -149,7 +152,7 @@ export const VENDING_MACHINE_TEMPLATE: StylusTemplate = {
   name: "VendingMachine",
   description: "Mapping storage with time-based distribution logic",
   contractType: "defi",
-  sdkVersion: "0.9.2", // Updated to 0.9.0 patterns
+  sdkVersion: "0.10.0", // Updated to 0.9.0 patterns
   features: ["mappings", "timestamps", "rate limiting", "tests"],
   libRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
@@ -248,10 +251,9 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-stylus-sdk = "0.9.2"
-alloy-primitives = "=0.8.20"
-alloy-sol-types = "=0.8.20"
-ruint = "=1.12.3"
+stylus-sdk = "0.10.0"
+alloy-primitives = "1.0.1"
+alloy-sol-types = "1.0.1"
 [dev-dependencies]
 tokio = { version = "1.21.0", features = ["full"] }
 ethers = "2.0"
@@ -281,6 +283,8 @@ opt-level = "s"`,
 fn main() {
     stylus_vending_machine::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
 }`,
+  stylusToml: `[contract]\n`,
+  rustToolchainToml: `[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
 };
 
 /**
@@ -291,11 +295,10 @@ export const SIMPLE_ERC20_TEMPLATE: StylusTemplate = {
   name: "SimpleERC20",
   description: "Basic ERC20 token with transfer, approve, transferFrom",
   contractType: "token",
-  sdkVersion: "0.9.2",
+  sdkVersion: "0.10.0",
   features: ["ERC20", "mappings", "events", "error handling"],
   libRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
-#![allow(deprecated)] // msg::sender() and evm::log() are deprecated but still work
 #[macro_use]
 extern crate alloc;
 
@@ -303,7 +306,6 @@ use alloc::{string::String, vec::Vec};
 use stylus_sdk::{
     alloy_primitives::{Address, U8, U256},
     alloy_sol_types::{sol, SolError},
-    evm, msg,
     prelude::*,
 };
 
@@ -345,7 +347,7 @@ impl Erc20 {
         self.symbol.set_str(&symbol);
         self.decimals.set(U8::from(decimals));
         self.total_supply.set(initial_supply);
-        self.balances.setter(msg::sender()).set(initial_supply);
+        self.balances.setter(self.vm().msg_sender()).set(initial_supply);
     }
 
     /// Get token name
@@ -375,7 +377,7 @@ impl Erc20 {
 
     /// Transfer tokens to another address
     pub fn transfer(&mut self, to: Address, value: U256) -> Result<bool, Vec<u8>> {
-        let from = msg::sender();
+        let from = self.vm().msg_sender();
         self._transfer(from, to, value)?;
         Ok(true)
     }
@@ -387,9 +389,9 @@ impl Erc20 {
 
     /// Approve spender to spend tokens
     pub fn approve(&mut self, spender: Address, value: U256) -> bool {
-        let owner = msg::sender();
+        let owner = self.vm().msg_sender();
         self.allowances.setter(owner).setter(spender).set(value);
-        evm::log(Approval { owner, spender, value });
+        self.vm().log(Approval { owner, spender, value });
         true
     }
 
@@ -400,7 +402,7 @@ impl Erc20 {
         to: Address,
         value: U256,
     ) -> Result<bool, Vec<u8>> {
-        let spender = msg::sender();
+        let spender = self.vm().msg_sender();
         let current_allowance = self.allowances.get(from).get(spender);
 
         if current_allowance < value {
@@ -437,7 +439,7 @@ impl Erc20 {
         let to_balance = self.balances.get(to);
         self.balances.setter(to).set(to_balance + value);
 
-        evm::log(Transfer { from, to, value });
+        self.vm().log(Transfer { from, to, value });
         Ok(())
     }
 }
@@ -477,10 +479,9 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-stylus-sdk = "0.9.2"
-alloy-primitives = "=0.8.20"
-alloy-sol-types = "=0.8.20"
-ruint = "=1.12.3"
+stylus-sdk = "0.10.0"
+alloy-primitives = "1.0.1"
+alloy-sol-types = "1.0.1"
 [dev-dependencies]
 tokio = { version = "1.21.0", features = ["full"] }
 ethers = "2.0"
@@ -510,6 +511,8 @@ opt-level = "s"`,
 fn main() {
     stylus_erc20::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
 }`,
+  stylusToml: `[contract]\n`,
+  rustToolchainToml: `[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
 };
 
 /**
@@ -519,11 +522,10 @@ export const ACCESS_CONTROL_TEMPLATE: StylusTemplate = {
   name: "AccessControl",
   description: "Contract with owner-only functions and ownership transfer",
   contractType: "utility",
-  sdkVersion: "0.9.2",
+  sdkVersion: "0.10.0",
   features: ["access control", "ownership", "modifiers"],
   libRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
-#![allow(deprecated)] // msg::sender() and evm::log() are deprecated but still work
 #[macro_use]
 extern crate alloc;
 
@@ -531,7 +533,6 @@ use alloc::vec::Vec;
 use stylus_sdk::{
     alloy_primitives::{Address, U8, U256},
     alloy_sol_types::{sol, SolError},
-    evm, msg,
     prelude::*,
 };
 
@@ -555,9 +556,9 @@ sol_storage! {
 impl Ownable {
     /// Initialize with deployer as owner
     pub fn initialize(&mut self) {
-        let caller = msg::sender();
+        let caller = self.vm().msg_sender();
         self.owner.set(caller);
-        evm::log(OwnershipTransferred {
+        self.vm().log(OwnershipTransferred {
             previous_owner: Address::ZERO,
             new_owner: caller,
         });
@@ -578,7 +579,7 @@ impl Ownable {
         self.only_owner()?;
         let old_value = self.value.get();
         self.value.set(new_value);
-        evm::log(ValueUpdated { old_value, new_value });
+        self.vm().log(ValueUpdated { old_value, new_value });
         Ok(())
     }
 
@@ -592,7 +593,7 @@ impl Ownable {
 
         let previous_owner = self.owner.get();
         self.owner.set(new_owner);
-        evm::log(OwnershipTransferred {
+        self.vm().log(OwnershipTransferred {
             previous_owner,
             new_owner,
         });
@@ -604,7 +605,7 @@ impl Ownable {
         self.only_owner()?;
         let previous_owner = self.owner.get();
         self.owner.set(Address::ZERO);
-        evm::log(OwnershipTransferred {
+        self.vm().log(OwnershipTransferred {
             previous_owner,
             new_owner: Address::ZERO,
         });
@@ -613,7 +614,7 @@ impl Ownable {
 
     /// Internal: Check if caller is owner
     fn only_owner(&self) -> Result<(), Vec<u8>> {
-        let caller = msg::sender();
+        let caller = self.vm().msg_sender();
         let owner = self.owner.get();
         if caller != owner {
             return Err(NotOwner { caller, owner }.abi_encode());
@@ -661,10 +662,9 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-stylus-sdk = "0.9.2"
-alloy-primitives = "=0.8.20"
-alloy-sol-types = "=0.8.20"
-ruint = "=1.12.3"
+stylus-sdk = "0.10.0"
+alloy-primitives = "1.0.1"
+alloy-sol-types = "1.0.1"
 [dev-dependencies]
 tokio = { version = "1.21.0", features = ["full"] }
 ethers = "2.0"
@@ -694,6 +694,8 @@ opt-level = "s"`,
 fn main() {
     stylus_ownable::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
 }`,
+  stylusToml: `[contract]\n`,
+  rustToolchainToml: `[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
 };
 
 /**

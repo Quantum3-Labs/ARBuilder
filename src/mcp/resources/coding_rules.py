@@ -11,11 +11,11 @@ STYLUS_CODING_RULES = {
     "description": "Guidelines for AI assistants generating Stylus smart contracts",
 
     "sdk_version": {
-        "stylus_sdk": "0.9.2",
-        "alloy_primitives": "=0.8.20",
-        "alloy_sol_types": "=0.8.20",
-        "rust_version": "1.81",
-        "rust_version_note": "1.82+ may have compatibility issues",
+        "stylus_sdk": "0.10.0",
+        "alloy_primitives": "1.0.1",
+        "alloy_sol_types": "1.0.1",
+        "rust_version": "1.88.0",
+        "rust_version_note": "Requires rust-toolchain.toml with channel 1.88.0",
     },
 
     "file_header": '''#![cfg_attr(not(any(feature = "export-abi", test)), no_std)]
@@ -26,12 +26,12 @@ use stylus_sdk::{prelude::*, alloy_primitives::{Address, U256}};''',
 
     "cargo_toml": {
         "dependencies": '''[dependencies]
-stylus-sdk = "0.9.2"
-alloy-primitives = "=0.8.20"
-alloy-sol-types = "=0.8.20"
+stylus-sdk = "0.10.0"
+alloy-primitives = "1.0.1"
+alloy-sol-types = "1.0.1"
 
 [dev-dependencies]
-stylus-sdk = { version = "0.9.2", features = ["stylus-test"] }
+stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
 
 [features]
 export-abi = ["stylus-sdk/export-abi"]
@@ -80,11 +80,11 @@ impl MyContract {
         },
 
         "events": {
-            "description": "Define events with sol! macro, emit with evm::log()",
+            "description": "Define events with sol! macro, emit with self.vm().log()",
             "definition": '''sol! {
     event Transfer(address indexed from, address indexed to, uint256 value);
 }''',
-            "emit": '''evm::log(Transfer {
+            "emit": '''self.vm().log(Transfer {
     from: sender,
     to: recipient,
     value: amount,
@@ -131,11 +131,20 @@ mod tests {
     "common_pitfalls": [
         "Storage not initialized - Use StorageType::default()",
         "Exceeding 24KB - Optimize release profile, reduce dependencies",
-        "Wrong Rust version - Use 1.81, not 1.82+",
+        "Wrong Rust version - Use 1.88.0 via rust-toolchain.toml",
         "Missing WASM target - rustup target add wasm32-unknown-unknown",
         "Floating point operations - Not supported in Stylus WASM",
         "Direct std usage - Use #![no_std] with alloc",
+        "Missing Stylus.toml - Required since SDK 0.10.0, must have [contract] section",
+        "Missing rust-toolchain.toml - Required since SDK 0.10.0",
+        "Using deprecated msg::sender() - Use self.vm().msg_sender() since 0.10.0",
+        "Using deprecated evm::log() - Use self.vm().log() since 0.10.0",
     ],
+
+    "required_files": {
+        "Stylus.toml": "[contract]\n",
+        "rust-toolchain.toml": '[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
+    },
 
     "cli_commands": {
         "check": "cargo stylus check",

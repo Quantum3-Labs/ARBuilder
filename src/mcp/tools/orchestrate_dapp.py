@@ -216,6 +216,8 @@ ABI is auto-extracted from the contract and injected into backend/frontend."""
                 "src/lib.rs",
                 "Cargo.toml",
                 "src/main.rs",
+                "Stylus.toml",
+                "rust-toolchain.toml",
             ]
 
         if "backend" in components:
@@ -249,18 +251,26 @@ ABI is auto-extracted from the contract and injected into backend/frontend."""
         """Generate smart contract component."""
         template = select_stylus_template(contract_type, prompt)
 
+        files = {
+            "src/lib.rs": template.lib_rs,
+            "Cargo.toml": template.cargo_toml,
+            "src/main.rs": template.main_rs,
+        }
+
+        # SDK 0.10.0+ requires Stylus.toml and rust-toolchain.toml
+        if template.stylus_toml:
+            files["Stylus.toml"] = template.stylus_toml
+        if template.rust_toolchain_toml:
+            files["rust-toolchain.toml"] = template.rust_toolchain_toml
+
         result = {
             "template": template.name,
             "type": contract_type,
-            "files": {
-                "src/lib.rs": template.lib_rs,
-                "Cargo.toml": template.cargo_toml,
-                "src/main.rs": template.main_rs,
-            },
+            "files": files,
             "sdk_version": template.sdk_version,
             "features": template.features,
             "build_commands": {
-                "check": "cargo +nightly build --target wasm32-unknown-unknown --release",
+                "check": "cargo build --target wasm32-unknown-unknown --release",
                 "export_abi": "cargo run --features export-abi",
                 "deploy": "cargo stylus deploy --private-key $PRIVATE_KEY",
             },

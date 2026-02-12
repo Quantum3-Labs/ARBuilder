@@ -15,7 +15,7 @@ ARBuilder's knowledge base must only contain **verified, working code** that com
 
 **Inclusion criteria:**
 - Must compile with `stylus-sdk >= 0.8.0` (minimum supported version)
-- Prefer `stylus-sdk >= 0.9.0` (main version)
+- Prefer `stylus-sdk >= 0.10.0` (main version)
 - Must be actively maintained (commits within 6 months)
 - Must be deployable and functional
 
@@ -29,10 +29,10 @@ ARBuilder's knowledge base must only contain **verified, working code** that com
 
 | Component | Main Version | Minimum Version |
 |-----------|--------------|-----------------|
-| stylus-sdk | 0.9.2 | 0.8.0 |
-| alloy-primitives | =0.8.20 | 0.8.0 |
-| alloy-sol-types | =0.8.20 | 0.8.0 |
-| Rust | 1.81 | 1.81 |
+| stylus-sdk | 0.10.0 | 0.8.0 |
+| alloy-primitives | 1.0.1 | 0.8.0 |
+| alloy-sol-types | 1.0.1 | 0.8.0 |
+| Rust | 1.88.0 | 1.81 |
 
 **Note:** Anything below stylus-sdk 0.8.0 is deprecated (uses `#[external]` instead of `#[public]`).
 

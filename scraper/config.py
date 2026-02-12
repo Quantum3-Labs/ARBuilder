@@ -11,7 +11,7 @@ CURATION POLICY:
 """
 
 # SDK version requirements (from shared/stylus-versions.json)
-MAIN_STYLUS_SDK_VERSION = "0.9.2"
+MAIN_STYLUS_SDK_VERSION = "0.10.0"
 MIN_STYLUS_SDK_VERSION = "0.8.0"  # Minimum supported
 DEPRECATED_BELOW = "0.8.0"  # Anything below this is deprecated
 

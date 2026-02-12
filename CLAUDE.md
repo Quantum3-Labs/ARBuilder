@@ -183,15 +183,19 @@ impl MyContract {
     pub fn get_value(&self) -> U256 {
         self.value.get()
     }
+
+    pub fn get_caller(&self) -> Address {
+        self.vm().msg_sender()
+    }
 }
 ```
 
 ### Dependencies (Cargo.toml)
 ```toml
 [dependencies]
-stylus-sdk = "0.9.2"
-alloy-primitives = "=0.8.20"
-alloy-sol-types = "=0.8.20"
+stylus-sdk = "0.10.0"
+alloy-primitives = "1.0.1"
+alloy-sol-types = "1.0.1"
 
 [lib]
 crate-type = ["cdylib"]
@@ -204,11 +208,35 @@ panic = "abort"
 opt-level = "s"
 ```
 
+### Required Project Files (SDK 0.10.0+)
+
+**Stylus.toml** (required):
+```toml
+[contract]
+```
+
+**rust-toolchain.toml** (required):
+```toml
+[toolchain]
+channel = "1.88.0"
+targets = ["wasm32-unknown-unknown"]
+```
+
+### SDK 0.10.0 API Changes
+```rust
+// Old (0.9.x) → New (0.10.0)
+// msg::sender()  → self.vm().msg_sender()
+// msg::value()   → self.vm().msg_value()
+// evm::log(...)  → self.vm().log(...)
+```
+
 ### Key Constraints
 - **24KB size limit** (Brotli-compressed WASM)
-- **Rust 1.81** (1.82+ may have issues)
+- **Rust 1.88.0** (via rust-toolchain.toml)
 - **No floating point** operations
 - **Yearly reactivation** required
+- **Stylus.toml required** since SDK 0.10.0
+- **rust-toolchain.toml required** since SDK 0.10.0
 
 ## Network Endpoints
 
