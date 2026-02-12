@@ -3,10 +3,12 @@ Orchestrate full dApp generation.
 
 This tool coordinates the generation of complete dApps by:
 1. Generating Stylus smart contracts
-2. Generating backend services
-3. Generating frontend applications
-4. Generating subgraph indexers
-5. Generating oracle integrations
+2. Extracting ABI from generated contract
+3. Generating backend services (with contract ABI injected)
+4. Generating frontend applications (with contract ABI injected)
+5. Generating subgraph indexers
+6. Generating oracle integrations
+7. Generating executable setup/deploy/start scripts
 
 It acts as a high-level coordinator that calls other tools.
 """
@@ -22,7 +24,10 @@ from ...templates import (
     select_indexer_template,
     select_oracle_template,
 )
-# Removed: agentic_rag import (template-based generation)
+from ...templates.backend_templates import render_with_abi as render_backend_abi
+from ...templates.frontend_templates import render_with_abi as render_frontend_abi
+from ...utils.abi_extractor import extract_abi_from_code, abi_to_viem_human_readable
+from ...utils.env_config import generate_env_template, BACKEND_PORT, FRONTEND_PORT
 
 
 class OrchestrateDappTool(BaseTool):
@@ -38,7 +43,8 @@ This tool coordinates the generation of:
 - Subgraph indexers (The Graph)
 - Oracle integrations (Chainlink)
 
-Use this for full-stack dApp scaffolding with coordinated configurations."""
+Generates executable setup.sh, deploy.sh, and start.sh scripts.
+ABI is auto-extracted from the contract and injected into backend/frontend."""
 
     input_schema = {
         "type": "object",
@@ -115,24 +121,36 @@ Use this for full-stack dApp scaffolding with coordinated configurations."""
             "setup_instructions": [],
         }
 
+        # Extract ABI from contract for injection into backend/frontend
+        abi_json = []
+        abi_human_readable = []
+
         # Generate each component
         if "contract" in components:
             project["components"]["contract"] = self._generate_contract(
                 prompt, contract_type, include_tests
             )
-            project["setup_instructions"].append("1. Deploy the smart contract first")
+            project["setup_instructions"].append("1. Run ./setup.sh to install dependencies")
+
+            # Extract ABI from contract lib.rs
+            lib_rs = project["components"]["contract"]["files"].get("src/lib.rs", "")
+            if lib_rs:
+                abi_json = extract_abi_from_code(lib_rs)
+                abi_human_readable = abi_to_viem_human_readable(abi_json)
+                project["components"]["contract"]["abi"] = abi_json
+                project["components"]["contract"]["abi_human_readable"] = abi_human_readable
 
         if "backend" in components:
             project["components"]["backend"] = self._generate_backend(
-                prompt, backend_framework, include_tests
+                prompt, backend_framework, include_tests, abi_json, abi_human_readable
             )
-            project["setup_instructions"].append("2. Set up the backend with the contract address")
+            project["setup_instructions"].append("2. Run ./deploy.sh to build and deploy the contract")
 
         if "frontend" in components:
             project["components"]["frontend"] = self._generate_frontend(
-                prompt, include_tests
+                prompt, include_tests, abi_human_readable
             )
-            project["setup_instructions"].append("3. Configure the frontend with contract and backend URLs")
+            project["setup_instructions"].append("3. Run ./start.sh to launch backend + frontend")
 
         if "indexer" in components:
             project["components"]["indexer"] = self._generate_indexer(prompt, network)
@@ -142,8 +160,8 @@ Use this for full-stack dApp scaffolding with coordinated configurations."""
             project["components"]["oracle"] = self._generate_oracle(prompt, network)
             project["setup_instructions"].append("5. Set up Chainlink oracle integration")
 
-        # Generate root configuration files
-        project["root_files"] = self._generate_root_files(project, components)
+        # Generate root configuration files (includes scripts)
+        project["root_files"] = self._generate_root_files(project, components, network)
 
         # Add development workflow
         project["development_workflow"] = self._generate_dev_workflow(components)
@@ -182,25 +200,15 @@ Use this for full-stack dApp scaffolding with coordinated configurations."""
 
         return {
             "network": networks.get(network, networks["arbitrumSepolia"]),
-            "env_template": f"""# Shared Environment Variables
-NETWORK={network}
-RPC_URL={networks.get(network, networks["arbitrumSepolia"])["rpcUrl"]}
-
-# Contract (deployed address)
-CONTRACT_ADDRESS=0x...
-
-# Wallet (for deployment and transactions)
-PRIVATE_KEY=0x...
-
-# WalletConnect (for frontend)
-NEXT_PUBLIC_WALLET_CONNECT_ID=...
-""",
         }
 
     def _generate_monorepo_structure(self, components: List[str]) -> dict:
         """Generate monorepo directory structure."""
         structure = {
-            "root": [".env.example", ".gitignore", "README.md", "package.json"],
+            "root": [
+                ".env.example", ".gitignore", "README.md", "package.json",
+                "setup.sh", "deploy.sh", "start.sh",
+            ],
         }
 
         if "contract" in components:
@@ -260,28 +268,50 @@ NEXT_PUBLIC_WALLET_CONNECT_ID=...
 
         return result
 
-    def _generate_backend(self, prompt: str, framework: str, include_tests: bool) -> dict:
-        """Generate backend component."""
+    def _generate_backend(
+        self,
+        prompt: str,
+        framework: str,
+        include_tests: bool,
+        abi_json: list,
+        abi_human_readable: list,
+    ) -> dict:
+        """Generate backend component with ABI injected."""
         template = select_backend_template(framework, prompt)
+
+        # Render files with actual ABI replacing placeholders
+        files = template.files
+        if abi_json:
+            files = render_backend_abi(files, abi_json, abi_human_readable)
 
         return {
             "template": template.name,
             "framework": framework,
-            "files": template.files,
+            "files": files,
             "dependencies": template.dependencies,
             "dev_dependencies": template.dev_dependencies,
             "scripts": template.scripts,
             "env_vars": template.env_vars,
         }
 
-    def _generate_frontend(self, prompt: str, include_tests: bool) -> dict:
-        """Generate frontend component."""
+    def _generate_frontend(
+        self,
+        prompt: str,
+        include_tests: bool,
+        abi_human_readable: list,
+    ) -> dict:
+        """Generate frontend component with ABI injected."""
         template = select_frontend_template(prompt)
+
+        # Render files with actual ABI replacing placeholders
+        files = template.files
+        if abi_human_readable:
+            files = render_frontend_abi(files, abi_human_readable)
 
         return {
             "template": template.name,
             "framework": "nextjs",
-            "files": template.files,
+            "files": files,
             "dependencies": template.dependencies,
             "dev_dependencies": template.dev_dependencies,
             "scripts": template.scripts,
@@ -322,8 +352,10 @@ NEXT_PUBLIC_WALLET_CONNECT_ID=...
             "features": template.features,
         }
 
-    def _generate_root_files(self, project: dict, components: List[str]) -> dict[str, str]:
-        """Generate root-level configuration files."""
+    def _generate_root_files(
+        self, project: dict, components: List[str], network: str
+    ) -> dict[str, str]:
+        """Generate root-level configuration files including executable scripts."""
         files = {}
 
         # README.md
@@ -331,6 +363,19 @@ NEXT_PUBLIC_WALLET_CONNECT_ID=...
             f"# {project['name'].replace('-', ' ').title()}",
             "",
             f"> {project['description']}",
+            "",
+            "## Quick Start",
+            "",
+            "```bash",
+            "# 1. Install all dependencies",
+            "./setup.sh",
+            "",
+            "# 2. Configure .env with your keys, then deploy contract",
+            "./deploy.sh",
+            "",
+            "# 3. Start backend + frontend",
+            "./start.sh",
+            "```",
             "",
             "## Project Structure",
             "",
@@ -415,6 +460,9 @@ npm-debug.log*
             "private": True,
             "workspaces": workspaces,
             "scripts": {
+                "setup": "bash setup.sh",
+                "deploy": "bash deploy.sh",
+                "start": "bash start.sh",
                 "dev:backend": "npm run dev --workspace=packages/backend",
                 "dev:frontend": "npm run dev --workspace=packages/frontend",
                 "build": "npm run build --workspaces",
@@ -422,10 +470,218 @@ npm-debug.log*
             },
         }, indent=2)
 
-        # .env.example
-        files[".env.example"] = project["shared_config"]["env_template"]
+        # .env.example — from centralized config
+        files[".env.example"] = generate_env_template(components, network)
+
+        # Executable scripts
+        files["setup.sh"] = self._generate_setup_script(components)
+        files["deploy.sh"] = self._generate_deploy_script(components)
+        files["start.sh"] = self._generate_start_script(components)
 
         return files
+
+    def _generate_setup_script(self, components: List[str]) -> str:
+        """Generate setup.sh that installs all dependencies."""
+        lines = [
+            "#!/usr/bin/env bash",
+            "set -euo pipefail",
+            "",
+            'echo "=== ARBuilder dApp Setup ==="',
+            "",
+            "# Copy env template if .env doesn't exist",
+            'if [ ! -f .env ]; then',
+            '  cp .env.example .env',
+            '  echo "Created .env from template — edit it with your keys before deploying."',
+            "fi",
+            "",
+        ]
+
+        if "contract" in components:
+            lines.extend([
+                "# Contract dependencies",
+                'echo "Installing Rust toolchain..."',
+                "rustup target add wasm32-unknown-unknown 2>/dev/null || true",
+                "cargo install cargo-stylus 2>/dev/null || true",
+                "",
+            ])
+
+        if "backend" in components:
+            lines.extend([
+                "# Backend dependencies",
+                'echo "Installing backend dependencies..."',
+                "cd packages/backend",
+                "npm install",
+                "cd ../..",
+                "",
+            ])
+
+        if "frontend" in components:
+            lines.extend([
+                "# Frontend dependencies",
+                'echo "Installing frontend dependencies..."',
+                "cd packages/frontend",
+                "npm install",
+                "cd ../..",
+                "",
+            ])
+
+        if "indexer" in components:
+            lines.extend([
+                "# Indexer dependencies",
+                'echo "Installing indexer dependencies..."',
+                "cd packages/indexer",
+                "npm install",
+                "cd ../..",
+                "",
+            ])
+
+        lines.extend([
+            'echo ""',
+            'echo "Setup complete!"',
+            'echo "Next: edit .env with your PRIVATE_KEY and RPC_URL, then run ./deploy.sh"',
+        ])
+
+        return "\n".join(lines)
+
+    def _generate_deploy_script(self, components: List[str]) -> str:
+        """Generate deploy.sh that builds and deploys the contract."""
+        lines = [
+            "#!/usr/bin/env bash",
+            "set -euo pipefail",
+            "",
+            "# Load environment variables",
+            "if [ -f .env ]; then",
+            "  set -a",
+            "  source .env",
+            "  set +a",
+            "fi",
+            "",
+            'echo "=== ARBuilder dApp Deploy ==="',
+            "",
+        ]
+
+        if "contract" in components:
+            lines.extend([
+                "# Build contract",
+                'echo "Building Stylus contract..."',
+                "cd packages/contract",
+                "cargo build --target wasm32-unknown-unknown --release",
+                "",
+                "# Deploy contract",
+                'echo "Deploying to ${NETWORK:-arbitrumSepolia}..."',
+                'DEPLOY_OUTPUT=$(cargo stylus deploy \\',
+                '  --private-key "$PRIVATE_KEY" \\',
+                '  --endpoint "$RPC_URL" 2>&1) || {',
+                '  echo "Deployment failed:"',
+                '  echo "$DEPLOY_OUTPUT"',
+                '  exit 1',
+                "}",
+                "",
+                "# Capture deployed address",
+                "DEPLOYED_ADDRESS=$(echo \"$DEPLOY_OUTPUT\" | grep -oE '0x[a-fA-F0-9]{40}' | head -1)",
+                "",
+                'if [ -n "$DEPLOYED_ADDRESS" ]; then',
+                '  echo "Contract deployed at: $DEPLOYED_ADDRESS"',
+                "",
+                "  # Update .env files with deployed address",
+                "  cd ../..",
+                '  sed -i.bak "s|CONTRACT_ADDRESS=.*|CONTRACT_ADDRESS=$DEPLOYED_ADDRESS|" .env',
+                '  sed -i.bak "s|NEXT_PUBLIC_CONTRACT_ADDRESS=.*|NEXT_PUBLIC_CONTRACT_ADDRESS=$DEPLOYED_ADDRESS|" .env',
+                "  rm -f .env.bak",
+                "",
+                '  echo "Updated .env with CONTRACT_ADDRESS=$DEPLOYED_ADDRESS"',
+                "else",
+                '  echo "Could not extract contract address from deploy output."',
+                '  echo "Please update CONTRACT_ADDRESS in .env manually."',
+                '  echo "Deploy output:"',
+                '  echo "$DEPLOY_OUTPUT"',
+                '  cd ../..',
+                "fi",
+                "",
+            ])
+
+        lines.extend([
+            'echo ""',
+            'echo "Deploy complete! Run ./start.sh to launch the dApp."',
+        ])
+
+        return "\n".join(lines)
+
+    def _generate_start_script(self, components: List[str]) -> str:
+        """Generate start.sh that launches backend + frontend."""
+        lines = [
+            "#!/usr/bin/env bash",
+            "set -euo pipefail",
+            "",
+            "# Load environment variables",
+            "if [ -f .env ]; then",
+            "  set -a",
+            "  source .env",
+            "  set +a",
+            "fi",
+            "",
+            'echo "=== ARBuilder dApp Start ==="',
+            "",
+            "# Track background PIDs for cleanup",
+            "PIDS=()",
+            "",
+            "cleanup() {",
+            '  echo ""',
+            '  echo "Shutting down services..."',
+            '  for pid in "${PIDS[@]}"; do',
+            "    kill $pid 2>/dev/null || true",
+            "  done",
+            '  echo "All services stopped."',
+            "  exit 0",
+            "}",
+            "",
+            "trap cleanup SIGINT SIGTERM",
+            "",
+        ]
+
+        if "backend" in components:
+            lines.extend([
+                "# Start backend",
+                f'echo "Starting backend on port ${{PORT:-{BACKEND_PORT}}}..."',
+                "cd packages/backend",
+                "npm run start:dev &",
+                "PIDS+=($!)",
+                "cd ../..",
+                "",
+            ])
+
+        if "frontend" in components:
+            lines.extend([
+                "# Start frontend",
+                f'echo "Starting frontend on port {FRONTEND_PORT}..."',
+                "cd packages/frontend",
+                "npm run dev &",
+                "PIDS+=($!)",
+                "cd ../..",
+                "",
+            ])
+
+        lines.extend([
+            "# Print service URLs",
+            'echo ""',
+            'echo "Services running:"',
+        ])
+
+        if "backend" in components:
+            lines.append(f'echo "  Backend:  http://localhost:${{PORT:-{BACKEND_PORT}}}"')
+
+        if "frontend" in components:
+            lines.append(f'echo "  Frontend: http://localhost:{FRONTEND_PORT}"')
+
+        lines.extend([
+            'echo ""',
+            'echo "Press Ctrl+C to stop all services."',
+            "",
+            "# Wait for all background processes",
+            "wait",
+        ])
+
+        return "\n".join(lines)
 
     def _generate_dev_workflow(self, components: List[str]) -> dict:
         """Generate development workflow guide."""
@@ -436,47 +692,31 @@ npm-debug.log*
                 "step": 1,
                 "component": "Smart Contract",
                 "actions": [
-                    "cd packages/contract",
-                    "cargo +nightly build --target wasm32-unknown-unknown --release",
-                    "cargo stylus deploy --private-key $PRIVATE_KEY",
-                    "Save the deployed contract address",
+                    "./setup.sh",
+                    "Edit .env with your PRIVATE_KEY and RPC_URL",
+                    "./deploy.sh",
+                ],
+            })
+
+        if "backend" in components or "frontend" in components:
+            steps.append({
+                "step": 2,
+                "component": "Backend + Frontend",
+                "actions": [
+                    "./start.sh",
+                    f"Backend runs on http://localhost:{BACKEND_PORT}",
+                    f"Frontend runs on http://localhost:{FRONTEND_PORT}",
                 ],
             })
 
         if "indexer" in components:
             steps.append({
-                "step": 2,
+                "step": 3,
                 "component": "Subgraph Indexer",
                 "actions": [
                     "cd packages/indexer",
                     "Update contract address in subgraph.yaml",
-                    "npm run codegen",
-                    "npm run deploy",
-                ],
-            })
-
-        if "backend" in components:
-            steps.append({
-                "step": 3,
-                "component": "Backend",
-                "actions": [
-                    "cd packages/backend",
-                    "Copy .env.example to .env",
-                    "Set CONTRACT_ADDRESS from step 1",
-                    "npm install && npm run start:dev",
-                ],
-            })
-
-        if "frontend" in components:
-            steps.append({
-                "step": 4,
-                "component": "Frontend",
-                "actions": [
-                    "cd packages/frontend",
-                    "Copy .env.example to .env.local",
-                    "Set CONTRACT_ADDRESS and WALLET_CONNECT_ID",
-                    "npm install && npm run dev",
-                    "Open http://localhost:3000",
+                    "npm run codegen && npm run deploy",
                 ],
             })
 

@@ -26,10 +26,15 @@ ArbBuilder/
 │   │   └── reranker.py       # BM25 + LLM reranking
 │   ├── templates/            # Code generation templates
 │   │   ├── stylus_templates.py   # M1: Stylus contracts
-│   │   ├── backend_templates.py  # M3: NestJS/Express
-│   │   ├── frontend_templates.py # M3: Next.js + wagmi
+│   │   ├── backend_templates.py  # M3: NestJS/Express (ABI placeholder support)
+│   │   ├── frontend_templates.py # M3: Next.js + wagmi (ABI placeholder support)
 │   │   ├── indexer_templates.py  # M3: The Graph subgraphs
 │   │   └── oracle_templates.py   # M3: Chainlink integrations
+│   ├── utils/                # Shared utilities
+│   │   ├── version_manager.py    # SDK version management
+│   │   ├── env_config.py         # Centralized env var configuration
+│   │   ├── abi_extractor.py      # Stylus ABI extraction from Rust code
+│   │   └── compiler_verifier.py  # Docker-based cargo check verification
 │   └── preprocessing/        # Text chunking and cleaning
 ├── scraper/                  # Data collection (web + GitHub)
 ├── data/
@@ -126,6 +131,19 @@ ruff check .
 2. **Retrieve** → Top-k chunks from ChromaDB
 3. **Rerank** → LLM-based relevance scoring
 4. **Generate** → Context-augmented response via DeepSeek/OpenRouter
+
+### M3 dApp Generation Pipeline
+1. **Template Selection** → Based on contract_type and prompt keywords
+2. **ABI Extraction** → `abi_extractor.py` parses #[public] impl blocks from lib.rs
+3. **Compiler Verification** → `compiler_verifier.py` runs `cargo check` via Docker (up to 2 fix attempts)
+4. **ABI Injection** → Backend/frontend templates have `__ABI_PLACEHOLDER__` markers replaced with actual ABI
+5. **Env Config** → `env_config.py` generates standardized `.env.example` (PORT=3001, CORS, BACKEND_URL)
+6. **Script Generation** → `setup.sh`, `deploy.sh`, `start.sh` for one-command workflows
+
+### Utility Modules (`src/utils/`)
+- **env_config.py**: Single source of truth for env var names (PORT=3001, FRONTEND_URL, NEXT_PUBLIC_BACKEND_URL)
+- **abi_extractor.py**: Regex-based ABI extraction from Stylus Rust code (no Docker needed)
+- **compiler_verifier.py**: Docker-based `cargo check` with structured error parsing and LLM fix loop
 
 ### Embedding Model
 - Provider: OpenRouter

@@ -97,6 +97,11 @@ ArbBuilder/
 │   │   ├── frontend_templates.py # M3: Next.js + wagmi templates
 │   │   ├── indexer_templates.py  # M3: Subgraph templates
 │   │   └── oracle_templates.py   # M3: Chainlink templates
+│   ├── utils/            # Shared utilities
+│   │   ├── version_manager.py   # SDK version management
+│   │   ├── env_config.py        # Centralized env var configuration
+│   │   ├── abi_extractor.py     # Stylus ABI extraction from Rust code
+│   │   └── compiler_verifier.py # Docker-based cargo check verification
 │   ├── mcp/              # MCP server for IDE integration
 │   │   ├── server.py     # MCP server (tools, resources, prompts)
 │   │   ├── tools/        # MCP tool implementations (13 tools)
@@ -619,6 +624,10 @@ Complete dApp scaffolding with all components:
 - **Indexer Generation**: The Graph subgraphs (ERC20, ERC721, DeFi, custom events)
 - **Oracle Integration**: Chainlink Price Feeds, VRF, Automation, Functions
 - **Full Orchestration**: Scaffold complete dApps with monorepo structure
+- **ABI Auto-Extraction**: Contract ABI is parsed from Stylus Rust code and injected into backend/frontend
+- **Compiler Verification**: Docker-based `cargo check` loop catches and auto-fixes compilation errors
+- **Executable Scripts**: Generated `setup.sh`, `deploy.sh`, and `start.sh` for one-command workflows
+- **Env Standardization**: Centralized env var config (PORT 3001, CORS, BACKEND_URL) across all components
 
 **Backend Templates:**
 - NestJS + Stylus contract integration

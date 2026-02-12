@@ -9,8 +9,13 @@ Templates:
 - API Gateway: Cross-chain proxy for L1/L2/L3
 """
 
+import json
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
+
+
+# Placeholder marker replaced at generation time with actual contract ABI
+ABI_PLACEHOLDER = "__ABI_PLACEHOLDER__"
 
 
 @dataclass
@@ -54,7 +59,9 @@ async function bootstrap() {
     transform: true,
   }));
 
-  app.enableCors();
+  app.enableCors({
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  });
 
   const port = process.env.PORT || 3001;
   await app.listen(port);
@@ -101,30 +108,8 @@ import {
 import { privateKeyToAccount } from 'viem/accounts';
 import { arbitrumSepolia } from 'viem/chains';
 
-// Contract ABI - update this with your actual contract ABI
-const CONTRACT_ABI = [
-  {
-    type: 'function',
-    name: 'number',
-    inputs: [],
-    outputs: [{ type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    name: 'setNumber',
-    inputs: [{ name: 'newNumber', type: 'uint256' }],
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    name: 'increment',
-    inputs: [],
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-] as const;
+// Contract ABI - auto-generated from Stylus contract by ARBuilder
+const CONTRACT_ABI = __ABI_PLACEHOLDER__ as const;
 
 @Injectable()
 export class ContractService implements OnModuleInit {
@@ -282,6 +267,9 @@ PRIVATE_KEY=0x...
 
 # Server Configuration
 PORT=3001
+
+# CORS - Frontend origin
+FRONTEND_URL=http://localhost:3000
 ''',
         "tsconfig.json": '''{
   "compilerOptions": {
@@ -324,7 +312,7 @@ PORT=3001
         "typescript": "^5.3.0",
         "ts-node": "^10.9.0",
     },
-    env_vars=["RPC_URL", "CONTRACT_ADDRESS", "PRIVATE_KEY", "PORT"],
+    env_vars=["RPC_URL", "CONTRACT_ADDRESS", "PRIVATE_KEY", "PORT", "FRONTEND_URL"],
     scripts={
         "build": "nest build",
         "start": "nest start",
@@ -357,7 +345,9 @@ config();
 const app = express();
 const port = process.env.PORT || 3001;
 
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+}));
 app.use(express.json());
 
 app.use('/health', healthRouter);
@@ -462,11 +452,7 @@ import { arbitrumSepolia } from 'viem/chains';
 
 export const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS as `0x${string}`;
 
-export const CONTRACT_ABI = parseAbi([
-  'function number() view returns (uint256)',
-  'function setNumber(uint256 newNumber)',
-  'function increment()',
-]);
+export const CONTRACT_ABI = parseAbi(__ABI_PLACEHOLDER__);
 
 let publicClient: PublicClient;
 let walletClient: WalletClient;
@@ -498,6 +484,7 @@ export function getWalletClient(): WalletClient {
 CONTRACT_ADDRESS=0x...
 PRIVATE_KEY=0x...
 PORT=3001
+FRONTEND_URL=http://localhost:3000
 ''',
         "tsconfig.json": '''{
   "compilerOptions": {
@@ -531,7 +518,7 @@ PORT=3001
         "ts-node": "^10.9.0",
         "nodemon": "^3.0.0",
     },
-    env_vars=["RPC_URL", "CONTRACT_ADDRESS", "PRIVATE_KEY", "PORT"],
+    env_vars=["RPC_URL", "CONTRACT_ADDRESS", "PRIVATE_KEY", "PORT", "FRONTEND_URL"],
     scripts={
         "build": "tsc",
         "start": "node dist/index.js",
@@ -985,3 +972,31 @@ def list_backend_templates() -> List[BackendTemplate]:
         NESTJS_GRAPHQL_TEMPLATE,
         API_GATEWAY_TEMPLATE,
     ]
+
+
+def render_with_abi(files: Dict[str, str], abi_json: list, abi_human_readable: List[str]) -> Dict[str, str]:
+    """Replace ABI placeholders in backend template files with actual ABI.
+
+    Args:
+        files: Dict of path -> content from a BackendTemplate.
+        abi_json: JSON ABI list (for NestJS full ABI format).
+        abi_human_readable: Human-readable ABI strings (for Express parseAbi).
+
+    Returns:
+        New files dict with placeholders replaced.
+    """
+    rendered = {}
+    for path, content in files.items():
+        if ABI_PLACEHOLDER in content:
+            # For Express web3.ts using parseAbi([...])
+            if "parseAbi(" in content:
+                hr_lines = json.dumps(abi_human_readable, indent=2)
+                content = content.replace(ABI_PLACEHOLDER, hr_lines)
+            else:
+                # For NestJS using full JSON ABI
+                content = content.replace(
+                    ABI_PLACEHOLDER,
+                    json.dumps(abi_json, indent=2),
+                )
+        rendered[path] = content
+    return rendered

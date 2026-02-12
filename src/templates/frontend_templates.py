@@ -9,8 +9,13 @@ Templates:
 - Token Interface: ERC20/ERC721 token UI
 """
 
+import json
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
+
+
+# Placeholder marker replaced at generation time with actual contract ABI
+ABI_PLACEHOLDER = "__ABI_PLACEHOLDER__"
 
 
 @dataclass
@@ -157,12 +162,9 @@ export const config = getDefaultConfig({
 
 export const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`;
 
-export const CONTRACT_ABI = parseAbi([
-  'function number() view returns (uint256)',
-  'function setNumber(uint256 newNumber)',
-  'function increment()',
-  'event NumberChanged(uint256 oldNumber, uint256 newNumber)',
-]);
+export const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+
+export const CONTRACT_ABI = parseAbi(__ABI_PLACEHOLDER__);
 ''',
         "src/hooks/useContract.ts": '''"use client";
 
@@ -308,6 +310,9 @@ NEXT_PUBLIC_WALLET_CONNECT_ID=
 
 # Contract Address
 NEXT_PUBLIC_CONTRACT_ADDRESS=0x...
+
+# Backend API URL
+NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
 ''',
         "tailwind.config.ts": '''import type { Config } from 'tailwindcss';
 
@@ -374,7 +379,7 @@ module.exports = nextConfig;
         "postcss": "^8.0.0",
         "autoprefixer": "^10.0.0",
     },
-    env_vars=["NEXT_PUBLIC_WALLET_CONNECT_ID", "NEXT_PUBLIC_CONTRACT_ADDRESS"],
+    env_vars=["NEXT_PUBLIC_WALLET_CONNECT_ID", "NEXT_PUBLIC_CONTRACT_ADDRESS", "NEXT_PUBLIC_BACKEND_URL"],
     scripts={
         "dev": "next dev",
         "build": "next build",
@@ -1438,3 +1443,22 @@ def list_frontend_templates() -> List[FrontendTemplate]:
         CONTRACT_DASHBOARD_TEMPLATE,
         TOKEN_INTERFACE_TEMPLATE,
     ]
+
+
+def render_with_abi(files: Dict[str, str], abi_human_readable: List[str]) -> Dict[str, str]:
+    """Replace ABI placeholders in frontend template files with actual ABI.
+
+    Args:
+        files: Dict of path -> content from a FrontendTemplate.
+        abi_human_readable: Human-readable ABI strings for viem's parseAbi().
+
+    Returns:
+        New files dict with placeholders replaced.
+    """
+    rendered = {}
+    for path, content in files.items():
+        if ABI_PLACEHOLDER in content:
+            hr_lines = json.dumps(abi_human_readable, indent=2)
+            content = content.replace(ABI_PLACEHOLDER, hr_lines)
+        rendered[path] = content
+    return rendered

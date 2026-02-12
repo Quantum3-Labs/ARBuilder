@@ -8,11 +8,14 @@ Key improvement: Instead of generating from scratch, this tool customizes
 curated templates from official Stylus examples.
 """
 
+import logging
 import re
 from typing import Optional
 
 from .base import BaseTool
 from .get_stylus_context import GetStylusContextTool
+
+logger = logging.getLogger(__name__)
 
 # Import templates
 try:
@@ -27,6 +30,17 @@ except ImportError:
     StylusTemplate = None
     select_template = None
     get_template = None
+
+# Import compiler verifier - handle gracefully if not available
+try:
+    from src.utils.compiler_verifier import (
+        CompilerVerifier,
+        format_errors_for_llm,
+    )
+    HAS_COMPILER = True
+except ImportError:
+    HAS_COMPILER = False
+    CompilerVerifier = None
 
 # Import version manager - handle gracefully if not available
 try:
@@ -193,9 +207,12 @@ class GenerateStylusCodeTool(BaseTool):
     Uses RAG context to inform code generation with relevant examples.
     """
 
+    MAX_COMPILE_ATTEMPTS = 2
+
     def __init__(
         self,
         context_tool: Optional[GetStylusContextTool] = None,
+        compiler_verifier: Optional["CompilerVerifier"] = None,
         **kwargs,
     ):
         """
@@ -203,9 +220,16 @@ class GenerateStylusCodeTool(BaseTool):
 
         Args:
             context_tool: GetStylusContextTool for retrieving examples.
+            compiler_verifier: Optional CompilerVerifier for Docker-based cargo check.
         """
         super().__init__(**kwargs)
         self.context_tool = context_tool or GetStylusContextTool(**kwargs)
+        if compiler_verifier is not None:
+            self.compiler = compiler_verifier
+        elif HAS_COMPILER and CompilerVerifier is not None:
+            self.compiler = CompilerVerifier()
+        else:
+            self.compiler = None
 
     def execute(
         self,
@@ -320,6 +344,58 @@ class GenerateStylusCodeTool(BaseTool):
                 response, template
             )
 
+            # Compile-verify-fix loop (if Docker available)
+            compile_verified = False
+            compile_attempts = 0
+
+            if self.compiler and self.compiler.is_available() and cargo_toml_output:
+                for attempt in range(self.MAX_COMPILE_ATTEMPTS):
+                    compile_attempts = attempt + 1
+                    logger.info(f"Compile check attempt {compile_attempts}")
+
+                    result = self.compiler.verify(code, cargo_toml_output)
+
+                    if result.skipped:
+                        logger.info(f"Compile check skipped: {result.skip_reason}")
+                        break
+
+                    if result.success:
+                        compile_verified = True
+                        logger.info("Compile check passed")
+                        break
+
+                    # Build fix prompt with structured errors
+                    actual_errors = [e for e in result.errors if e.level == "error"]
+                    if not actual_errors:
+                        compile_verified = True
+                        break
+
+                    error_text = format_errors_for_llm(actual_errors, code)
+                    fix_prompt = self._build_fix_prompt(code, error_text)
+
+                    fix_messages = [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": fix_prompt},
+                    ]
+
+                    fix_response = self._call_llm(
+                        messages=fix_messages,
+                        temperature=0.1,
+                        max_tokens=8192,
+                    )
+
+                    # Parse fixed code
+                    fixed_code, _, _ = self._parse_template_response(
+                        fix_response, template
+                    )
+                    if fixed_code and fixed_code != code:
+                        code = fixed_code
+                    else:
+                        warnings.append(
+                            f"Compile fix attempt {compile_attempts} did not produce different code"
+                        )
+                        break
+
             # Extract dependencies with correct versions
             dependencies = self._extract_dependencies(code, target_version)
 
@@ -336,6 +412,8 @@ class GenerateStylusCodeTool(BaseTool):
                 "context_used": context_used,
                 "target_version": target_version,
                 "template_used": template_name,
+                "compile_verified": compile_verified,
+                "compile_attempts": compile_attempts,
             }
 
         except Exception as e:
@@ -593,6 +671,29 @@ class GenerateStylusCodeTool(BaseTool):
             )
 
         return fixed
+
+    def _build_fix_prompt(self, code: str, error_text: str) -> str:
+        """Build a prompt asking the LLM to fix compilation errors.
+
+        Args:
+            code: Current lib.rs code that failed to compile.
+            error_text: Formatted error details from format_errors_for_llm().
+
+        Returns:
+            Prompt string for the LLM.
+        """
+        return f"""The following Stylus contract code has compilation errors. Fix ONLY the errors — do not change the contract's functionality or structure.
+
+CURRENT CODE:
+```rust
+{code}
+```
+
+COMPILATION ERRORS:
+{error_text}
+
+Fix the code and return the complete, corrected lib.rs in a ```rust code block.
+Keep the exact same structure and functionality. Only fix the compilation errors."""
 
     def _fix_cargo_toml(self, cargo: str, template: Optional["StylusTemplate"], target_version: str) -> str:
         """Fix common LLM mistakes in generated Cargo.toml."""

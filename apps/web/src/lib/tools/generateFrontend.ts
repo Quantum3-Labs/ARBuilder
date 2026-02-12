@@ -148,6 +148,7 @@ export const config = getDefaultConfig({
 
   "src/config/contract.ts": `// Contract configuration
 export const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as \`0x\${string}\`;
+export const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
 
 // Add your contract ABI here
 export const CONTRACT_ABI = [] as const;
@@ -375,6 +376,7 @@ export default config;
       files["src/hooks/useContract.ts"] = generateContractHook(abi);
       files["src/config/contract.ts"] = `// Contract configuration
 export const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as \`0x\${string}\`;
+export const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
 
 export const CONTRACT_ABI = ${JSON.stringify(abi, null, 2)} as const;
 `;
@@ -434,6 +436,9 @@ NEXT_PUBLIC_WALLET_CONNECT_ID=your-project-id
 
 # Contract Address (optional)
 NEXT_PUBLIC_CONTRACT_ADDRESS=0x...
+
+# Backend API URL
+NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
 `;
 
   // Add package.json
@@ -459,7 +464,7 @@ NEXT_PUBLIC_CONTRACT_ADDRESS=0x...
     files,
     dependencies,
     devDependencies,
-    envVars: ["NEXT_PUBLIC_WALLET_CONNECT_ID", "NEXT_PUBLIC_CONTRACT_ADDRESS"],
+    envVars: ["NEXT_PUBLIC_WALLET_CONNECT_ID", "NEXT_PUBLIC_CONTRACT_ADDRESS", "NEXT_PUBLIC_BACKEND_URL"],
     setupInstructions: [
       "1. Install dependencies: npm install",
       "2. Copy .env.example to .env.local and configure",

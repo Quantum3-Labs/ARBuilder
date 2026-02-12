@@ -43,10 +43,12 @@ import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.enableCors();
+  app.enableCors({
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  });
   app.useGlobalPipes(new ValidationPipe({ transform: true }));
-  await app.listen(process.env.PORT || 3000);
-  console.log(\`Server running on port \${process.env.PORT || 3000}\`);
+  await app.listen(process.env.PORT || 3001);
+  console.log(\`Server running on port \${process.env.PORT || 3001}\`);
 }
 bootstrap();
 `,
@@ -187,7 +189,9 @@ import contractRoutes from './routes/contract';
 config();
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+}));
 app.use(express.json());
 
 // Initialize viem client
@@ -205,7 +209,7 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', chain: chain.name });
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(\`Server running on port \${PORT}\`);
 });
@@ -336,20 +340,23 @@ export function generateBackend(args: GenerateBackendArgs): GenerateBackendResul
   files[".env.example"] = `# Network: arbitrum-sepolia or arbitrum-one
 NETWORK=arbitrum-sepolia
 RPC_URL=https://sepolia-rollup.arbitrum.io/rpc
-PORT=3000
+PORT=3001
 
 # Optional: For write operations
 PRIVATE_KEY=your-private-key
 
 # Optional: Contract address
 CONTRACT_ADDRESS=0x...
+
+# CORS - Frontend origin
+FRONTEND_URL=http://localhost:3000
 `;
 
   return {
     files,
     dependencies,
     devDependencies,
-    envVars: ["NETWORK", "RPC_URL", "PORT", "PRIVATE_KEY", "CONTRACT_ADDRESS"],
+    envVars: ["NETWORK", "RPC_URL", "PORT", "PRIVATE_KEY", "CONTRACT_ADDRESS", "FRONTEND_URL"],
     scripts: isNestJS
       ? { build: "nest build", dev: "nest start --watch", start: "node dist/main" }
       : { build: "tsc", dev: "nodemon --exec ts-node src/index.ts", start: "node dist/index.js" },
