@@ -18,7 +18,11 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from .config import STYLUS_SOURCES, ARBITRUM_SDK_SOURCES, ORBIT_SDK_SOURCES
+from .config import (
+    PROJECT_EXAMPLES,
+    get_all_config_repo_urls,
+    get_config_repo_info,
+)
 
 load_dotenv()
 
@@ -55,7 +59,7 @@ SKIP_DIRS = {
 }
 
 
-def clone_repo(repo_url: str, target_dir: Path, retries: int = MAX_RETRIES) -> bool:
+def clone_repo(repo_url: str, target_dir: Path, retries: int = MAX_RETRIES, force_reclone: bool = False) -> bool:
     """
     Clone a GitHub repository with retry logic.
 
@@ -63,13 +67,18 @@ def clone_repo(repo_url: str, target_dir: Path, retries: int = MAX_RETRIES) -> b
         repo_url: URL of the GitHub repository.
         target_dir: Target directory for the clone.
         retries: Number of retry attempts.
+        force_reclone: If True, delete existing dir and re-clone.
 
     Returns:
         True if successful, False otherwise.
     """
     if target_dir.exists():
-        console.print(f"[yellow]Repository already exists: {target_dir}[/yellow]")
-        return True
+        if force_reclone:
+            console.print(f"[yellow]Force re-cloning: {target_dir}[/yellow]")
+            shutil.rmtree(target_dir, ignore_errors=True)
+        else:
+            console.print(f"[yellow]Repository already exists: {target_dir}[/yellow]")
+            return True
 
     target_dir.parent.mkdir(parents=True, exist_ok=True)
     last_error = None
@@ -248,38 +257,113 @@ def get_repo_name(url: str) -> str:
     return parts[-1]
 
 
+def audit_repos() -> dict:
+    """
+    Compare repos on disk vs config. Reports orphans and missing repos.
+
+    Returns:
+        Dict with 'orphans' (on disk but not in config) and 'missing' (in config but not on disk).
+    """
+    config_urls = get_all_config_repo_urls()
+    config_repo_names = {get_repo_name(url) for url in config_urls}
+
+    # Repos on disk
+    on_disk = set()
+    if REPOS_DIR.exists():
+        on_disk = {d.name for d in REPOS_DIR.iterdir() if d.is_dir()}
+
+    orphans = on_disk - config_repo_names
+    missing = config_repo_names - on_disk
+
+    console.print(f"\n[bold]Audit Report[/bold]")
+    console.print(f"  Config repos: {len(config_repo_names)}")
+    console.print(f"  On disk: {len(on_disk)}")
+
+    if orphans:
+        console.print(f"\n[yellow]Orphan repos (on disk but NOT in config): {len(orphans)}[/yellow]")
+        for name in sorted(orphans):
+            console.print(f"  - {name}")
+    else:
+        console.print(f"\n[green]No orphan repos[/green]")
+
+    if missing:
+        console.print(f"\n[red]Missing repos (in config but NOT on disk): {len(missing)}[/red]")
+        for name in sorted(missing):
+            console.print(f"  - {name}")
+    else:
+        console.print(f"\n[green]All configured repos are on disk[/green]")
+
+    return {"orphans": sorted(orphans), "missing": sorted(missing)}
+
+
+def prune_orphan_repos(dry_run: bool = True) -> list[str]:
+    """
+    Delete orphan repo directories not in config.
+
+    Args:
+        dry_run: If True, only report what would be deleted.
+
+    Returns:
+        List of deleted (or would-be-deleted) directory names.
+    """
+    audit = audit_repos()
+    orphans = audit["orphans"]
+
+    if not orphans:
+        console.print("[green]Nothing to prune.[/green]")
+        return []
+
+    pruned = []
+    for name in orphans:
+        repo_path = REPOS_DIR / name
+        if dry_run:
+            console.print(f"  [yellow]Would delete: {repo_path}[/yellow]")
+        else:
+            console.print(f"  [red]Deleting: {repo_path}[/red]")
+            shutil.rmtree(repo_path, ignore_errors=True)
+        pruned.append(name)
+
+    if dry_run:
+        console.print(f"\n[yellow]Dry run: {len(pruned)} repos would be deleted. Use --prune (without --dry-run) to delete.[/yellow]")
+    else:
+        console.print(f"\n[red]Pruned {len(pruned)} orphan repos.[/red]")
+
+    return pruned
+
+
 async def scrape_all_repos(
     categories: Optional[list[str]] = None,
+    force_reclone: bool = False,
 ) -> None:
     """
     Clone and extract code from all configured GitHub repositories.
+    Reads from PROJECT_EXAMPLES config and embeds sdk_version into output.
 
     Args:
         categories: List of categories to process (stylus, arbitrum_sdk, orbit_sdk).
                    If None, process all.
+        force_reclone: If True, re-clone repos even if they exist.
     """
     REPOS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Collect all GitHub URLs
+    # Collect all GitHub repo entries from PROJECT_EXAMPLES
     all_repos = []
+    repo_info_map = get_config_repo_info()
 
-    sources = {
-        "stylus": STYLUS_SOURCES,
-        "arbitrum_sdk": ARBITRUM_SDK_SOURCES,
-        "orbit_sdk": ORBIT_SDK_SOURCES,
-    }
-
-    for category, source_dict in sources.items():
+    for category, subcategories in PROJECT_EXAMPLES.items():
         if categories and category not in categories:
             continue
 
-        for subcategory, urls in source_dict.items():
-            for url in urls:
+        for subcategory, entries in subcategories.items():
+            for entry in entries:
+                url = entry["url"]
                 if "github.com" in url:
                     all_repos.append({
                         "url": url,
                         "category": category,
                         "subcategory": subcategory,
+                        "sdk_version": entry.get("sdk_version", ""),
+                        "verified": entry.get("verified", ""),
                     })
 
     results = []
@@ -299,7 +383,7 @@ async def scrape_all_repos(
             progress.update(task, description=f"Processing {repo_name}...")
 
             # Clone repository
-            if clone_repo(url, target_dir):
+            if clone_repo(url, target_dir, force_reclone=force_reclone):
                 # Extract code files
                 files = extract_code_files(target_dir)
 
@@ -308,6 +392,8 @@ async def scrape_all_repos(
                     "repo_name": repo_name,
                     "category": repo_info["category"],
                     "subcategory": repo_info["subcategory"],
+                    "sdk_version": repo_info["sdk_version"],
+                    "verified": repo_info["verified"],
                     "files": files,
                     "file_count": len(files),
                     "scraped_at": datetime.utcnow().isoformat(),
@@ -343,14 +429,42 @@ def main():
         action="store_true",
         help="Remove existing repos before cloning",
     )
+    parser.add_argument(
+        "--force-reclone",
+        action="store_true",
+        help="Force re-clone repos even if they exist on disk",
+    )
+    parser.add_argument(
+        "--audit",
+        action="store_true",
+        help="Compare repos on disk vs config, report orphans and missing",
+    )
+    parser.add_argument(
+        "--prune",
+        action="store_true",
+        help="Delete orphan repo directories not in config",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="With --prune: only report what would be deleted",
+    )
 
     args = parser.parse_args()
+
+    if args.audit:
+        audit_repos()
+        return
+
+    if args.prune:
+        prune_orphan_repos(dry_run=args.dry_run)
+        return
 
     if args.clean and REPOS_DIR.exists():
         console.print(f"[yellow]Removing existing repos directory: {REPOS_DIR}[/yellow]")
         shutil.rmtree(REPOS_DIR)
 
-    asyncio.run(scrape_all_repos(categories=args.categories))
+    asyncio.run(scrape_all_repos(categories=args.categories, force_reclone=args.force_reclone))
 
 
 if __name__ == "__main__":

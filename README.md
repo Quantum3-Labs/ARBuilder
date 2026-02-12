@@ -110,8 +110,8 @@ ArbBuilder/
 ├── scripts/
 │   └── run_benchmarks.py # Benchmark runner
 ├── data/
-│   ├── raw/              # Raw scraped data (73 pages + 17 repos)
-│   ├── processed/        # Pre-processed chunks (8,692 chunks)
+│   ├── raw/              # Raw scraped data (docs + curated repos)
+│   ├── processed/        # Pre-processed chunks
 │   └── chroma_db/        # ChromaDB vector store (generated locally, not in repo)
 ├── environment.yml       # Conda environment specification
 ├── pyproject.toml        # Project metadata and dependencies
@@ -152,8 +152,8 @@ DEFAULT_EMBEDDING=google/gemini-embedding-001
 ### 3. Setup Data
 
 The repository includes all data needed:
-- **Raw data** (`data/raw/`): 73 markdown pages + 17 GitHub repos
-- **Processed chunks** (`data/processed/`): 8,692 chunks ready for embedding
+- **Raw data** (`data/raw/`): Documentation pages + curated GitHub repos
+- **Processed chunks** (`data/processed/`): Chunks ready for embedding
 
 **Important:** The ChromaDB vector database must be generated locally (it's not included in the repo due to binary compatibility issues across systems).
 
@@ -190,6 +190,28 @@ python -m src.preprocessing.processor
 
 # And re-ingest into ChromaDB
 python -m src.embeddings.vectordb --reset
+```
+
+#### Data Maintenance
+
+Audit and clean up data sources:
+
+```bash
+# Audit: compare repos on disk vs config
+python scripts/audit_data.py
+
+# Show what orphan repos would be deleted
+python scripts/audit_data.py --prune
+
+# Actually delete orphan repos
+python scripts/audit_data.py --prune --confirm
+
+# Include ChromaDB stats in audit
+python scripts/audit_data.py --chromadb
+
+# GitHub scraper also supports audit/prune
+python -m scraper.github_scraper --audit
+python -m scraper.github_scraper --prune --dry-run
 ```
 
 ## Quick Start (IDE Integration)
@@ -294,34 +316,38 @@ python -m scraper.run --skip-github
 
 ### Data Sources
 
-The scraper collects data from 50+ sources with automatic Stylus SDK version detection:
+Data sources are split into **Documentation** (web pages) and **Project Examples** (GitHub repos with runnable code). Each project repo entry tracks its SDK version in `scraper/config.py` as the source of truth.
+
+The scraper collects data from 40+ curated sources:
 
 **Stylus (M1)**
-- Official documentation: [docs.arbitrum.io](https://docs.arbitrum.io/stylus/stylus-overview) (8 pages including gas-metering)
-- Curated resources: [awesome-stylus](https://github.com/OffchainLabs/awesome-stylus)
-- Official examples: stylus-hello-world (v0.9.0), stylus-quickstart-vending-machine (v0.8.4)
-- Production codebases: OpenZeppelin rust-contracts-stylus (v0.9.0), renegade-contracts
-- Community projects and challenges (19 challenge submissions, all v0.9.0)
+- Official documentation: [docs.arbitrum.io](https://docs.arbitrum.io/stylus/stylus-overview) (7 pages + gas-metering)
+- Official examples: stylus-hello-world (v0.9.0), stylus-quickstart-vending-machine (v0.8.4), stylus-workshop-gol (v0.9.0)
+- Production codebases: OpenZeppelin rust-contracts-stylus (v0.9.0), stylus-test-helpers (v0.9.0), stylusport (v0.9.0)
+- Community projects (5 verified repos, SDK >= 0.8.0)
+- Scaffold-stylus projects (8 repos, all SDK 0.9.0)
+- Challenge submissions (11 repos, all SDK 0.9.0)
 - Blog articles
+
+**Curation Policy:**
+- No meta-lists (awesome-stylus) — causes outdated code ingestion
+- No unverified community submissions
+- All code repos must compile with stylus-sdk >= 0.8.0
+- SDK version tracked per-repo in config (not extracted at runtime)
 
 **Stylus SDK Version Support:**
 
 | Version | Status | Notes |
 |---------|--------|-------|
-| 0.9.0 | **Main** (default) | Recommended for new projects |
+| 0.9.2 | **Main** (default) | Latest stable, recommended for new projects |
+| 0.9.0 | Supported | Alloy 0.8.x compatible |
 | 0.8.x | Supported | Minimum supported version |
-| < 0.8.0 | Deprecated | Warning shown, excluded from knowledge base |
-
-**Version Filtering:**
-- Only sources using Stylus SDK >= 0.8.0 are included
-- Each GitHub repo's SDK version is auto-detected from Cargo.toml
-- Deprecated versions (< 0.8.0) are excluded from the knowledge base
-- Code generation targets the main version (0.9.0) by default
+| < 0.8.0 | Deprecated | Excluded from knowledge base |
 
 **Arbitrum SDK (M2)**
 - [arbitrum-sdk](https://github.com/OffchainLabs/arbitrum-sdk)
 - [arbitrum-tutorials](https://github.com/OffchainLabs/arbitrum-tutorials)
-- Official bridging and messaging documentation (7 pages)
+- Official bridging and messaging documentation (6 pages)
 
 **Orbit SDK (M4)**
 - [arbitrum-orbit-sdk](https://github.com/OffchainLabs/arbitrum-orbit-sdk)
