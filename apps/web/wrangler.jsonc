@@ -57,6 +57,22 @@
 	// NOTE: Containers are NOT included here for local dev.
 	// Use wrangler.jsonc for production deploys with containers.
 
+	// Migrations to clean up Durable Objects from previous container-based deploys
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["ScraperContainer"]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": ["BatchJobDO"]
+		},
+		{
+			"tag": "v3",
+			"deleted_classes": ["ScraperContainer", "BatchJobDO"]
+		}
+	],
+
 	// Environment variables (public values)
 	"vars": {
 		"NEXTJS_ENV": "production",
