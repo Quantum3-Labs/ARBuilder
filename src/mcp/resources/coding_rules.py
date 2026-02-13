@@ -18,10 +18,12 @@ STYLUS_CODING_RULES = {
         "rust_version_note": "Requires rust-toolchain.toml with channel 1.88.0",
     },
 
-    "file_header": '''#![cfg_attr(not(any(feature = "export-abi", test)), no_std)]
-#![cfg_attr(not(test), no_main)]
+    "file_header": '''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+#![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
+#[macro_use]
 extern crate alloc;
 
+use alloc::{vec, vec::Vec};
 use stylus_sdk::{prelude::*, alloy_primitives::{Address, U256}};''',
 
     "cargo_toml": {
@@ -37,7 +39,7 @@ stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
 export-abi = ["stylus-sdk/export-abi"]
 
 [lib]
-crate-type = ["cdylib"]''',
+crate-type = ["lib", "cdylib"]''',
 
         "release_profile": '''[profile.release]
 codegen-units = 1
@@ -122,6 +124,45 @@ if balance < amount {
 transfer_eth(self, to, amount)?;''',
         },
 
+        "raw_call_eth_transfer": {
+            "description": "Transfer ETH via RawCall (requires self.vm() and unsafe block)",
+            "example": '''use stylus_sdk::call::RawCall;
+
+// Inside a #[public] method — MUST be unsafe:
+unsafe {
+    let _ = RawCall::new_with_value(self.vm(), amount).call(recipient, &[]);
+}''',
+        },
+
+        "main_rs": {
+            "description": "Required src/main.rs for cargo stylus deploy (ABI export via print_from_args)",
+            "example": '''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+
+#[cfg(not(any(test, feature = "export-abi")))]
+#[unsafe(no_mangle)]
+pub extern "C" fn main() {}
+
+#[cfg(feature = "export-abi")]
+fn main() {
+    my_contract::print_from_args();
+}''',
+        },
+
+        "package_naming": {
+            "description": "Cargo.toml package name MUST use underscores for cargo-stylus compatibility",
+            "example": '''[package]
+name = "my_contract"  # NOT "my-contract" — hyphens prevent cargo-stylus from finding the WASM file
+
+[[bin]]
+name = "my_contract"  # Must match package name
+path = "src/main.rs"''',
+        },
+
+        "uint8_gotcha": {
+            "description": "uint8 in sol_storage! maps to Uint<8,1>, not native u8",
+            "note": "Comparisons between Uint<8,1> and u8 won't compile. Either use .try_into() or prefer uint256 for simplicity.",
+        },
+
         "tests": {
             "description": "Unit tests with stylus-test feature",
             "example": '''#[cfg(test)]
@@ -159,6 +200,12 @@ mod tests {
         "Using evm::transfer_eth() - Moved to stylus_sdk::call::transfer_eth(self, to, amount)",
         "Missing SolError import - .abi_encode() on errors requires use alloy_sol_types::SolError",
         "Chained .setter() borrows - Read with .get() first, then .setter().set() separately",
+        "Missing src/main.rs - Required for cargo stylus deploy (uses print_from_args(), NOT print_abi())",
+        "Package name with hyphens - Must use underscores in Cargo.toml (my_contract, NOT my-contract)",
+        "crate-type only cdylib - Must be ['lib', 'cdylib'] so bin target can link to lib",
+        "Missing use alloc::vec; - sol_storage! macro needs the vec module in scope",
+        "RawCall without self.vm() - RawCall::new_with_value needs self.vm() as first arg and unsafe block",
+        "uint8 in sol_storage! - Maps to Uint<8,1>, not u8. Use .try_into() for comparisons or prefer uint256",
     ],
 
     "forbidden_imports": [

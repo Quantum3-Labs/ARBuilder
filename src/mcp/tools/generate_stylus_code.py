@@ -109,6 +109,13 @@ Key Stylus patterns for v{target_version}:
 14. Avoid chained .setter() borrows — get value with .get() first, then .setter().set() separately
 15. Do NOT use `use stylus_sdk::evm` — the evm module was removed in 0.10.0
 16. Do NOT use `use stylus_sdk::msg` — use self.vm().msg_sender(), self.vm().msg_value()
+17. ALWAYS include `use alloc::vec;` (the module) alongside `use alloc::vec::Vec;` — sol_storage! needs it
+18. For ETH transfers via RawCall: `unsafe {{ let _ = RawCall::new_with_value(self.vm(), amount).call(to, &[]); }}` — requires self.vm() as first arg and unsafe block
+19. uint8 in sol_storage! maps to Uint<8,1> not native u8 — prefer uint256 unless uint8 is specifically needed
+20. Package name in Cargo.toml MUST use underscores (e.g., "my_contract") — hyphens prevent cargo-stylus from finding the WASM file
+21. A src/main.rs is REQUIRED — cargo stylus deploy uses `cargo run` to check for constructors
+22. The correct ABI export function in 0.10.0 is `print_from_args()` (NOT `print_abi()`)
+23. crate-type in [lib] must be ["lib", "cdylib"] — "lib" is needed for bin target linking
 
 Dependencies for v{target_version}:
 - stylus-sdk = "{target_version}"
@@ -117,10 +124,11 @@ Dependencies for v{target_version}:
 Required project files (SDK 0.10.0+):
 - Stylus.toml with [workspace], [workspace.networks], and [contract] sections
 - rust-toolchain.toml with channel = "1.88.0"
+- src/main.rs with print_from_args() for ABI export
 
 When generating code:
 - Generate complete, compilable Rust code
-- Include all necessary imports
+- Include all necessary imports including `use alloc::vec;`
 - Add helpful comments for complex logic
 - Use proper error handling
 - Follow security best practices (check for overflows, validate inputs)
@@ -426,26 +434,32 @@ class GenerateStylusCodeTool(BaseTool):
             warnings.extend(validation_warnings)
 
             # Derive project name from prompt and fix Cargo.toml/main.rs references
+            main_rs_output = template.main_rs if template else ""
+            stylus_toml_output = template.stylus_toml if template else ""
+            rust_toolchain_toml_output = template.rust_toolchain_toml if template else ""
+
             if cargo_toml_output:
                 project_name = self._derive_project_name(prompt)
+                # Fix package name (use underscores for cargo-stylus compatibility)
                 cargo_toml_output = re.sub(
                     r'name\s*=\s*"[^"]+"',
                     f'name = "{project_name}"',
                     cargo_toml_output,
-                    count=1,
                 )
-                # Fix main.rs crate reference if template has one
-                if code:
-                    # The main.rs print_abi reference uses the crate name
-                    code = re.sub(
-                        r'(\w+)::print_abi\b',
-                        f'{project_name.replace("-", "_")}::print_abi',
-                        code,
+                # Fix main.rs crate reference (print_from_args uses crate name)
+                if main_rs_output:
+                    main_rs_output = re.sub(
+                        r'(\w+)::print_from_args\b',
+                        f'{project_name}::print_from_args',
+                        main_rs_output,
                     )
 
             return {
                 "code": code,
                 "cargo_toml": cargo_toml_output,
+                "main_rs": main_rs_output,
+                "stylus_toml": stylus_toml_output,
+                "rust_toolchain_toml": rust_toolchain_toml_output,
                 "explanation": explanation,
                 "dependencies": dependencies,
                 "warnings": warnings if warnings else [],
@@ -665,12 +679,25 @@ class GenerateStylusCodeTool(BaseTool):
         # Fix 1: Remove empty sol_storage! blocks
         fixed = re.sub(r'sol_storage!\s*\{\s*\}', '', fixed)
 
-        # Fix 2: Ensure proper cfg_attr if missing
+        # Fix 2: Ensure proper cfg_attr — must use (not(any(test, feature = "export-abi")))
+        # Fix wrong patterns like (not(any(feature = "export-abi", test)))
         if "#![cfg_attr(not(any(test" not in fixed:
             if template:
                 template_start = template.lib_rs.split("extern crate alloc")[0]
                 if not fixed.startswith("#![cfg_attr"):
                     fixed = template_start + fixed
+                else:
+                    # Replace wrong cfg_attr patterns with correct ones
+                    fixed = re.sub(
+                        r'#!\[cfg_attr\(not\(any\(feature\s*=\s*"export-abi",\s*test\)\),\s*no_std\)\]',
+                        '#![cfg_attr(not(any(test, feature = "export-abi")), no_std)]',
+                        fixed,
+                    )
+                    fixed = re.sub(
+                        r'#!\[cfg_attr\(not\(test\),\s*no_main\)\]',
+                        '#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]',
+                        fixed,
+                    )
 
         # Fix 3: Ensure extern crate alloc if missing
         if "extern crate alloc" not in fixed:
@@ -698,13 +725,28 @@ class GenerateStylusCodeTool(BaseTool):
                 fixed
             )
 
-        # Fix 6: Ensure there's exactly one sol_storage! block with #[entrypoint]
+        # Fix 6: Ensure use alloc::vec; is present (sol_storage! needs vec module)
+        if "use alloc::vec;" not in fixed and "use alloc::{" not in fixed:
+            # Add use alloc::vec; after extern crate alloc
+            fixed = re.sub(
+                r'(extern crate alloc;\s*\n)',
+                r'\1\nuse alloc::{vec, vec::Vec};\n',
+                fixed,
+            )
+        elif "use alloc::vec::Vec;" in fixed and "use alloc::vec;" not in fixed and "alloc::{" not in fixed:
+            # Has Vec but not vec module — replace with combined import
+            fixed = fixed.replace(
+                "use alloc::vec::Vec;",
+                "use alloc::{vec, vec::Vec};"
+            )
+
+        # Fix 7: Ensure there's exactly one sol_storage! block with #[entrypoint]
         sol_storage_count = len(re.findall(r'sol_storage!\s*\{', fixed))
         if sol_storage_count == 0 and template:
             # If no sol_storage! block, the code is likely broken - use template
             return template.lib_rs
 
-        # Fix 7: Ensure #[entrypoint] is inside sol_storage! if missing
+        # Fix 8: Ensure #[entrypoint] is inside sol_storage! if missing
         if "#[entrypoint]" not in fixed:
             fixed = re.sub(
                 r'sol_storage!\s*\{\s*(\n?\s*pub struct)',
@@ -720,7 +762,7 @@ class GenerateStylusCodeTool(BaseTool):
         stop_words = {"a", "an", "the", "for", "with", "and", "or", "that", "this", "create", "build", "make", "generate", "implement"}
         words = [w.lower() for w in re.findall(r'[a-zA-Z]+', prompt) if w.lower() not in stop_words]
         name_words = words[:3] if words else ["stylus", "contract"]
-        return "-".join(name_words)
+        return "_".join(name_words)
 
     def _build_fix_prompt(self, code: str, error_text: str) -> str:
         """Build a prompt asking the LLM to fix compilation errors.

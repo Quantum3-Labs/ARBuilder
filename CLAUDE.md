@@ -160,9 +160,12 @@ When generating or reviewing Stylus code:
 
 ### Required Attributes
 ```rust
-#![cfg_attr(not(any(feature = "export-abi", test)), no_std)]
-#![cfg_attr(not(test), no_main)]
+#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+#![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
+#[macro_use]
 extern crate alloc;
+
+use alloc::{vec, vec::Vec};
 ```
 
 ### Storage Pattern
@@ -192,13 +195,20 @@ impl MyContract {
 
 ### Dependencies (Cargo.toml)
 ```toml
+[package]
+name = "my_contract"  # MUST use underscores, not hyphens
+
 [dependencies]
 stylus-sdk = "0.10.0"
 alloy-primitives = "1.0.1"
 alloy-sol-types = "1.0.1"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["lib", "cdylib"]  # "lib" needed for bin target linking
+
+[[bin]]
+name = "my_contract"
+path = "src/main.rs"
 
 [profile.release]
 codegen-units = 1
@@ -226,6 +236,20 @@ channel = "1.88.0"
 targets = ["wasm32-unknown-unknown"]
 ```
 
+**src/main.rs** (required for cargo stylus deploy):
+```rust
+#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+
+#[cfg(not(any(test, feature = "export-abi")))]
+#[unsafe(no_mangle)]
+pub extern "C" fn main() {}
+
+#[cfg(feature = "export-abi")]
+fn main() {
+    my_contract::print_from_args();  // NOT print_abi()
+}
+```
+
 ### SDK 0.10.0 API Changes
 ```rust
 // Old (0.9.x) → New (0.10.0)
@@ -241,6 +265,13 @@ targets = ["wasm32-unknown-unknown"]
 - **Yearly reactivation** required
 - **Stylus.toml required** since SDK 0.10.0
 - **rust-toolchain.toml required** since SDK 0.10.0
+- **src/main.rs required** — cargo stylus deploy uses `cargo run` to check constructors
+- **Package name must use underscores** — hyphens prevent cargo-stylus WASM lookup
+- **crate-type = ["lib", "cdylib"]** — "lib" needed for bin target linking
+- **use alloc::{vec, vec::Vec}** — sol_storage! macro needs vec module in scope
+- **print_from_args()** is the 0.10.0 ABI export function (NOT print_abi())
+- **uint8 in sol_storage!** maps to Uint<8,1>, not u8 — prefer uint256
+- **RawCall::new_with_value(self.vm(), amount)** — needs self.vm() as first arg + unsafe block
 
 ## Network Endpoints
 

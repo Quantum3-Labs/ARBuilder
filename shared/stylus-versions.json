@@ -77,7 +77,13 @@
       "error_import": "use alloy_sol_types::SolError;",
       "error_derive": "#[derive(SolidityError)]",
       "forbidden_modules": ["stylus_sdk::evm", "stylus_sdk::msg"],
-      "required_files": ["Stylus.toml", "rust-toolchain.toml"]
+      "required_files": ["Stylus.toml", "rust-toolchain.toml", "src/main.rs"],
+      "abi_export_fn": "print_from_args()",
+      "package_naming": "underscores_only",
+      "crate_type": ["lib", "cdylib"],
+      "required_imports": ["use alloc::{vec, vec::Vec};"],
+      "raw_call_api": "RawCall::new_with_value(self.vm(), amount) — requires unsafe block",
+      "uint8_note": "uint8 in sol_storage! maps to Uint<8,1>, not native u8"
     },
     "0.9": {
       "attributes": ["#[public]", "#[entrypoint]"],

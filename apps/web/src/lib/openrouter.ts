@@ -128,6 +128,12 @@ Key patterns for v${targetVersion}:
 - For .abi_encode() on errors: import SolError via use alloy_sol_types::SolError
 - Avoid chained .setter() borrows — get value with .get() first, then .setter().set() separately
 - Do NOT use stylus_sdk::evm (removed in 0.10.0) or stylus_sdk::msg
+- ALWAYS include \`use alloc::{vec, vec::Vec};\` — sol_storage! needs vec module in scope
+- RawCall::new_with_value(self.vm(), amount) — requires self.vm() as first arg and unsafe block
+- uint8 in sol_storage! maps to Uint<8,1> not native u8 — prefer uint256
+- Package name in Cargo.toml MUST use underscores (e.g., "my_contract") — hyphens break cargo-stylus
+- src/main.rs is REQUIRED — use print_from_args() (NOT print_abi()) for ABI export
+- crate-type in [lib] must be ["lib", "cdylib"]
 
 Security best practices:
 - Check for overflows using checked_add/checked_sub
@@ -301,6 +307,13 @@ IMPORTANT SDK 0.10.0 changes:
 - Chained .setter() borrows cause compile errors — read with .get() first, then .setter().set() separately
 - Projects MUST include Stylus.toml with [workspace], [workspace.networks], and [contract] sections
 - Projects MUST include rust-toolchain.toml with channel = "1.88.0"
+- Projects MUST include src/main.rs — cargo stylus deploy uses cargo run to check constructors
+- ABI export function in 0.10.0 is print_from_args() (NOT print_abi())
+- Package name MUST use underscores (e.g., "my_contract") — hyphens break cargo-stylus WASM lookup
+- crate-type must be ["lib", "cdylib"] — "lib" needed for bin target linking
+- ALWAYS include use alloc::{vec, vec::Vec}; — sol_storage! needs vec module
+- RawCall::new_with_value(self.vm(), amount) — needs self.vm() as first arg and unsafe block
+- uint8 in sol_storage! maps to Uint<8,1>, not u8 — comparisons with u8 won't compile
 
 When asked about versions, ALWAYS use the version info above, NOT from retrieved context which may be outdated.`,
     },

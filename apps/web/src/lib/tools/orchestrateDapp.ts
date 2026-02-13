@@ -46,9 +46,12 @@ const BACKEND_PORT = "3001";
 const FRONTEND_PORT = "3000";
 
 // Stylus contract template
-const STYLUS_CONTRACT_TEMPLATE = `#![cfg_attr(not(any(feature = "export-abi", test)), no_std)]
-#![cfg_attr(not(test), no_main)]
+const STYLUS_CONTRACT_TEMPLATE = `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+#![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
+#[macro_use]
 extern crate alloc;
+
+use alloc::{vec, vec::Vec};
 
 use stylus_sdk::{
     alloy_primitives::{Address, U256},
@@ -87,14 +90,14 @@ impl MyContract {
         let sender = self.vm().msg_sender();
         let amount = self.vm().msg_value();
         let current = self.balances.get(sender);
-        self.balances.insert(sender, current + amount);
+        self.balances.setter(sender).set(current + amount);
     }
 
     pub fn withdraw(&mut self, amount: U256) {
         let sender = self.vm().msg_sender();
         let current = self.balances.get(sender);
         if current >= amount {
-            self.balances.insert(sender, current - amount);
+            self.balances.setter(sender).set(current - amount);
             // Transfer would go here
         }
     }
@@ -102,7 +105,7 @@ impl MyContract {
 `;
 
 const CARGO_TOML = `[package]
-name = "my-contract"
+name = "my_contract"
 version = "0.1.0"
 edition = "2021"
 
@@ -115,7 +118,11 @@ alloy-sol-types = "1.0.1"
 export-abi = ["stylus-sdk/export-abi"]
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["lib", "cdylib"]
+
+[[bin]]
+name = "my_contract"
+path = "src/main.rs"
 
 [profile.release]
 codegen-units = 1
@@ -135,6 +142,18 @@ const STYLUS_TOML = `[workspace]
 const RUST_TOOLCHAIN_TOML = `[toolchain]
 channel = "1.88.0"
 targets = ["wasm32-unknown-unknown"]
+`;
+
+const MAIN_RS = `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+
+#[cfg(not(any(test, feature = "export-abi")))]
+#[unsafe(no_mangle)]
+pub extern "C" fn main() {}
+
+#[cfg(feature = "export-abi")]
+fn main() {
+    my_contract::print_from_args();
+}
 `;
 
 function generateProjectName(prompt: string): string {
@@ -324,6 +343,7 @@ export function orchestrateDapp(args: OrchestrateDappArgs): OrchestrateDappResul
     structure["packages/contracts"] = {
       files: {
         "src/lib.rs": STYLUS_CONTRACT_TEMPLATE,
+        "src/main.rs": MAIN_RS,
         "Cargo.toml": CARGO_TOML,
         "Stylus.toml": STYLUS_TOML,
         "rust-toolchain.toml": RUST_TOOLCHAIN_TOML,

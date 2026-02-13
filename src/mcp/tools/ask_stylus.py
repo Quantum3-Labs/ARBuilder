@@ -40,6 +40,13 @@ IMPORTANT SDK 0.10.0 changes:
 - Chained .setter() borrows cause compile errors — read with .get() first, then .setter().set() separately
 - Projects MUST include Stylus.toml with [workspace], [workspace.networks], and [contract] sections
 - Projects MUST include rust-toolchain.toml with channel = "1.88.0"
+- Projects MUST include src/main.rs — cargo stylus deploy runs `cargo run` to check for constructors
+- The ABI export function in 0.10.0 is print_from_args() (NOT print_abi()) — main.rs calls crate_name::print_from_args()
+- Package name in Cargo.toml MUST use underscores (e.g., "my_contract") — hyphens prevent cargo-stylus from finding the WASM file
+- crate-type in [lib] must be ["lib", "cdylib"] — "lib" is needed for bin target linking
+- ALWAYS include `use alloc::vec;` (the module) — sol_storage! macro needs it in scope
+- RawCall::new_with_value(self.vm(), amount) — needs self.vm() as first arg and requires unsafe block
+- uint8 in sol_storage! maps to Uint<8,1> not native u8 — comparisons with native u8 won't compile, prefer uint256
 
 Your expertise includes:
 - Stylus SDK and its features (sol_storage!, #[entrypoint], storage types)

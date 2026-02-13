@@ -40,7 +40,7 @@ COUNTER_TEMPLATE = StylusTemplate(
 #[macro_use]
 extern crate alloc;
 
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use stylus_sdk::{alloy_primitives::U256, prelude::*};
 
 sol_storage! {
@@ -105,7 +105,7 @@ mod test {
     }
 }''',
     cargo_toml='''[package]
-name = "stylus-counter"
+name = "stylus_counter"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
@@ -128,7 +128,7 @@ mini-alloc = ["stylus-sdk/mini-alloc"]
 crate-type = ["lib", "cdylib"]
 
 [[bin]]
-name = "stylus-counter"
+name = "stylus_counter"
 path = "src/main.rs"
 
 [profile.release]
@@ -137,11 +137,15 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"''',
-    main_rs='''#![cfg_attr(not(feature = "export-abi"), no_main)]
+    main_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+
+#[cfg(not(any(test, feature = "export-abi")))]
+#[unsafe(no_mangle)]
+pub extern "C" fn main() {}
 
 #[cfg(feature = "export-abi")]
 fn main() {
-    stylus_counter::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
+    stylus_counter::print_from_args();
 }''',
     stylus_toml='[workspace]\n\n[workspace.networks]\n\n[contract]\n',
     rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
@@ -159,7 +163,7 @@ VENDING_MACHINE_TEMPLATE = StylusTemplate(
 #[macro_use]
 extern crate alloc;
 
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use stylus_sdk::alloy_primitives::{Address, U256};
 use stylus_sdk::prelude::*;
 
@@ -245,7 +249,7 @@ mod test {
     }
 }''',
     cargo_toml='''[package]
-name = "stylus-vending-machine"
+name = "stylus_vending_machine"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
@@ -268,7 +272,7 @@ mini-alloc = ["stylus-sdk/mini-alloc"]
 crate-type = ["lib", "cdylib"]
 
 [[bin]]
-name = "stylus-vending-machine"
+name = "stylus_vending_machine"
 path = "src/main.rs"
 
 [profile.release]
@@ -277,11 +281,15 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"''',
-    main_rs='''#![cfg_attr(not(feature = "export-abi"), no_main)]
+    main_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+
+#[cfg(not(any(test, feature = "export-abi")))]
+#[unsafe(no_mangle)]
+pub extern "C" fn main() {}
 
 #[cfg(feature = "export-abi")]
 fn main() {
-    stylus_vending_machine::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
+    stylus_vending_machine::print_from_args();
 }''',
     stylus_toml='[workspace]\n\n[workspace.networks]\n\n[contract]\n',
     rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
@@ -299,7 +307,7 @@ SIMPLE_ERC20_TEMPLATE = StylusTemplate(
 #[macro_use]
 extern crate alloc;
 
-use alloc::{string::String, vec::Vec};
+use alloc::{string::String, vec, vec::Vec};
 use stylus_sdk::{
     alloy_primitives::{Address, U8, U256},
     alloy_sol_types::{sol, SolError},
@@ -470,7 +478,7 @@ mod test {
     }
 }''',
     cargo_toml='''[package]
-name = "stylus-erc20"
+name = "stylus_erc20"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
@@ -493,7 +501,7 @@ mini-alloc = ["stylus-sdk/mini-alloc"]
 crate-type = ["lib", "cdylib"]
 
 [[bin]]
-name = "stylus-erc20"
+name = "stylus_erc20"
 path = "src/main.rs"
 
 [profile.release]
@@ -502,11 +510,15 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"''',
-    main_rs='''#![cfg_attr(not(feature = "export-abi"), no_main)]
+    main_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+
+#[cfg(not(any(test, feature = "export-abi")))]
+#[unsafe(no_mangle)]
+pub extern "C" fn main() {}
 
 #[cfg(feature = "export-abi")]
 fn main() {
-    stylus_erc20::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
+    stylus_erc20::print_from_args();
 }''',
     stylus_toml='[workspace]\n\n[workspace.networks]\n\n[contract]\n',
     rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
@@ -524,7 +536,7 @@ ACCESS_CONTROL_TEMPLATE = StylusTemplate(
 #[macro_use]
 extern crate alloc;
 
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use stylus_sdk::{
     alloy_primitives::{Address, U8, U256},
     alloy_sol_types::{sol, SolError},
@@ -651,7 +663,7 @@ mod test {
     }
 }''',
     cargo_toml='''[package]
-name = "stylus-ownable"
+name = "stylus_ownable"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
@@ -674,7 +686,7 @@ mini-alloc = ["stylus-sdk/mini-alloc"]
 crate-type = ["lib", "cdylib"]
 
 [[bin]]
-name = "stylus-ownable"
+name = "stylus_ownable"
 path = "src/main.rs"
 
 [profile.release]
@@ -683,11 +695,15 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"''',
-    main_rs='''#![cfg_attr(not(feature = "export-abi"), no_main)]
+    main_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+
+#[cfg(not(any(test, feature = "export-abi")))]
+#[unsafe(no_mangle)]
+pub extern "C" fn main() {}
 
 #[cfg(feature = "export-abi")]
 fn main() {
-    stylus_ownable::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
+    stylus_ownable::print_from_args();
 }''',
     stylus_toml='[workspace]\n\n[workspace.networks]\n\n[contract]\n',
     rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',

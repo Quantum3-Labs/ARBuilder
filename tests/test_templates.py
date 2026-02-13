@@ -300,6 +300,75 @@ class TestSystemPromptsAndDisclaimer:
                 f"{template.name} missing stylus-test in dev-dependencies"
             )
 
+    def test_templates_use_underscores_in_package_name(self):
+        """Package names should use underscores, not hyphens."""
+        for template in list_templates():
+            # Extract name from Cargo.toml
+            import re
+            match = re.search(r'name\s*=\s*"([^"]+)"', template.cargo_toml)
+            assert match, f"{template.name} missing name in Cargo.toml"
+            pkg_name = match.group(1)
+            assert "-" not in pkg_name, (
+                f"{template.name} has hyphens in package name: {pkg_name}"
+            )
+
+    def test_templates_have_lib_in_crate_type(self):
+        """crate-type should include both 'lib' and 'cdylib'."""
+        for template in list_templates():
+            assert '["lib", "cdylib"]' in template.cargo_toml, (
+                f"{template.name} crate-type should be [\"lib\", \"cdylib\"]"
+            )
+
+    def test_templates_main_rs_uses_print_from_args(self):
+        """main_rs should use print_from_args(), not print_abi()."""
+        for template in list_templates():
+            assert "print_from_args" in template.main_rs, (
+                f"{template.name} main_rs should use print_from_args()"
+            )
+            assert "print_abi" not in template.main_rs, (
+                f"{template.name} main_rs should NOT use print_abi()"
+            )
+
+    def test_templates_main_rs_has_no_main_fallback(self):
+        """main_rs should have #[unsafe(no_mangle)] fallback for non-export-abi."""
+        for template in list_templates():
+            assert "unsafe(no_mangle)" in template.main_rs, (
+                f"{template.name} main_rs missing #[unsafe(no_mangle)] fallback"
+            )
+
+    def test_templates_have_alloc_vec_import(self):
+        """lib_rs should include use alloc::vec (the module) alongside Vec."""
+        for template in list_templates():
+            assert "alloc::" in template.lib_rs and "vec," in template.lib_rs, (
+                f"{template.name} lib_rs should have use alloc::{{vec, vec::Vec}};"
+            )
+
+    def test_system_prompt_has_print_from_args(self):
+        """System prompt should mention print_from_args."""
+        from src.mcp.tools.generate_stylus_code import get_system_prompt
+        prompt = get_system_prompt("0.10.0")
+        assert "print_from_args" in prompt
+
+    def test_system_prompt_has_underscore_naming(self):
+        """System prompt should mention underscore package names."""
+        from src.mcp.tools.generate_stylus_code import get_system_prompt
+        prompt = get_system_prompt("0.10.0")
+        assert "underscore" in prompt.lower()
+
+    def test_derive_project_name_uses_underscores(self):
+        """_derive_project_name should use underscores."""
+        from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
+        tool = GenerateStylusCodeTool()
+        name = tool._derive_project_name("prediction market contract")
+        assert "_" in name
+        assert "-" not in name
+
+    def test_coding_rules_has_main_rs_pattern(self):
+        """Coding rules should have main_rs pattern."""
+        from src.mcp.resources.coding_rules import STYLUS_CODING_RULES
+        assert "main_rs" in STYLUS_CODING_RULES["patterns"]
+        assert "print_from_args" in STYLUS_CODING_RULES["patterns"]["main_rs"]["example"]
+
 
 # Integration tests that require cargo-stylus
 @pytest.mark.integration
