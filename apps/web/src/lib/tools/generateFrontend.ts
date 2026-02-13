@@ -2,6 +2,10 @@
  * Generate frontend code for Arbitrum dApps (M3 tool)
  */
 
+export const TEMPLATE_DISCLAIMER =
+  "This generated code is a starting entrypoint — a working foundation for you to build upon. " +
+  "Review, customize, and extend it to match your specific requirements before deploying.";
+
 type UIFramework = "daisyui" | "shadcn" | "none";
 type Template = "base" | "dashboard" | "token";
 
@@ -18,6 +22,7 @@ interface GenerateFrontendResult {
   devDependencies: Record<string, string>;
   envVars: string[];
   setupInstructions: string[];
+  disclaimer: string;
 }
 
 // Base Next.js + wagmi + RainbowKit files
@@ -481,5 +486,6 @@ NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
       "3. Get WalletConnect Project ID from cloud.walletconnect.com",
       "4. Run development server: npm run dev",
     ],
+    disclaimer: TEMPLATE_DISCLAIMER,
   };
 }

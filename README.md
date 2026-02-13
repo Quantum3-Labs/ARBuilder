@@ -625,6 +625,7 @@ Complete dApp scaffolding with all components:
 - **Oracle Integration**: Chainlink Price Feeds, VRF, Automation, Functions
 - **Full Orchestration**: Scaffold complete dApps with monorepo structure
 - **ABI Auto-Extraction**: Contract ABI is parsed from Stylus Rust code and injected into backend/frontend
+- **ABI-Aware Generation**: Indexer schema/mappings, frontend hooks, and backend routes are generated from contract ABI
 - **Compiler Verification**: Docker-based `cargo check` loop catches and auto-fixes compilation errors
 - **Executable Scripts**: Generated `setup.sh`, `deploy.sh`, and `start.sh` for one-command workflows
 - **Env Standardization**: Centralized env var config (PORT 3001, CORS, BACKEND_URL) across all components

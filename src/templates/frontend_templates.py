@@ -1445,15 +1445,86 @@ def list_frontend_templates() -> List[FrontendTemplate]:
     ]
 
 
+def generate_hooks_from_abi(abi: List[str]) -> str:
+    """Generate typed React hooks from ABI human-readable strings.
+
+    Creates useRead<Name>() hooks for view/pure functions and
+    useWrite<Name>() hooks for state-mutating functions.
+
+    Args:
+        abi: Human-readable ABI strings (e.g. "function balanceOf(address) view returns (uint256)").
+
+    Returns:
+        TypeScript source code for a hooks file.
+    """
+    read_hooks = []
+    write_hooks = []
+
+    for entry in abi:
+        entry = entry.strip()
+        if not entry.startswith("function "):
+            continue
+
+        # Parse function name
+        func_part = entry[len("function "):]
+        paren_idx = func_part.index("(")
+        func_name = func_part[:paren_idx]
+
+        # Determine if read or write
+        is_view = " view " in entry or " pure " in entry
+
+        # Create PascalCase hook name
+        pascal_name = func_name[0].upper() + func_name[1:]
+
+        if is_view:
+            read_hooks.append(f'''export function useRead{pascal_name}(...args: readonly unknown[]) {{
+  return useReadContract({{
+    address: CONTRACT_ADDRESS,
+    abi: CONTRACT_ABI,
+    functionName: '{func_name}',
+    args: args.length ? args : undefined,
+  }});
+}}''')
+        else:
+            write_hooks.append(f'''export function useWrite{pascal_name}() {{
+  const {{ writeContract, data: hash, isPending, error }} = useWriteContract();
+  const {{ isLoading: isConfirming, isSuccess }} = useWaitForTransactionReceipt({{ hash }});
+
+  const {func_name} = (...args: unknown[]) => {{
+    writeContract({{
+      address: CONTRACT_ADDRESS,
+      abi: CONTRACT_ABI,
+      functionName: '{func_name}',
+      args: args as never[],
+    }});
+  }};
+
+  return {{ {func_name}, hash, isPending, isConfirming, isSuccess, error }};
+}}''')
+
+    all_hooks = read_hooks + write_hooks
+    if not all_hooks:
+        return ""
+
+    return '''"use client";
+
+import {{ useReadContract, useWriteContract, useWaitForTransactionReceipt }} from 'wagmi';
+import {{ CONTRACT_ADDRESS, CONTRACT_ABI }} from '@/config/contract';
+
+''' + "\n\n".join(all_hooks) + "\n"
+
+
 def render_with_abi(files: Dict[str, str], abi_human_readable: List[str]) -> Dict[str, str]:
     """Replace ABI placeholders in frontend template files with actual ABI.
+
+    If ABI is available, also generates typed hooks from the ABI entries.
 
     Args:
         files: Dict of path -> content from a FrontendTemplate.
         abi_human_readable: Human-readable ABI strings for viem's parseAbi().
 
     Returns:
-        New files dict with placeholders replaced.
+        New files dict with placeholders replaced and hooks generated.
     """
     rendered = {}
     for path, content in files.items():
@@ -1461,4 +1532,11 @@ def render_with_abi(files: Dict[str, str], abi_human_readable: List[str]) -> Dic
             hr_lines = json.dumps(abi_human_readable, indent=2)
             content = content.replace(ABI_PLACEHOLDER, hr_lines)
         rendered[path] = content
+
+    # Generate ABI-aware hooks if ABI has function entries
+    if abi_human_readable:
+        hooks_code = generate_hooks_from_abi(abi_human_readable)
+        if hooks_code:
+            rendered["src/hooks/useContract.ts"] = hooks_code
+
     return rendered

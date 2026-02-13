@@ -116,8 +116,7 @@ alloy-primitives = "1.0.1"
 alloy-sol-types = "1.0.1"
 
 [dev-dependencies]
-tokio = { version = "1.21.0", features = ["full"] }
-ethers = "2.0"
+stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
 
 [features]
 default = ["mini-alloc"]
@@ -144,7 +143,7 @@ opt-level = "s"''',
 fn main() {
     stylus_counter::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
 }''',
-    stylus_toml='[contract]\n',
+    stylus_toml='[workspace]\n\n[workspace.networks]\n\n[contract]\n',
     rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
 )
 
@@ -257,8 +256,7 @@ alloy-primitives = "1.0.1"
 alloy-sol-types = "1.0.1"
 
 [dev-dependencies]
-tokio = { version = "1.21.0", features = ["full"] }
-ethers = "2.0"
+stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
 
 [features]
 default = ["mini-alloc"]
@@ -285,7 +283,7 @@ opt-level = "s"''',
 fn main() {
     stylus_vending_machine::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
 }''',
-    stylus_toml='[contract]\n',
+    stylus_toml='[workspace]\n\n[workspace.networks]\n\n[contract]\n',
     rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
 )
 
@@ -483,8 +481,7 @@ alloy-primitives = "1.0.1"
 alloy-sol-types = "1.0.1"
 
 [dev-dependencies]
-tokio = { version = "1.21.0", features = ["full"] }
-ethers = "2.0"
+stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
 
 [features]
 default = ["mini-alloc"]
@@ -511,7 +508,7 @@ opt-level = "s"''',
 fn main() {
     stylus_erc20::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
 }''',
-    stylus_toml='[contract]\n',
+    stylus_toml='[workspace]\n\n[workspace.networks]\n\n[contract]\n',
     rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
 )
 
@@ -665,8 +662,7 @@ alloy-primitives = "1.0.1"
 alloy-sol-types = "1.0.1"
 
 [dev-dependencies]
-tokio = { version = "1.21.0", features = ["full"] }
-ethers = "2.0"
+stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
 
 [features]
 default = ["mini-alloc"]
@@ -693,7 +689,7 @@ opt-level = "s"''',
 fn main() {
     stylus_ownable::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
 }''',
-    stylus_toml='[contract]\n',
+    stylus_toml='[workspace]\n\n[workspace.networks]\n\n[contract]\n',
     rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
 )
 

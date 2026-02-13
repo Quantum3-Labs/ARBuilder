@@ -974,8 +974,123 @@ def list_backend_templates() -> List[BackendTemplate]:
     ]
 
 
+def generate_service_from_abi(abi: List[str], framework: str) -> Optional[str]:
+    """Generate service methods and routes from ABI human-readable strings.
+
+    Creates one method per ABI function:
+    - GET endpoints for view/pure functions
+    - POST endpoints for state-mutating functions
+
+    Args:
+        abi: Human-readable ABI strings.
+        framework: "nestjs" or "express".
+
+    Returns:
+        TypeScript source for the service/routes, or None if no functions found.
+    """
+    read_funcs = []
+    write_funcs = []
+
+    for entry in abi:
+        entry = entry.strip()
+        if not entry.startswith("function "):
+            continue
+
+        func_part = entry[len("function "):]
+        paren_idx = func_part.index("(")
+        func_name = func_part[:paren_idx]
+
+        # Parse arguments
+        args_str = func_part[paren_idx + 1:func_part.index(")")]
+        args = [a.strip() for a in args_str.split(",") if a.strip()]
+
+        is_view = " view " in entry or " pure " in entry
+
+        if is_view:
+            read_funcs.append({"name": func_name, "args": args})
+        else:
+            write_funcs.append({"name": func_name, "args": args})
+
+    if not read_funcs and not write_funcs:
+        return None
+
+    if framework == "express":
+        return _generate_express_routes(read_funcs, write_funcs)
+    return _generate_nestjs_service(read_funcs, write_funcs)
+
+
+def _generate_nestjs_service(read_funcs: list, write_funcs: list) -> str:
+    """Generate NestJS service methods from parsed ABI functions."""
+    methods = []
+    for func in read_funcs:
+        name = func["name"]
+        pascal = name[0].upper() + name[1:]
+        methods.append(
+            f"  async read{pascal}(): Promise<unknown> {{\n"
+            f"    return await this.contract.read.{name}();\n"
+            f"  }}"
+        )
+    for func in write_funcs:
+        name = func["name"]
+        pascal = name[0].upper() + name[1:]
+        arg_names = [f"arg{i}" for i in range(len(func["args"]))]
+        params = ", ".join(f"{a}: unknown" for a in arg_names)
+        args_list = ", ".join(arg_names)
+        methods.append(
+            f"  async write{pascal}({params}): Promise<`0x${{string}}`> {{\n"
+            f"    return await this.contract.write.{name}([{args_list}]);\n"
+            f"  }}"
+        )
+    return "\n\n".join(methods)
+
+
+def _generate_express_routes(read_funcs: list, write_funcs: list) -> str:
+    """Generate Express route handlers from parsed ABI functions."""
+    routes = []
+    for func in read_funcs:
+        name = func["name"]
+        routes.append(
+            f"contractRouter.get('/{name}', async (req, res, next) => {{\n"
+            f"  try {{\n"
+            f"    const client = getClient();\n"
+            f"    const result = await client.readContract({{\n"
+            f"      address: CONTRACT_ADDRESS,\n"
+            f"      abi: CONTRACT_ABI,\n"
+            f"      functionName: '{name}',\n"
+            f"    }});\n"
+            f"    res.json({{ {name}: result?.toString() }});\n"
+            f"  }} catch (error) {{\n"
+            f"    next(error);\n"
+            f"  }}\n"
+            f"}});"
+        )
+    for func in write_funcs:
+        name = func["name"]
+        routes.append(
+            f"contractRouter.post('/{name}', async (req, res, next) => {{\n"
+            f"  try {{\n"
+            f"    const walletClient = getWalletClient();\n"
+            f"    const client = getClient();\n"
+            f"    const hash = await walletClient.writeContract({{\n"
+            f"      address: CONTRACT_ADDRESS,\n"
+            f"      abi: CONTRACT_ABI,\n"
+            f"      functionName: '{name}',\n"
+            f"      args: req.body.args || [],\n"
+            f"    }});\n"
+            f"    const receipt = await client.waitForTransactionReceipt({{ hash }});\n"
+            f"    res.json({{ hash, blockNumber: receipt.blockNumber.toString(), status: receipt.status }});\n"
+            f"  }} catch (error) {{\n"
+            f"    next(error);\n"
+            f"  }}\n"
+            f"}});"
+        )
+    return "\n\n".join(routes)
+
+
 def render_with_abi(files: Dict[str, str], abi_json: list, abi_human_readable: List[str]) -> Dict[str, str]:
     """Replace ABI placeholders in backend template files with actual ABI.
+
+    If ABI is available, also regenerates service methods and routes.
 
     Args:
         files: Dict of path -> content from a BackendTemplate.
@@ -983,7 +1098,7 @@ def render_with_abi(files: Dict[str, str], abi_json: list, abi_human_readable: L
         abi_human_readable: Human-readable ABI strings (for Express parseAbi).
 
     Returns:
-        New files dict with placeholders replaced.
+        New files dict with placeholders replaced and ABI-aware routes.
     """
     rendered = {}
     for path, content in files.items():

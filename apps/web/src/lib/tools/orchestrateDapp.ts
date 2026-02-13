@@ -13,6 +13,10 @@ import { generateIndexer } from "./generateIndexer";
 import { generateOracle } from "./generateOracle";
 import { extractAbiFromCode, abiToViemHumanReadable } from "../abiExtractor";
 
+export const TEMPLATE_DISCLAIMER =
+  "This generated code is a starting entrypoint — a working foundation for you to build upon. " +
+  "Review, customize, and extend it to match your specific requirements before deploying.";
+
 type Component = "contract" | "backend" | "frontend" | "indexer" | "oracle";
 type Network = "arbitrum-sepolia" | "arbitrum-one";
 
@@ -35,6 +39,7 @@ interface OrchestrateDappResult {
   structure: Record<string, ComponentResult>;
   rootFiles: Record<string, string>;
   setupInstructions: string[];
+  disclaimer: string;
 }
 
 const BACKEND_PORT = "3001";
@@ -120,7 +125,11 @@ panic = "abort"
 opt-level = "s"
 `;
 
-const STYLUS_TOML = `[contract]
+const STYLUS_TOML = `[workspace]
+
+[workspace.networks]
+
+[contract]
 `;
 
 const RUST_TOOLCHAIN_TOML = `[toolchain]
@@ -514,5 +523,6 @@ Thumbs.db
       "3. ./deploy.sh  — build and deploy the contract",
       "4. ./start.sh   — launch backend + frontend",
     ],
+    disclaimer: TEMPLATE_DISCLAIMER,
   };
 }

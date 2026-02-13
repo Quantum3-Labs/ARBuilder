@@ -2,6 +2,10 @@
  * Generate backend code for Arbitrum dApps (M3 tool)
  */
 
+export const TEMPLATE_DISCLAIMER =
+  "This generated code is a starting entrypoint — a working foundation for you to build upon. " +
+  "Review, customize, and extend it to match your specific requirements before deploying.";
+
 type BackendFramework = "nestjs" | "express";
 
 interface GenerateBackendArgs {
@@ -18,6 +22,7 @@ interface GenerateBackendResult {
   envVars: string[];
   scripts: Record<string, string>;
   setupInstructions: string[];
+  disclaimer: string;
 }
 
 // NestJS base template
@@ -366,5 +371,6 @@ FRONTEND_URL=http://localhost:3000
       "3. Run development server: npm run dev",
       "4. Build for production: npm run build",
     ],
+    disclaimer: TEMPLATE_DISCLAIMER,
   };
 }

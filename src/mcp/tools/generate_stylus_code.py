@@ -17,6 +17,11 @@ from .get_stylus_context import GetStylusContextTool
 
 logger = logging.getLogger(__name__)
 
+TEMPLATE_DISCLAIMER = (
+    "This generated code is a starting entrypoint — a working foundation for you to build upon. "
+    "Review, customize, and extend it to match your specific requirements before deploying."
+)
+
 # Import templates
 try:
     from src.templates.stylus_templates import (
@@ -98,13 +103,19 @@ Key Stylus patterns for v{target_version}:
 8. Handle errors with {error_handling}
 9. Include {cfg_attr}
 10. Follow Rust naming conventions (snake_case for functions, PascalCase for types)
+11. For ETH transfers: use transfer_eth(self, to, amount) from stylus_sdk::call::transfer (NOT evm::transfer_eth)
+12. For error types: define with sol! {{ error MyError(...); }}, wrap in enum with #[derive(SolidityError)]
+13. For .abi_encode() on errors: import SolError via use alloy_sol_types::SolError;
+14. Avoid chained .setter() borrows — get value with .get() first, then .setter().set() separately
+15. Do NOT use `use stylus_sdk::evm` — the evm module was removed in 0.10.0
+16. Do NOT use `use stylus_sdk::msg` — use self.vm().msg_sender(), self.vm().msg_value()
 
 Dependencies for v{target_version}:
 - stylus-sdk = "{target_version}"
 - alloy-primitives = "{alloy_version}"
 
 Required project files (SDK 0.10.0+):
-- Stylus.toml with [contract] section
+- Stylus.toml with [workspace], [workspace.networks], and [contract] sections
 - rust-toolchain.toml with channel = "1.88.0"
 
 When generating code:
@@ -143,7 +154,7 @@ ABSOLUTE RULES - NEVER VIOLATE THESE:
 3. There must be EXACTLY ONE sol_storage! block - NEVER create empty sol_storage! blocks
 4. KEEP the #[entrypoint] attribute inside sol_storage!
 5. KEEP the #[public] attribute on the impl block
-6. NEVER add "use alloy_sol_types::sol;" - it's already available via stylus_sdk::prelude::*
+6. The sol! macro is available via prelude — do NOT add standalone "use alloy_sol_types::sol;". BUT if using .abi_encode() on errors, MUST import SolError: use alloy_sol_types::SolError; (or combined: alloy_sol_types::{{sol, SolError}})
 7. If adding events/errors with sol! macro, they must be BEFORE sol_storage!
 8. KEEP the Cargo.toml [profile.release] section exactly as provided
 
@@ -172,7 +183,7 @@ IMPORTANT: Do NOT output Cargo.toml - the template's Cargo.toml will be used as-
 CONTRACT_TEMPLATES = {
     "erc20": """use stylus_sdk::prelude::*;
 use stylus_sdk::alloy_primitives::{Address, U256};
-use stylus_sdk::msg;
+
 
 sol_storage! {
     #[entrypoint]
@@ -190,7 +201,7 @@ impl Token {
 """,
     "erc721": """use stylus_sdk::prelude::*;
 use stylus_sdk::alloy_primitives::{Address, U256};
-use stylus_sdk::msg;
+
 
 sol_storage! {
     #[entrypoint]
@@ -414,6 +425,24 @@ class GenerateStylusCodeTool(BaseTool):
             validation_warnings = self._validate_code(code)
             warnings.extend(validation_warnings)
 
+            # Derive project name from prompt and fix Cargo.toml/main.rs references
+            if cargo_toml_output:
+                project_name = self._derive_project_name(prompt)
+                cargo_toml_output = re.sub(
+                    r'name\s*=\s*"[^"]+"',
+                    f'name = "{project_name}"',
+                    cargo_toml_output,
+                    count=1,
+                )
+                # Fix main.rs crate reference if template has one
+                if code:
+                    # The main.rs print_abi reference uses the crate name
+                    code = re.sub(
+                        r'(\w+)::print_abi\b',
+                        f'{project_name.replace("-", "_")}::print_abi',
+                        code,
+                    )
+
             return {
                 "code": code,
                 "cargo_toml": cargo_toml_output,
@@ -425,6 +454,7 @@ class GenerateStylusCodeTool(BaseTool):
                 "template_used": template_name,
                 "compile_verified": compile_verified,
                 "compile_attempts": compile_attempts,
+                "disclaimer": TEMPLATE_DISCLAIMER,
             }
 
         except Exception as e:
@@ -651,9 +681,10 @@ class GenerateStylusCodeTool(BaseTool):
                 flags=re.MULTILINE
             )
 
-        # Fix 4: Remove incorrect imports (sol! is in prelude)
-        fixed = re.sub(r'use alloy_sol_types::sol;\n?', '', fixed)
-        fixed = re.sub(r'use stylus_sdk::alloy_sol_types::sol;\n?', '', fixed)
+        # Fix 4: Remove standalone sol! imports (sol! is in prelude)
+        # Only remove the standalone import — preserve combined imports like {sol, SolError}
+        fixed = re.sub(r'^use alloy_sol_types::sol;\s*$', '', fixed, flags=re.MULTILINE)
+        fixed = re.sub(r'^use stylus_sdk::alloy_sol_types::sol;\s*$', '', fixed, flags=re.MULTILINE)
 
         # Fix 5: Handle Vec imports - avoid duplicates
         # If we have both "use alloc::vec::Vec" and "use alloc::{...vec::Vec...}", remove the standalone
@@ -682,6 +713,14 @@ class GenerateStylusCodeTool(BaseTool):
             )
 
         return fixed
+
+    @staticmethod
+    def _derive_project_name(prompt: str) -> str:
+        """Derive a snake_case project name from the user prompt."""
+        stop_words = {"a", "an", "the", "for", "with", "and", "or", "that", "this", "create", "build", "make", "generate", "implement"}
+        words = [w.lower() for w in re.findall(r'[a-zA-Z]+', prompt) if w.lower() not in stop_words]
+        name_words = words[:3] if words else ["stylus", "contract"]
+        return "-".join(name_words)
 
     def _build_fix_prompt(self, code: str, error_text: str) -> str:
         """Build a prompt asking the LLM to fix compilation errors.

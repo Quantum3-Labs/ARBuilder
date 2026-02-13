@@ -2,6 +2,10 @@
  * Generate Chainlink oracle integration code (M3 tool)
  */
 
+export const TEMPLATE_DISCLAIMER =
+  "This generated code is a starting entrypoint — a working foundation for you to build upon. " +
+  "Review, customize, and extend it to match your specific requirements before deploying.";
+
 type OracleType = "price_feed" | "vrf" | "automation" | "functions";
 type Network = "arbitrum-one" | "arbitrum-sepolia";
 
@@ -16,6 +20,7 @@ interface GenerateOracleResult {
   dependencies: Record<string, string>;
   addresses: Record<string, string>;
   setupInstructions: string[];
+  disclaimer: string;
 }
 
 // Chainlink addresses on Arbitrum
@@ -526,5 +531,6 @@ export default config;
       `4. Deploy to ${network}: npm run deploy`,
       `5. Follow the console instructions for Chainlink ${oracleType} setup`,
     ],
+    disclaimer: TEMPLATE_DISCLAIMER,
   };
 }

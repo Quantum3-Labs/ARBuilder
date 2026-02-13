@@ -11,7 +11,7 @@
         "msg::sender() replaced with self.vm().msg_sender()",
         "msg::value() replaced with self.vm().msg_value()",
         "evm::log() replaced with self.vm().log()",
-        "Requires Stylus.toml with [contract] section",
+        "Requires Stylus.toml with [workspace], [workspace.networks], and [contract] sections",
         "Requires rust-toolchain.toml with channel 1.88.0",
         "alloy-primitives upgraded to 1.0.1 (no longer pinned)",
         "ruint pin no longer needed"
@@ -73,6 +73,10 @@
       "sender": "self.vm().msg_sender()",
       "value": "self.vm().msg_value()",
       "log": "self.vm().log(Event)",
+      "transfer_eth": "transfer_eth(self, to, amount) from stylus_sdk::call::transfer",
+      "error_import": "use alloy_sol_types::SolError;",
+      "error_derive": "#[derive(SolidityError)]",
+      "forbidden_modules": ["stylus_sdk::evm", "stylus_sdk::msg"],
       "required_files": ["Stylus.toml", "rust-toolchain.toml"]
     },
     "0.9": {

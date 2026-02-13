@@ -17,6 +17,7 @@ import json
 from typing import Any, List, Optional
 
 from .base import BaseTool
+from .generate_stylus_code import TEMPLATE_DISCLAIMER
 from ...templates import (
     select_stylus_template,
     select_backend_template,
@@ -153,11 +154,15 @@ ABI is auto-extracted from the contract and injected into backend/frontend."""
             project["setup_instructions"].append("3. Run ./start.sh to launch backend + frontend")
 
         if "indexer" in components:
-            project["components"]["indexer"] = self._generate_indexer(prompt, network)
+            project["components"]["indexer"] = self._generate_indexer(
+                prompt, network, abi_json=abi_json, abi_human_readable=abi_human_readable
+            )
             project["setup_instructions"].append("4. Deploy the subgraph to index contract events")
 
         if "oracle" in components:
-            project["components"]["oracle"] = self._generate_oracle(prompt, network)
+            project["components"]["oracle"] = self._generate_oracle(
+                prompt, network, abi_json=abi_json
+            )
             project["setup_instructions"].append("5. Set up Chainlink oracle integration")
 
         # Generate root configuration files (includes scripts)
@@ -175,6 +180,7 @@ ABI is auto-extracted from the contract and injected into backend/frontend."""
                 for c in context[:5]
             ]
 
+        project["disclaimer"] = TEMPLATE_DISCLAIMER
         return project
 
     def _generate_project_name(self, prompt: str) -> str:
@@ -328,14 +334,28 @@ ABI is auto-extracted from the contract and injected into backend/frontend."""
             "env_vars": template.env_vars,
         }
 
-    def _generate_indexer(self, prompt: str, network: str) -> dict:
-        """Generate indexer component."""
+    def _generate_indexer(
+        self,
+        prompt: str,
+        network: str,
+        abi_json: Optional[list] = None,
+        abi_human_readable: Optional[list] = None,
+    ) -> dict:
+        """Generate indexer component with optional ABI-aware schema."""
         template = select_indexer_template(prompt)
+        files = dict(template.files)
+
+        # If ABI is available, generate custom schema and mapping from events
+        if abi_json:
+            events = [e for e in abi_json if e.get("type") == "event"]
+            if events:
+                files["schema.graphql"] = self._generate_indexer_schema(events)
+                files["src/mapping.ts"] = self._generate_indexer_mapping(events)
 
         return {
             "template": template.name,
             "type": template.template_type,
-            "files": template.files,
+            "files": files,
             "dependencies": template.dependencies,
             "networks": template.networks,
             "commands": {
@@ -345,8 +365,66 @@ ABI is auto-extracted from the contract and injected into backend/frontend."""
             },
         }
 
-    def _generate_oracle(self, prompt: str, network: str) -> dict:
-        """Generate oracle component."""
+    @staticmethod
+    def _generate_indexer_schema(events: list) -> str:
+        """Generate schema.graphql entities from contract events."""
+        entities = []
+        for event in events:
+            name = event.get("name", "UnknownEvent")
+            fields = []
+            for inp in event.get("inputs", []):
+                field_name = inp.get("name", "field")
+                sol_type = inp.get("type", "uint256")
+                gql_type = "BigInt" if "int" in sol_type else ("Bytes" if sol_type == "address" else "String")
+                fields.append(f"  {field_name}: {gql_type}!")
+            fields_str = "\n".join(fields)
+            entities.append(
+                f"type {name}Event @entity {{\n  id: ID!\n  blockNumber: BigInt!\n  blockTimestamp: BigInt!\n  transactionHash: Bytes!\n{fields_str}\n}}"
+            )
+        return "\n\n".join(entities) + "\n"
+
+    @staticmethod
+    def _generate_indexer_mapping(events: list) -> str:
+        """Generate mapping.ts handlers from contract events."""
+        imports = []
+        handlers = []
+        for event in events:
+            name = event.get("name", "UnknownEvent")
+            imports.append(f"  {name} as {name}Event")
+            field_assignments = []
+            for inp in event.get("inputs", []):
+                field_name = inp.get("name", "field")
+                field_assignments.append(f"  entity.{field_name} = event.params.{field_name};")
+            assignments_str = "\n".join(field_assignments)
+            handlers.append(
+                f"export function handle{name}(event: {name}Event): void {{\n"
+                f"  let entity = new {name}EventEntity(\n"
+                f"    event.transaction.hash.concatI32(event.logIndex.toI32())\n"
+                f"  );\n"
+                f"  entity.blockNumber = event.block.number;\n"
+                f"  entity.blockTimestamp = event.block.timestamp;\n"
+                f"  entity.transactionHash = event.transaction.hash;\n"
+                f"{assignments_str}\n"
+                f"  entity.save();\n"
+                f"}}"
+            )
+        imports_str = ",\n".join(imports)
+        handlers_str = "\n\n".join(handlers)
+        return (
+            f'import {{\n{imports_str}\n}} from "../generated/Contract/Contract";\n'
+            f'import {{\n'
+            + ",\n".join(f"  {e.get('name', '')}Event as {e.get('name', '')}EventEntity" for e in events)
+            + f'\n}} from "../generated/schema";\n\n'
+            f"{handlers_str}\n"
+        )
+
+    def _generate_oracle(
+        self,
+        prompt: str,
+        network: str,
+        abi_json: Optional[list] = None,
+    ) -> dict:
+        """Generate oracle component with optional ABI context."""
         template = select_oracle_template(prompt)
 
         return {

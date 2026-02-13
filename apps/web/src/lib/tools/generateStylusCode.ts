@@ -47,9 +47,10 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     );
   }
 
-  // Fix 4: Remove incorrect imports (sol! is in prelude)
-  fixed = fixed.replace(/use alloy_sol_types::sol;\n?/g, "");
-  fixed = fixed.replace(/use stylus_sdk::alloy_sol_types::sol;\n?/g, "");
+  // Fix 4: Remove standalone sol! imports (sol! is in prelude)
+  // Only remove standalone import — preserve combined imports like {sol, SolError}
+  fixed = fixed.replace(/^use alloy_sol_types::sol;\s*$/gm, "");
+  fixed = fixed.replace(/^use stylus_sdk::alloy_sol_types::sol;\s*$/gm, "");
 
   // Fix 5: Handle Vec imports - avoid duplicates
   // If we have both "use alloc::vec::Vec" and "use alloc::{...vec::Vec...}", remove the standalone
@@ -94,6 +95,10 @@ export interface GenerateStylusCodeInput {
   cargoToml?: string;
 }
 
+export const TEMPLATE_DISCLAIMER =
+  "This generated code is a starting entrypoint — a working foundation for you to build upon. " +
+  "Review, customize, and extend it to match your specific requirements before deploying.";
+
 export interface GenerateStylusCodeOutput {
   code: string;
   cargoToml: string;
@@ -107,6 +112,7 @@ export interface GenerateStylusCodeOutput {
   targetVersion: string;
   /** The base template that was used. */
   templateUsed: string;
+  disclaimer: string;
 }
 
 export async function generateStylusCode(
@@ -232,5 +238,6 @@ export async function generateStylusCode(
     tokensUsed: response.usage.totalTokens,
     targetVersion,
     templateUsed: template.name,
+    disclaimer: TEMPLATE_DISCLAIMER,
   };
 }

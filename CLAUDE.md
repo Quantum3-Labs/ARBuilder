@@ -212,6 +212,10 @@ opt-level = "s"
 
 **Stylus.toml** (required):
 ```toml
+[workspace]
+
+[workspace.networks]
+
 [contract]
 ```
 

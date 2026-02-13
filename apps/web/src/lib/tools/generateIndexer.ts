@@ -2,6 +2,10 @@
  * Generate The Graph subgraph for Arbitrum contracts (M3 tool)
  */
 
+export const TEMPLATE_DISCLAIMER =
+  "This generated code is a starting entrypoint — a working foundation for you to build upon. " +
+  "Review, customize, and extend it to match your specific requirements before deploying.";
+
 type SubgraphType = "erc20" | "erc721" | "defi" | "custom";
 
 interface GenerateIndexerArgs {
@@ -17,6 +21,7 @@ interface GenerateIndexerResult {
   dependencies: Record<string, string>;
   commands: string[];
   setupInstructions: string[];
+  disclaimer: string;
 }
 
 // ERC20 Subgraph Template
@@ -445,5 +450,6 @@ export function generateIndexer(args: GenerateIndexerArgs): GenerateIndexerResul
       "6. Authenticate: graph auth --studio YOUR_DEPLOY_KEY",
       "7. Deploy: npm run deploy",
     ],
+    disclaimer: TEMPLATE_DISCLAIMER,
   };
 }

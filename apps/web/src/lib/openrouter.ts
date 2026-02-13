@@ -123,6 +123,11 @@ Key patterns for v${targetVersion}:
 - Use ${mainAttr} for external functions
 - Handle errors with ${errorHandling}
 - Follow Rust naming conventions (snake_case for functions, PascalCase for types)
+- For ETH transfers: use transfer_eth(self, to, amount) from stylus_sdk::call::transfer
+- For error types: define with sol! { error MyError(...); }, wrap in enum with #[derive(SolidityError)]
+- For .abi_encode() on errors: import SolError via use alloy_sol_types::SolError
+- Avoid chained .setter() borrows — get value with .get() first, then .setter().set() separately
+- Do NOT use stylus_sdk::evm (removed in 0.10.0) or stylus_sdk::msg
 
 Security best practices:
 - Check for overflows using checked_add/checked_sub
@@ -205,7 +210,7 @@ ABSOLUTE RULES - NEVER VIOLATE THESE:
 3. There must be EXACTLY ONE sol_storage! block - NEVER create empty sol_storage! blocks
 4. KEEP the #[entrypoint] attribute inside sol_storage!
 5. KEEP the #[public] attribute on the impl block
-6. NEVER add "use alloy_sol_types::sol;" - it's already available via stylus_sdk::prelude::*
+6. The sol! macro is available via prelude — do NOT add standalone "use alloy_sol_types::sol;". BUT if using .abi_encode() on errors, MUST import SolError: use alloy_sol_types::SolError;
 7. If adding events/errors with sol! macro, they must be BEFORE sol_storage!
 8. KEEP the Cargo.toml [profile.release] section exactly as provided
 
@@ -219,8 +224,11 @@ WHAT YOU MAY DO:
 IMPORTS - USE THESE PATTERNS:
 - Types from stylus_sdk::alloy_primitives::{Address, U256, U8, ...}
 - sol! macro is available from stylus_sdk::prelude::*
-- For events: evm::log(EventName { field1, field2 })
-- For errors: return Err(ErrorName { ... }.abi_encode())
+- For events: self.vm().log(EventName { field1, field2 }) (NOT evm::log)
+- For caller: self.vm().msg_sender() (NOT msg::sender())
+- For ETH transfers: transfer_eth(self, to, amount) from stylus_sdk::call::transfer
+- For errors: return Err(ErrorName { ... }.abi_encode()) — requires use alloy_sol_types::SolError;
+- Do NOT use stylus_sdk::evm (removed in 0.10.0) or stylus_sdk::msg
 
 Output format:
 1. Brief explanation of changes (1-2 sentences)
@@ -275,12 +283,24 @@ Use the provided context to give accurate, up-to-date answers.
 Include code examples when relevant.
 Be concise but thorough.
 
-CRITICAL VERSION INFORMATION (January 2025):
+CRITICAL VERSION INFORMATION (January 2026):
 ALWAYS use these versions - ignore any outdated version info in retrieved context:
-- stylus-sdk: ${mainVersion} (stable, recommended for new projects)
+- stylus-sdk: ${mainVersion} (latest stable, recommended for new projects)
 - alloy-primitives: ${alloyVersion}
 - alloy-sol-types: ${alloyVersion}
-- Rust version: 1.81 (1.82+ may have compatibility issues)
+- Rust version: 1.88.0 (via rust-toolchain.toml)
+
+IMPORTANT SDK 0.10.0 changes:
+- msg::sender() is replaced by self.vm().msg_sender()
+- msg::value() is replaced by self.vm().msg_value()
+- evm::log() is replaced by self.vm().log()
+- use stylus_sdk::evm is removed entirely — use self.vm() methods
+- transfer_eth moved to stylus_sdk::call::transfer, needs self context
+- Error types: define with sol! { error MyError(...); }, wrap enum with #[derive(SolidityError)]
+- For .abi_encode() on errors: import use alloy_sol_types::SolError;
+- Chained .setter() borrows cause compile errors — read with .get() first, then .setter().set() separately
+- Projects MUST include Stylus.toml with [workspace], [workspace.networks], and [contract] sections
+- Projects MUST include rust-toolchain.toml with channel = "1.88.0"
 
 When asked about versions, ALWAYS use the version info above, NOT from retrieved context which may be outdated.`,
     },

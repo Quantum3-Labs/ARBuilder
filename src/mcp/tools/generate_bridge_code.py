@@ -12,6 +12,7 @@ import re
 from typing import Any
 
 from .base import BaseTool
+from .generate_stylus_code import TEMPLATE_DISCLAIMER
 
 # Template for ETH deposit (L1 -> L2)
 ETH_DEPOSIT_TEMPLATE = '''import { providers, Wallet, utils } from 'ethers';
@@ -399,6 +400,7 @@ The generated code uses ethers.js v5 and @arbitrum/sdk."""
                 "PRIVATE_KEY",
             ],
             "notes": self._get_notes(bridge_type),
+            "disclaimer": TEMPLATE_DISCLAIMER,
         }
 
         if bridge_type in ["eth_l1_l3", "erc20_l1_l3"]:

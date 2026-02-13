@@ -92,18 +92,34 @@ impl MyContract {
         },
 
         "errors": {
-            "description": "Define errors with sol! macro, return encoded",
+            "description": "Define errors with sol! macro, derive SolidityError on enum, return abi_encode()",
             "definition": '''sol! {
     error InsufficientBalance(address account, uint256 required, uint256 available);
     error Unauthorized();
+}
+
+#[derive(SolidityError)]
+pub enum ContractError {
+    InsufficientBalance(InsufficientBalance),
+    Unauthorized(Unauthorized),
 }''',
-            "usage": '''if balance < amount {
+            "usage": '''// MUST import SolError for .abi_encode():
+// use alloy_sol_types::SolError;
+if balance < amount {
     return Err(InsufficientBalance {
         account: sender,
         required: amount,
         available: balance,
-    }.encode());
+    }.abi_encode());
 }''',
+        },
+
+        "eth_transfer": {
+            "description": "Transfer ETH using stylus_sdk::call::transfer (NOT evm::transfer_eth)",
+            "example": '''use stylus_sdk::call::transfer_eth;
+
+// Inside a #[public] method (needs &mut self for vm context):
+transfer_eth(self, to, amount)?;''',
         },
 
         "tests": {
@@ -135,14 +151,23 @@ mod tests {
         "Missing WASM target - rustup target add wasm32-unknown-unknown",
         "Floating point operations - Not supported in Stylus WASM",
         "Direct std usage - Use #![no_std] with alloc",
-        "Missing Stylus.toml - Required since SDK 0.10.0, must have [contract] section",
+        "Missing Stylus.toml - Required since SDK 0.10.0, must have [workspace], [workspace.networks], and [contract] sections",
         "Missing rust-toolchain.toml - Required since SDK 0.10.0",
         "Using deprecated msg::sender() - Use self.vm().msg_sender() since 0.10.0",
         "Using deprecated evm::log() - Use self.vm().log() since 0.10.0",
+        "Using `use stylus_sdk::evm` - Module removed in 0.10.0, use self.vm() methods",
+        "Using evm::transfer_eth() - Moved to stylus_sdk::call::transfer_eth(self, to, amount)",
+        "Missing SolError import - .abi_encode() on errors requires use alloy_sol_types::SolError",
+        "Chained .setter() borrows - Read with .get() first, then .setter().set() separately",
+    ],
+
+    "forbidden_imports": [
+        "stylus_sdk::evm",
+        "stylus_sdk::msg",
     ],
 
     "required_files": {
-        "Stylus.toml": "[contract]\n",
+        "Stylus.toml": '[workspace]\n\n[workspace.networks]\n\n[contract]\n',
         "rust-toolchain.toml": '[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
     },
 
