@@ -96,14 +96,14 @@ Key Stylus patterns for v{target_version}:
 1. Use `sol_storage!` macro for state storage
 2. Use `#[entrypoint]` attribute on the main contract struct
 3. Use `{main_attr}` for public functions
-4. Use Stylus SDK types: `StorageVec`, `StorageMap`, `StorageU256`, `StorageAddress`, etc.
+4. STORAGE ACCESS: ALWAYS use .get() to read: `self.field.get()` NOT `self.field`. ALWAYS use .set() to write. For mappings: `self.map.get(key)` and `self.map.setter(key).set(val)`.
 5. Use `{sender_pattern}` to get the caller address
 6. Use `self.vm().msg_value()` to get sent ETH value
 7. Use `self.vm().log(Event {{ ... }})` to emit events (NOT evm::log)
 8. Handle errors with {error_handling}
 9. Include {cfg_attr}
 10. Follow Rust naming conventions (snake_case for functions, PascalCase for types)
-11. For ETH transfers: use stylus_sdk::call::transfer::transfer_eth; then call transfer_eth(self, to, amount)? (NOT evm::transfer_eth)
+11. TRANSFER ETH: `use stylus_sdk::call::transfer::transfer_eth;` then `transfer_eth(self, to, amount)?;` — NOT self.transfer_eth() or call::transfer_eth()
 12. For error types: define with sol! {{ error MyError(...); }}, wrap in enum with #[derive(SolidityError)]
 13. For .abi_encode() on errors: import SolError via use alloy_sol_types::SolError;
 14. Avoid chained .setter() borrows — get value with .get() first, then .setter().set() separately
@@ -116,7 +116,7 @@ Key Stylus patterns for v{target_version}:
 21. A src/main.rs is REQUIRED — cargo stylus deploy uses `cargo run` to check for constructors
 22. The correct ABI export function in 0.10.0 is `print_from_args()` (NOT `print_abi()`)
 23. crate-type in [lib] must be ["lib", "cdylib"] — "lib" is needed for bin target linking
-24. For sol_interface! cross-contract calls: methods take (self.vm(), Call::new(), ...solidity_args). Call::new_in(self) from 0.9.x is removed.
+24. EXTERNAL INTERFACES: use `sol_interface!` (NOT `sol!`) for external contract interfaces. CALL PATTERN: `ifoo.method(self.vm(), Call::new(), arg1, arg2)?` — first arg is ALWAYS self.vm(), second is ALWAYS Call::new(). Call::new_in(self) is removed.
 25. Stylus exports snake_case Rust fn names as camelCase in the ABI (create_market → createMarket). Frontend must use camelCase in functionName.
 26. Stylus &self view functions CANNOT make external contract calls (they revert). Use &mut self for cross-contract calls.
 
@@ -169,7 +169,15 @@ ABSOLUTE RULES - NEVER VIOLATE THESE:
 7. If adding events/errors with sol! macro, they must be BEFORE sol_storage!
 8. KEEP the Cargo.toml [profile.release] section exactly as provided
 
+COMPILATION-CRITICAL — these mistakes WILL break the build:
+- STORAGE ACCESS: ALWAYS use .get() to read storage: `self.field.get()` NOT `self.field`. ALWAYS use .set(val) to write: `self.field.set(val)`. For mappings: read with `self.map.get(key)`, write with `self.map.setter(key).set(val)`.
+- TRANSFER ETH: `use stylus_sdk::call::transfer::transfer_eth;` then `transfer_eth(self, to, amount)?;`. Do NOT use `self.transfer_eth()`, `call::transfer_eth()`, or any other path.
+- EXTERNAL INTERFACES: use `sol_interface!` macro (NOT `sol!`). `sol!` is ONLY for events and errors.
+- CROSS-CONTRACT CALLS: pattern is `ifoo.method(self.vm(), Call::new(), arg1, arg2)?`. The first arg is ALWAYS `self.vm()`, second is ALWAYS a Call context (`Call::new()`). Do NOT use `ifoo.method(self, arg1, arg2)` or `ifoo.method(arg1, arg2)`. Call is available from prelude.
+- External calls require `&mut self` (NOT `&self` — view functions revert on external calls)
+
 WHAT YOU MAY DO:
+- Rename the contract struct in sol_storage! to match the user's request (e.g., PredictionMarket, Lottery, etc.)
 - Add/modify storage fields inside sol_storage!
 - Add/modify functions inside the #[public] impl block
 - Add events using sol! {{ event EventName(...); }} BEFORE sol_storage!
@@ -182,10 +190,10 @@ IMPORTS - USE THESE PATTERNS:
 - sol! macro is available from stylus_sdk::prelude::*
 - For events: self.vm().log(EventName {{ field1, field2 }}) (NOT evm::log)
 - For caller: self.vm().msg_sender() (NOT msg::sender())
-- For ETH transfers: use stylus_sdk::call::transfer::transfer_eth; then: transfer_eth(self, to, amount)?
+- For ETH transfers: `use stylus_sdk::call::transfer::transfer_eth;` then `transfer_eth(self, to, amount)?;`
 - For errors: return Err(ErrorName {{ ... }}.abi_encode()) — requires use alloy_sol_types::SolError;
 - For cross-contract calls: define with sol_interface! {{ interface IFoo {{ function bar(address) external returns (uint256); }} }}
-- Call pattern: ifoo.bar(self.vm(), Call::new(), addr)? — Call is available from prelude, self.vm() is always first arg
+- Call pattern: `ifoo.bar(self.vm(), Call::new(), addr)?` — Call is from prelude, self.vm() is ALWAYS first arg
 - External calls require &mut self (NOT &self — view functions revert on external calls)
 
 Output format:
@@ -761,6 +769,33 @@ class GenerateStylusCodeTool(BaseTool):
             r'sol_interface! { \1',
             fixed,
         )
+
+        # Fix 10: Fix wrong transfer_eth import paths
+        # Common LLM mistakes: use stylus_sdk::call::transfer_eth;
+        #                       use stylus_sdk::call::{transfer_eth, Call};
+        fixed = re.sub(
+            r'use stylus_sdk::call::transfer_eth;',
+            'use stylus_sdk::call::transfer::transfer_eth;',
+            fixed,
+        )
+        fixed = re.sub(
+            r'use stylus_sdk::call::\{([^}]*)\btransfer_eth\b([^}]*)\};',
+            lambda m: 'use stylus_sdk::call::transfer::transfer_eth;\n'
+            + (f'use stylus_sdk::call::{{{m.group(1).replace("transfer_eth", "").strip(", ")}{m.group(2).strip(", ")}}};'
+               if (m.group(1).replace("transfer_eth", "").strip(", ") + m.group(2).strip(", ")).strip(", ")
+               else ''),
+            fixed,
+        )
+        # Fix: self.transfer_eth(to, amount) → transfer_eth(self, to, amount)
+        fixed = re.sub(
+            r'self\.transfer_eth\(([^)]+)\)',
+            r'transfer_eth(self, \1)',
+            fixed,
+        )
+
+        # Fix 11: Fix wrong cross-contract call patterns
+        # Common LLM mistake: token.method(self, arg) → token.method(self.vm(), Call::new(), arg)
+        # This is harder to fix generically, but we can at least fix the most common case
 
         # Fix 8: Ensure #[entrypoint] is inside sol_storage! if missing
         if "#[entrypoint]" not in fixed:

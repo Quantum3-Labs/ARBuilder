@@ -121,9 +121,10 @@ Key patterns for v${targetVersion}:
 - Include ${cfgAttr}
 - Use sol_storage! macro for storage
 - Use ${mainAttr} for external functions
+- STORAGE ACCESS: ALWAYS use .get() to read: \`self.field.get()\` NOT \`self.field\`. Use .set() to write. For mappings: \`self.map.get(key)\` and \`self.map.setter(key).set(val)\`.
 - Handle errors with ${errorHandling}
 - Follow Rust naming conventions (snake_case for functions, PascalCase for types)
-- For ETH transfers: use stylus_sdk::call::transfer::transfer_eth; then call transfer_eth(self, to, amount)?
+- TRANSFER ETH: \`use stylus_sdk::call::transfer::transfer_eth;\` then \`transfer_eth(self, to, amount)?;\` — NOT self.transfer_eth() or call::transfer_eth()
 - For error types: define with sol! { error MyError(...); }, wrap in enum with #[derive(SolidityError)]
 - For .abi_encode() on errors: import SolError via use alloy_sol_types::SolError
 - Avoid chained .setter() borrows — get value with .get() first, then .setter().set() separately
@@ -134,7 +135,7 @@ Key patterns for v${targetVersion}:
 - Package name in Cargo.toml MUST use underscores (e.g., "my_contract") — hyphens break cargo-stylus
 - src/main.rs is REQUIRED — use print_from_args() (NOT print_abi()) for ABI export
 - crate-type in [lib] must be ["lib", "cdylib"]
-- For sol_interface! cross-contract calls: methods take (self.vm(), Call::new(), ...args). Call::new_in(self) from 0.9.x is removed.
+- EXTERNAL INTERFACES: use \`sol_interface!\` (NOT \`sol!\`) for external contract interfaces. CALL PATTERN: \`ifoo.method(self.vm(), Call::new(), arg1, arg2)?\` — first arg is ALWAYS self.vm(), second is ALWAYS Call::new(). Call::new_in(self) is removed.
 - Stylus exports snake_case Rust fn names as camelCase in the ABI (create_market → createMarket). Frontend must use camelCase in functionName.
 - Stylus &self view functions CANNOT make external contract calls (they revert). Use &mut self or read from frontend.
 - On Arbitrum Sepolia, MetaMask may underestimate maxFeePerGas — add explicit gas overrides if "max fee per gas less than block base fee"
@@ -224,7 +225,15 @@ ABSOLUTE RULES - NEVER VIOLATE THESE:
 7. If adding events/errors with sol! macro, they must be BEFORE sol_storage!
 8. KEEP the Cargo.toml [profile.release] section exactly as provided
 
+COMPILATION-CRITICAL — these mistakes WILL break the build:
+- STORAGE ACCESS: ALWAYS use .get() to read storage: \`self.field.get()\` NOT \`self.field\`. ALWAYS use .set(val) to write: \`self.field.set(val)\`. For mappings: read with \`self.map.get(key)\`, write with \`self.map.setter(key).set(val)\`.
+- TRANSFER ETH: \`use stylus_sdk::call::transfer::transfer_eth;\` then \`transfer_eth(self, to, amount)?;\`. Do NOT use \`self.transfer_eth()\`, \`call::transfer_eth()\`, or any other path.
+- EXTERNAL INTERFACES: use \`sol_interface!\` macro (NOT \`sol!\`). \`sol!\` is ONLY for events and errors.
+- CROSS-CONTRACT CALLS: pattern is \`ifoo.method(self.vm(), Call::new(), arg1, arg2)?\`. The first arg is ALWAYS \`self.vm()\`, second is ALWAYS a Call context (\`Call::new()\`). Do NOT use \`ifoo.method(self, arg1, arg2)\` or \`ifoo.method(arg1, arg2)\`. Call is available from prelude.
+- External calls require \`&mut self\` (NOT \`&self\` — view functions revert on external calls)
+
 WHAT YOU MAY DO:
+- Rename the contract struct in sol_storage! to match the user's request (e.g., PredictionMarket, Lottery, etc.)
 - Add/modify storage fields inside sol_storage!
 - Add/modify functions inside the #[public] impl block
 - Add events using sol! { event EventName(...); } BEFORE sol_storage!
@@ -237,10 +246,10 @@ IMPORTS - USE THESE PATTERNS:
 - sol! macro is available from stylus_sdk::prelude::*
 - For events: self.vm().log(EventName { field1, field2 }) (NOT evm::log)
 - For caller: self.vm().msg_sender() (NOT msg::sender())
-- For ETH transfers: use stylus_sdk::call::transfer::transfer_eth; then: transfer_eth(self, to, amount)?
+- For ETH transfers: \`use stylus_sdk::call::transfer::transfer_eth;\` then \`transfer_eth(self, to, amount)?;\`
 - For errors: return Err(ErrorName { ... }.abi_encode()) — requires use alloy_sol_types::SolError;
 - For cross-contract calls: define with sol_interface! { interface IFoo { function bar(address) external returns (uint256); } }
-- Call pattern: ifoo.bar(self.vm(), Call::new(), addr)? — Call is available from prelude, self.vm() is always first arg
+- Call pattern: \`ifoo.bar(self.vm(), Call::new(), addr)?\` — Call is from prelude, self.vm() is ALWAYS first arg
 - External calls require &mut self (NOT &self — view functions revert on external calls)
 - Do NOT use stylus_sdk::evm (removed in 0.10.0) or stylus_sdk::msg
 

@@ -464,6 +464,54 @@ impl MyContract {
         assert "(v0.9.0)" not in source
         assert "(v0.8.4)" not in source
 
+    def test_fix_code_fixes_wrong_transfer_eth_import(self):
+        """_fix_code should fix wrong transfer_eth import path."""
+        from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
+        tool = GenerateStylusCodeTool.__new__(GenerateStylusCodeTool)
+        broken = 'use stylus_sdk::call::transfer_eth;'
+        fixed = tool._fix_code(broken, None)
+        assert "stylus_sdk::call::transfer::transfer_eth" in fixed
+        assert "call::transfer_eth;" not in fixed
+
+    def test_fix_code_fixes_self_transfer_eth(self):
+        """_fix_code should fix self.transfer_eth() to transfer_eth(self, ...)."""
+        from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
+        tool = GenerateStylusCodeTool.__new__(GenerateStylusCodeTool)
+        broken = 'self.transfer_eth(recipient, amount)'
+        fixed = tool._fix_code(broken, None)
+        assert "transfer_eth(self, recipient, amount)" in fixed
+
+    def test_fix_code_fixes_combined_transfer_eth_call_import(self):
+        """_fix_code should split combined {transfer_eth, Call} import."""
+        from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
+        tool = GenerateStylusCodeTool.__new__(GenerateStylusCodeTool)
+        broken = 'use stylus_sdk::call::{transfer_eth, Call};'
+        fixed = tool._fix_code(broken, None)
+        assert "stylus_sdk::call::transfer::transfer_eth" in fixed
+
+    def test_template_prompt_has_storage_get_rule(self):
+        """Template system prompt must instruct .get() for storage reads."""
+        from src.mcp.tools.generate_stylus_code import get_template_system_prompt
+        from src.templates.stylus_templates import COUNTER_TEMPLATE
+        prompt = get_template_system_prompt(COUNTER_TEMPLATE, "0.10.0")
+        assert "self.field.get()" in prompt
+        assert "STORAGE ACCESS" in prompt
+
+    def test_template_prompt_has_call_new_pattern(self):
+        """Template system prompt must show Call::new() as second arg in cross-contract calls."""
+        from src.mcp.tools.generate_stylus_code import get_template_system_prompt
+        from src.templates.stylus_templates import COUNTER_TEMPLATE
+        prompt = get_template_system_prompt(COUNTER_TEMPLATE, "0.10.0")
+        assert "self.vm(), Call::new()" in prompt
+        assert "CROSS-CONTRACT CALLS" in prompt
+
+    def test_template_prompt_allows_struct_rename(self):
+        """Template system prompt should allow renaming the contract struct."""
+        from src.mcp.tools.generate_stylus_code import get_template_system_prompt
+        from src.templates.stylus_templates import COUNTER_TEMPLATE
+        prompt = get_template_system_prompt(COUNTER_TEMPLATE, "0.10.0")
+        assert "Rename the contract struct" in prompt
+
 
 # Integration tests that require cargo-stylus
 @pytest.mark.integration
