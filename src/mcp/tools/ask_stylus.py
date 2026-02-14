@@ -48,6 +48,9 @@ IMPORTANT SDK 0.10.0 changes:
 - RawCall::new_with_value(self.vm(), amount) — needs self.vm() as first arg and requires unsafe block
 - uint8 in sol_storage! maps to Uint<8,1> not native u8 — comparisons with native u8 won't compile, prefer uint256
 - For sol_interface! cross-contract calls: generated methods take (self.vm(), Call::new(), ...args) — NOT the old Call::new_in(self) from 0.9.x
+- Stylus exports snake_case Rust function names as camelCase in the ABI (create_market → createMarket). Frontend must use camelCase in functionName.
+- Stylus &self view functions CANNOT make external contract calls (they revert). Use &mut self or read from frontend instead.
+- On Arbitrum Sepolia, MetaMask may underestimate maxFeePerGas — add explicit gas overrides in frontend if you see "max fee per gas less than block base fee"
 
 Your expertise includes:
 - Stylus SDK and its features (sol_storage!, #[entrypoint], storage types)

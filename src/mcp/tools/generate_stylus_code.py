@@ -117,6 +117,8 @@ Key Stylus patterns for v{target_version}:
 22. The correct ABI export function in 0.10.0 is `print_from_args()` (NOT `print_abi()`)
 23. crate-type in [lib] must be ["lib", "cdylib"] — "lib" is needed for bin target linking
 24. For sol_interface! cross-contract calls: methods take (self.vm(), Call::new(), ...solidity_args). Call::new_in(self) from 0.9.x is removed.
+25. Stylus exports snake_case Rust fn names as camelCase in the ABI (create_market → createMarket). Frontend must use camelCase in functionName.
+26. Stylus &self view functions CANNOT make external contract calls (they revert). Use &mut self for cross-contract calls.
 
 Dependencies for v{target_version}:
 - stylus-sdk = "{target_version}"

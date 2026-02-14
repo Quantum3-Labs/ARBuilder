@@ -265,7 +265,8 @@ fn main() {
 
 ### Cross-Contract Calls (sol_interface!)
 ```rust
-use stylus_sdk::call::Call;
+// Call is available from prelude::* — no separate import needed
+// Or explicitly: use stylus_sdk::call::Call;
 
 sol_interface! {
     interface IToken {
@@ -295,6 +296,10 @@ let success = token.transfer(self.vm(), Call::new(), recipient, amount)?;
 - **print_from_args()** is the 0.10.0 ABI export function (NOT print_abi())
 - **uint8 in sol_storage!** maps to Uint<8,1>, not u8 — prefer uint256
 - **RawCall::new_with_value(self.vm(), amount)** — needs self.vm() as first arg + unsafe block
+- **transfer_eth import** — `use stylus_sdk::call::transfer::transfer_eth;` (NOT `call::transfer_eth`)
+- **ABI uses camelCase** — Stylus exports snake_case Rust fns as camelCase (`create_market` → `createMarket`). Frontend must use camelCase in `functionName`
+- **View functions can't call external contracts** — `&self` view fns revert on cross-contract calls (unlike Solidity). Use `&mut self` or read from frontend
+- **Arbitrum L2 gas** — MetaMask may underestimate `maxFeePerGas` on Arbitrum Sepolia. Add explicit gas overrides if "max fee per gas less than block base fee"
 
 ## Network Endpoints
 

@@ -135,6 +135,9 @@ Key patterns for v${targetVersion}:
 - src/main.rs is REQUIRED — use print_from_args() (NOT print_abi()) for ABI export
 - crate-type in [lib] must be ["lib", "cdylib"]
 - For sol_interface! cross-contract calls: methods take (self.vm(), Call::new(), ...args). Call::new_in(self) from 0.9.x is removed.
+- Stylus exports snake_case Rust fn names as camelCase in the ABI (create_market → createMarket). Frontend must use camelCase in functionName.
+- Stylus &self view functions CANNOT make external contract calls (they revert). Use &mut self or read from frontend.
+- On Arbitrum Sepolia, MetaMask may underestimate maxFeePerGas — add explicit gas overrides if "max fee per gas less than block base fee"
 
 Security best practices:
 - Check for overflows using checked_add/checked_sub

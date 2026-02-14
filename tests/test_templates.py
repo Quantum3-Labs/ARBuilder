@@ -390,6 +390,46 @@ class TestSystemPromptsAndDisclaimer:
         assert "sol_interface" in prompt
         assert "Call::new()" in prompt
 
+    def test_abi_extractor_converts_snake_to_camel(self):
+        """ABI extractor should convert snake_case fn names to camelCase."""
+        from src.utils.abi_extractor import extract_abi_from_code
+        code = '''#[public]
+impl MyContract {
+    pub fn get_value(&self) -> U256 { self.value.get() }
+    pub fn set_value(&mut self, val: U256) { self.value.set(val); }
+    pub fn create_market(&mut self, name: String) -> U256 { U256::ZERO }
+}'''
+        abi = extract_abi_from_code(code)
+        names = [e["name"] for e in abi]
+        assert "getValue" in names
+        assert "setValue" in names
+        assert "createMarket" in names
+        assert "get_value" not in names
+
+    def test_abi_extractor_single_word_unchanged(self):
+        """Single-word fn names should remain unchanged."""
+        from src.utils.abi_extractor import extract_abi_from_code
+        code = '''#[public]
+impl MyContract {
+    pub fn increment(&mut self) { }
+    pub fn number(&self) -> U256 { U256::ZERO }
+}'''
+        abi = extract_abi_from_code(code)
+        names = [e["name"] for e in abi]
+        assert "increment" in names
+        assert "number" in names
+
+    def test_coding_rules_has_view_function_gotcha(self):
+        """Coding rules should warn about view function external call limitation."""
+        from src.mcp.resources.coding_rules import STYLUS_CODING_RULES
+        pitfalls = STYLUS_CODING_RULES["common_pitfalls"]
+        assert any("view" in p.lower() and "external" in p.lower() for p in pitfalls)
+
+    def test_coding_rules_has_abi_naming(self):
+        """Coding rules should document camelCase ABI naming convention."""
+        from src.mcp.resources.coding_rules import STYLUS_CODING_RULES
+        assert "abi_naming" in STYLUS_CODING_RULES["patterns"]
+
 
 # Integration tests that require cargo-stylus
 @pytest.mark.integration

@@ -117,8 +117,8 @@ if balance < amount {
         },
 
         "eth_transfer": {
-            "description": "Transfer ETH using stylus_sdk::call::transfer (NOT evm::transfer_eth)",
-            "example": '''use stylus_sdk::call::transfer_eth;
+            "description": "Transfer ETH using stylus_sdk::call::transfer::transfer_eth (NOT evm::transfer_eth)",
+            "example": '''use stylus_sdk::call::transfer::transfer_eth;
 
 // Inside a #[public] method (needs &mut self for vm context):
 transfer_eth(self, to, amount)?;''',
@@ -171,7 +171,8 @@ path = "src/main.rs"''',
         function balanceOf(address account) external view returns (uint256);
     }
 }''',
-            "usage": '''use stylus_sdk::call::Call;
+            "usage": '''// Call is available from stylus_sdk::prelude::* (no separate import needed)
+// Or explicitly: use stylus_sdk::call::Call;
 
 // sol_interface! generates methods with signature:
 //   method_name(&self, host: &impl Host, context: impl CallContext, ...solidity_args)
@@ -191,6 +192,17 @@ let config = Call::new()
     .value(U256::from(1_000_000));
 let result = token.transfer(self.vm(), config, recipient, amount)?;''',
             "note": "In SDK 0.10.0, Call::new_in(self) from 0.9.x is removed. Use Call::new() with self.vm() as host arg.",
+        },
+
+        "abi_naming": {
+            "description": "Stylus exports snake_case Rust function names as camelCase in the ABI",
+            "example": "pub fn create_market(...) → ABI name: 'createMarket' (NOT 'create_market')",
+            "note": "Frontend/backend code must use camelCase function names when calling the contract via viem/wagmi. Single-word names are unchanged (e.g. increment stays increment).",
+        },
+
+        "view_function_gotcha": {
+            "description": "Stylus &self view functions CANNOT make external contract calls — they revert",
+            "note": "Unlike Solidity view functions, Stylus view methods (&self) cannot call other contracts. External calls (e.g. reading a Chainlink oracle) require &mut self. Workaround: read the external data from the frontend via wagmi/viem instead, or change the function to &mut self.",
         },
 
         "tests": {
@@ -227,7 +239,7 @@ mod tests {
         "Using deprecated msg::sender() - Use self.vm().msg_sender() since 0.10.0",
         "Using deprecated evm::log() - Use self.vm().log() since 0.10.0",
         "Using `use stylus_sdk::evm` - Module removed in 0.10.0, use self.vm() methods",
-        "Using evm::transfer_eth() - Moved to stylus_sdk::call::transfer_eth(self, to, amount)",
+        "Using evm::transfer_eth() - Moved to stylus_sdk::call::transfer::transfer_eth(self, to, amount)",
         "Missing SolError import - .abi_encode() on errors requires use alloy_sol_types::SolError",
         "Chained .setter() borrows - Read with .get() first, then .setter().set() separately",
         "Missing src/main.rs - Required for cargo stylus deploy (uses print_from_args(), NOT print_abi())",
@@ -237,6 +249,9 @@ mod tests {
         "RawCall without self.vm() - RawCall::new_with_value needs self.vm() as first arg and unsafe block",
         "uint8 in sol_storage! - Maps to Uint<8,1>, not u8. Use .try_into() for comparisons or prefer uint256",
         "Using Call::new_in(self) — removed in 0.10.0. Use Call::new() / Call::new_mutating() / Call::new_payable() with self.vm() as host",
+        "snake_case ABI names in frontend — Stylus exports snake_case Rust fns as camelCase (create_market → createMarket). Use camelCase in wagmi/viem functionName",
+        "External calls from &self view functions — Stylus view fns revert on external calls (unlike Solidity). Use &mut self or read from frontend",
+        "MetaMask L2 gas underestimation — On Arbitrum Sepolia, MetaMask may underestimate maxFeePerGas causing 'max fee per gas less than block base fee'. Add explicit gas overrides in frontend",
     ],
 
     "forbidden_imports": [

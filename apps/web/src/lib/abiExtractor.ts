@@ -7,6 +7,16 @@
  * Works in CF Workers — pure regex parsing, no native deps.
  */
 
+/**
+ * Convert snake_case to camelCase.
+ *
+ * Stylus exports Rust snake_case function names as camelCase in the ABI.
+ * E.g. create_market -> createMarket, get_value -> getValue.
+ */
+function snakeToCamel(name: string): string {
+  return name.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+}
+
 // Rust → Solidity type mapping
 const RUST_TO_SOL: Record<string, string> = {
   U256: "uint256",
@@ -184,7 +194,7 @@ export function extractAbiFromCode(libRs: string): AbiEntry[] {
 
       abi.push({
         type: "function",
-        name: fnName,
+        name: snakeToCamel(fnName),
         inputs: parseFnParams(paramsStr),
         outputs: parseReturnType(returnStr.trim()),
         stateMutability,

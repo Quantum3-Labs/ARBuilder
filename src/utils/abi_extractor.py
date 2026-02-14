@@ -12,6 +12,17 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 
+def _snake_to_camel(name: str) -> str:
+    """Convert snake_case to camelCase.
+
+    Stylus exports Rust snake_case function names as camelCase in the ABI.
+    E.g. create_market -> createMarket, get_value -> getValue.
+    Single-word names are unchanged.
+    """
+    parts = name.split("_")
+    return parts[0] + "".join(word.capitalize() for word in parts[1:])
+
+
 # Rust → Solidity type mapping
 RUST_TO_SOL_TYPES = {
     "U256": "uint256",
@@ -257,7 +268,7 @@ def extract_abi_from_code(lib_rs: str) -> List[Dict[str, Any]]:
 
             abi.append({
                 "type": "function",
-                "name": fn_name,
+                "name": _snake_to_camel(fn_name),
                 "inputs": inputs,
                 "outputs": outputs,
                 "stateMutability": state_mutability,
