@@ -430,6 +430,40 @@ impl MyContract {
         from src.mcp.resources.coding_rules import STYLUS_CODING_RULES
         assert "abi_naming" in STYLUS_CODING_RULES["patterns"]
 
+    def test_template_system_prompt_mentions_sol_interface(self):
+        """Template system prompt must include sol_interface! guidance."""
+        from src.mcp.tools.generate_stylus_code import get_template_system_prompt
+        from src.templates.stylus_templates import COUNTER_TEMPLATE
+        prompt = get_template_system_prompt(COUNTER_TEMPLATE, "0.10.0")
+        assert "sol_interface!" in prompt
+
+    def test_template_system_prompt_has_transfer_eth_use_statement(self):
+        """Template system prompt must show full use statement for transfer_eth."""
+        from src.mcp.tools.generate_stylus_code import get_template_system_prompt
+        from src.templates.stylus_templates import COUNTER_TEMPLATE
+        prompt = get_template_system_prompt(COUNTER_TEMPLATE, "0.10.0")
+        assert "stylus_sdk::call::transfer::transfer_eth" in prompt
+
+    def test_fix_code_converts_sol_to_sol_interface(self):
+        """_fix_code should convert sol! { interface to sol_interface! { interface."""
+        from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
+        tool = GenerateStylusCodeTool.__new__(GenerateStylusCodeTool)
+        broken = '''sol! {
+    interface IToken {
+        function transfer(address to, uint256 amount) external returns (bool);
+    }
+}'''
+        fixed = tool._fix_code(broken, None)
+        assert "sol_interface!" in fixed
+
+    def test_template_source_comments_say_0_10(self):
+        """Template source comments should reference SDK 0.10.0, not 0.9.0."""
+        from src.templates import stylus_templates
+        import inspect
+        source = inspect.getsource(stylus_templates)
+        assert "(v0.9.0)" not in source
+        assert "(v0.8.4)" not in source
+
 
 # Integration tests that require cargo-stylus
 @pytest.mark.integration

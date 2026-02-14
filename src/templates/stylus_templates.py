@@ -2,8 +2,8 @@
 Curated working templates from official Stylus examples.
 These templates are verified to compile and deploy correctly.
 
-Sources:
-- Counter: https://github.com/OffchainLabs/stylus-hello-world (v0.9.0)
+Sources (migrated to SDK 0.10.0):
+- Counter: https://github.com/OffchainLabs/stylus-hello-world
 - VendingMachine: https://github.com/OffchainLabs/stylus-quickstart-vending-machine
 - ERC20: Simplified version based on Stylus patterns
 """
@@ -28,7 +28,7 @@ class StylusTemplate:
 
 
 # Counter template - Simple storage pattern
-# From: stylus-hello-world (v0.9.0)
+# From: stylus-hello-world (migrated to SDK 0.10.0)
 COUNTER_TEMPLATE = StylusTemplate(
     name="Counter",
     description="Simple counter with increment, add, multiply operations",

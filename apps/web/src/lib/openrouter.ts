@@ -123,7 +123,7 @@ Key patterns for v${targetVersion}:
 - Use ${mainAttr} for external functions
 - Handle errors with ${errorHandling}
 - Follow Rust naming conventions (snake_case for functions, PascalCase for types)
-- For ETH transfers: use transfer_eth(self, to, amount) from stylus_sdk::call::transfer
+- For ETH transfers: use stylus_sdk::call::transfer::transfer_eth; then call transfer_eth(self, to, amount)?
 - For error types: define with sol! { error MyError(...); }, wrap in enum with #[derive(SolidityError)]
 - For .abi_encode() on errors: import SolError via use alloy_sol_types::SolError
 - Avoid chained .setter() borrows — get value with .get() first, then .setter().set() separately
@@ -230,14 +230,18 @@ WHAT YOU MAY DO:
 - Add events using sol! { event EventName(...); } BEFORE sol_storage!
 - Add error types using sol! { error ErrorName(...); } BEFORE sol_storage!
 - Add internal helper functions (without #[public])
+- Define external contract interfaces with sol_interface! (NOT sol!) for cross-contract calls
 
 IMPORTS - USE THESE PATTERNS:
 - Types from stylus_sdk::alloy_primitives::{Address, U256, U8, ...}
 - sol! macro is available from stylus_sdk::prelude::*
 - For events: self.vm().log(EventName { field1, field2 }) (NOT evm::log)
 - For caller: self.vm().msg_sender() (NOT msg::sender())
-- For ETH transfers: transfer_eth(self, to, amount) from stylus_sdk::call::transfer
+- For ETH transfers: use stylus_sdk::call::transfer::transfer_eth; then: transfer_eth(self, to, amount)?
 - For errors: return Err(ErrorName { ... }.abi_encode()) — requires use alloy_sol_types::SolError;
+- For cross-contract calls: define with sol_interface! { interface IFoo { function bar(address) external returns (uint256); } }
+- Call pattern: ifoo.bar(self.vm(), Call::new(), addr)? — Call is available from prelude, self.vm() is always first arg
+- External calls require &mut self (NOT &self — view functions revert on external calls)
 - Do NOT use stylus_sdk::evm (removed in 0.10.0) or stylus_sdk::msg
 
 Output format:
@@ -305,7 +309,7 @@ IMPORTANT SDK 0.10.0 changes:
 - msg::value() is replaced by self.vm().msg_value()
 - evm::log() is replaced by self.vm().log()
 - use stylus_sdk::evm is removed entirely — use self.vm() methods
-- transfer_eth moved to stylus_sdk::call::transfer, needs self context
+- transfer_eth: use stylus_sdk::call::transfer::transfer_eth; then call transfer_eth(self, to, amount)?
 - Error types: define with sol! { error MyError(...); }, wrap enum with #[derive(SolidityError)]
 - For .abi_encode() on errors: import use alloy_sol_types::SolError;
 - Chained .setter() borrows cause compile errors — read with .get() first, then .setter().set() separately

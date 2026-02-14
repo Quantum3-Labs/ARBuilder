@@ -103,7 +103,7 @@ Key Stylus patterns for v{target_version}:
 8. Handle errors with {error_handling}
 9. Include {cfg_attr}
 10. Follow Rust naming conventions (snake_case for functions, PascalCase for types)
-11. For ETH transfers: use transfer_eth(self, to, amount) from stylus_sdk::call::transfer (NOT evm::transfer_eth)
+11. For ETH transfers: use stylus_sdk::call::transfer::transfer_eth; then call transfer_eth(self, to, amount)? (NOT evm::transfer_eth)
 12. For error types: define with sol! {{ error MyError(...); }}, wrap in enum with #[derive(SolidityError)]
 13. For .abi_encode() on errors: import SolError via use alloy_sol_types::SolError;
 14. Avoid chained .setter() borrows — get value with .get() first, then .setter().set() separately
@@ -175,13 +175,18 @@ WHAT YOU MAY DO:
 - Add events using sol! {{ event EventName(...); }} BEFORE sol_storage!
 - Add error types using sol! {{ error ErrorName(...); }} BEFORE sol_storage!
 - Add internal helper functions (without #[public])
+- Define external contract interfaces with sol_interface! (NOT sol!) for cross-contract calls
 
 IMPORTS - USE THESE PATTERNS:
 - Types from stylus_sdk::alloy_primitives::{{Address, U256, U8, ...}}
 - sol! macro is available from stylus_sdk::prelude::*
 - For events: self.vm().log(EventName {{ field1, field2 }}) (NOT evm::log)
 - For caller: self.vm().msg_sender() (NOT msg::sender())
-- For errors: return Err(ErrorName {{ ... }}.abi_encode())
+- For ETH transfers: use stylus_sdk::call::transfer::transfer_eth; then: transfer_eth(self, to, amount)?
+- For errors: return Err(ErrorName {{ ... }}.abi_encode()) — requires use alloy_sol_types::SolError;
+- For cross-contract calls: define with sol_interface! {{ interface IFoo {{ function bar(address) external returns (uint256); }} }}
+- Call pattern: ifoo.bar(self.vm(), Call::new(), addr)? — Call is available from prelude, self.vm() is always first arg
+- External calls require &mut self (NOT &self — view functions revert on external calls)
 
 Output format:
 1. Brief explanation of changes (1-2 sentences)
@@ -748,6 +753,14 @@ class GenerateStylusCodeTool(BaseTool):
         if sol_storage_count == 0 and template:
             # If no sol_storage! block, the code is likely broken - use template
             return template.lib_rs
+
+        # Fix 9: Convert sol! { interface ... } to sol_interface! { interface ... }
+        # LLMs often use sol! for interfaces, but Stylus requires sol_interface!
+        fixed = re.sub(
+            r'sol!\s*\{\s*(interface\b)',
+            r'sol_interface! { \1',
+            fixed,
+        )
 
         # Fix 8: Ensure #[entrypoint] is inside sol_storage! if missing
         if "#[entrypoint]" not in fixed:

@@ -34,7 +34,7 @@ IMPORTANT SDK 0.10.0 changes:
 - msg::value() is replaced by self.vm().msg_value()
 - evm::log() is replaced by self.vm().log()
 - `use stylus_sdk::evm` is removed entirely — all evm:: functions now accessed via self.vm()
-- transfer_eth moved to stylus_sdk::call::transfer, needs self context: transfer_eth(self, to, amount)
+- transfer_eth: use stylus_sdk::call::transfer::transfer_eth; then call transfer_eth(self, to, amount)?
 - Error types: define with sol! { error MyError(...); }, wrap enum with #[derive(SolidityError)]
 - For .abi_encode() on errors: import use alloy_sol_types::SolError;
 - Chained .setter() borrows cause compile errors — read with .get() first, then .setter().set() separately

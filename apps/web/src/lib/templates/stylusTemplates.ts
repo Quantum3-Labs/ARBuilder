@@ -2,10 +2,10 @@
  * Curated working templates from official Stylus examples.
  * These templates are verified to compile and deploy correctly.
  *
- * Sources:
- * - Counter: https://github.com/OffchainLabs/stylus-hello-world (v0.9.0)
- * - VendingMachine: https://github.com/OffchainLabs/stylus-quickstart-vending-machine (v0.8.4)
- * - ERC20: https://github.com/OpenZeppelin/rust-contracts-stylus (v0.9.0)
+ * Sources (migrated to SDK 0.10.0):
+ * - Counter: https://github.com/OffchainLabs/stylus-hello-world
+ * - VendingMachine: https://github.com/OffchainLabs/stylus-quickstart-vending-machine
+ * - ERC20: Simplified version based on Stylus patterns
  */
 
 export interface StylusTemplate {
@@ -24,7 +24,7 @@ export interface StylusTemplate {
 
 /**
  * Counter template - Simple storage pattern
- * From: stylus-hello-world (v0.9.0)
+ * From: stylus-hello-world (migrated to SDK 0.10.0)
  */
 export const COUNTER_TEMPLATE: StylusTemplate = {
   name: "Counter",
@@ -149,13 +149,13 @@ fn main() {
 
 /**
  * Vending Machine template - Mappings and time-based logic
- * From: stylus-quickstart-vending-machine (v0.8.4)
+ * From: stylus-quickstart-vending-machine (migrated to SDK 0.10.0)
  */
 export const VENDING_MACHINE_TEMPLATE: StylusTemplate = {
   name: "VendingMachine",
   description: "Mapping storage with time-based distribution logic",
   contractType: "defi",
-  sdkVersion: "0.10.0", // Updated to 0.9.0 patterns
+  sdkVersion: "0.10.0",
   features: ["mappings", "timestamps", "rate limiting", "tests"],
   libRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
