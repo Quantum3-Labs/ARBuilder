@@ -121,7 +121,7 @@ if balance < amount {
             "example": '''use stylus_sdk::call::transfer::transfer_eth;
 
 // Inside a #[public] method (needs &mut self for vm context):
-transfer_eth(self, to, amount)?;''',
+transfer_eth(self.vm(), to, amount)?;''',
         },
 
         "raw_call_eth_transfer": {
@@ -239,7 +239,7 @@ mod tests {
         "Using deprecated msg::sender() - Use self.vm().msg_sender() since 0.10.0",
         "Using deprecated evm::log() - Use self.vm().log() since 0.10.0",
         "Using `use stylus_sdk::evm` - Module removed in 0.10.0, use self.vm() methods",
-        "Using evm::transfer_eth() - Moved to stylus_sdk::call::transfer::transfer_eth(self, to, amount)",
+        "Using evm::transfer_eth() - Moved to stylus_sdk::call::transfer::transfer_eth(self.vm(), to, amount)",
         "Missing SolError import - .abi_encode() on errors requires use alloy_sol_types::SolError",
         "Chained .setter() borrows - Read with .get() first, then .setter().set() separately",
         "Missing src/main.rs - Required for cargo stylus deploy (uses print_from_args(), NOT print_abi())",

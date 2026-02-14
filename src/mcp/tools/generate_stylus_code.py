@@ -103,7 +103,7 @@ Key Stylus patterns for v{target_version}:
 8. Handle errors with {error_handling}
 9. Include {cfg_attr}
 10. Follow Rust naming conventions (snake_case for functions, PascalCase for types)
-11. TRANSFER ETH: `use stylus_sdk::call::transfer::transfer_eth;` then `transfer_eth(self, to, amount)?;` — NOT self.transfer_eth() or call::transfer_eth()
+11. TRANSFER ETH: `use stylus_sdk::call::transfer::transfer_eth;` then `transfer_eth(self.vm(), to, amount)?;` — NOT self.transfer_eth() or call::transfer_eth()
 12. For error types: define with sol! {{ error MyError(...); }}, wrap in enum with #[derive(SolidityError)]
 13. For .abi_encode() on errors: import SolError via use alloy_sol_types::SolError;
 14. Avoid chained .setter() borrows — get value with .get() first, then .setter().set() separately
@@ -171,7 +171,7 @@ ABSOLUTE RULES - NEVER VIOLATE THESE:
 
 COMPILATION-CRITICAL — these mistakes WILL break the build:
 - STORAGE ACCESS: ALWAYS use .get() to read storage: `self.field.get()` NOT `self.field`. ALWAYS use .set(val) to write: `self.field.set(val)`. For mappings: read with `self.map.get(key)`, write with `self.map.setter(key).set(val)`.
-- TRANSFER ETH: `use stylus_sdk::call::transfer::transfer_eth;` then `transfer_eth(self, to, amount)?;`. Do NOT use `self.transfer_eth()`, `call::transfer_eth()`, or any other path.
+- TRANSFER ETH: `use stylus_sdk::call::transfer::transfer_eth;` then `transfer_eth(self.vm(), to, amount)?;`. Do NOT use `self.transfer_eth()`, `call::transfer_eth()`, or any other path.
 - EXTERNAL INTERFACES: use `sol_interface!` macro (NOT `sol!`). `sol!` is ONLY for events and errors.
 - CROSS-CONTRACT CALLS: pattern is `ifoo.method(self.vm(), Call::new(), arg1, arg2)?`. The first arg is ALWAYS `self.vm()`, second is ALWAYS a Call context (`Call::new()`). Do NOT use `ifoo.method(self, arg1, arg2)` or `ifoo.method(arg1, arg2)`. Call is available from prelude.
 - External calls require `&mut self` (NOT `&self` — view functions revert on external calls)
@@ -190,7 +190,7 @@ IMPORTS - USE THESE PATTERNS:
 - sol! macro is available from stylus_sdk::prelude::*
 - For events: self.vm().log(EventName {{ field1, field2 }}) (NOT evm::log)
 - For caller: self.vm().msg_sender() (NOT msg::sender())
-- For ETH transfers: `use stylus_sdk::call::transfer::transfer_eth;` then `transfer_eth(self, to, amount)?;`
+- For ETH transfers: `use stylus_sdk::call::transfer::transfer_eth;` then `transfer_eth(self.vm(), to, amount)?;`
 - For errors: return Err(ErrorName {{ ... }}.abi_encode()) — requires use alloy_sol_types::SolError;
 - For cross-contract calls: define with sol_interface! {{ interface IFoo {{ function bar(address) external returns (uint256); }} }}
 - Call pattern: `ifoo.bar(self.vm(), Call::new(), addr)?` — Call is from prelude, self.vm() is ALWAYS first arg
@@ -786,16 +786,19 @@ class GenerateStylusCodeTool(BaseTool):
                else ''),
             fixed,
         )
-        # Fix: self.transfer_eth(to, amount) → transfer_eth(self, to, amount)
+        # Fix: self.transfer_eth(to, amount) → transfer_eth(self.vm(), to, amount)
         fixed = re.sub(
             r'self\.transfer_eth\(([^)]+)\)',
-            r'transfer_eth(self, \1)',
+            r'transfer_eth(self.vm(), \1)',
             fixed,
         )
-
-        # Fix 11: Fix wrong cross-contract call patterns
-        # Common LLM mistake: token.method(self, arg) → token.method(self.vm(), Call::new(), arg)
-        # This is harder to fix generically, but we can at least fix the most common case
+        # Fix: transfer_eth(self, ...) → transfer_eth(self.vm(), ...)
+        # LLMs write self instead of self.vm() — must be the vm Host context
+        fixed = re.sub(
+            r'transfer_eth\(self,\s*',
+            'transfer_eth(self.vm(), ',
+            fixed,
+        )
 
         # Fix 8: Ensure #[entrypoint] is inside sol_storage! if missing
         if "#[entrypoint]" not in fixed:

@@ -296,7 +296,7 @@ let success = token.transfer(self.vm(), Call::new(), recipient, amount)?;
 - **print_from_args()** is the 0.10.0 ABI export function (NOT print_abi())
 - **uint8 in sol_storage!** maps to Uint<8,1>, not u8 — prefer uint256
 - **RawCall::new_with_value(self.vm(), amount)** — needs self.vm() as first arg + unsafe block
-- **transfer_eth import** — `use stylus_sdk::call::transfer::transfer_eth;` (NOT `call::transfer_eth`)
+- **transfer_eth** — `use stylus_sdk::call::transfer::transfer_eth;` then `transfer_eth(self.vm(), to, amount)?` (needs `self.vm()` not `self`)
 - **sol_interface! for interfaces** — use `sol_interface!` (NOT `sol!`) to define external contract interfaces for cross-contract calls
 - **ABI uses camelCase** — Stylus exports snake_case Rust fns as camelCase (`create_market` → `createMarket`). Frontend must use camelCase in `functionName`
 - **View functions can't call external contracts** — `&self` view fns revert on cross-contract calls (unlike Solidity). Use `&mut self` or read from frontend

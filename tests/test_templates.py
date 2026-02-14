@@ -474,12 +474,21 @@ impl MyContract {
         assert "call::transfer_eth;" not in fixed
 
     def test_fix_code_fixes_self_transfer_eth(self):
-        """_fix_code should fix self.transfer_eth() to transfer_eth(self, ...)."""
+        """_fix_code should fix self.transfer_eth() to transfer_eth(self.vm(), ...)."""
         from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
         tool = GenerateStylusCodeTool.__new__(GenerateStylusCodeTool)
         broken = 'self.transfer_eth(recipient, amount)'
         fixed = tool._fix_code(broken, None)
-        assert "transfer_eth(self, recipient, amount)" in fixed
+        assert "transfer_eth(self.vm(), recipient, amount)" in fixed
+
+    def test_fix_code_fixes_transfer_eth_self_to_self_vm(self):
+        """_fix_code should fix transfer_eth(self, ...) to transfer_eth(self.vm(), ...)."""
+        from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
+        tool = GenerateStylusCodeTool.__new__(GenerateStylusCodeTool)
+        broken = 'transfer_eth(self, recipient, amount)?;'
+        fixed = tool._fix_code(broken, None)
+        assert "transfer_eth(self.vm(), recipient, amount)" in fixed
+        assert "transfer_eth(self, " not in fixed
 
     def test_fix_code_fixes_combined_transfer_eth_call_import(self):
         """_fix_code should split combined {transfer_eth, Call} import."""
