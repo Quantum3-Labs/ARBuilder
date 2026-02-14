@@ -253,6 +253,35 @@ IMPORTS - USE THESE PATTERNS:
 - External calls require &mut self (NOT &self — view functions revert on external calls)
 - Do NOT use stylus_sdk::evm (removed in 0.10.0) or stylus_sdk::msg
 
+REFERENCE CODE — copy these EXACTLY when the user's request needs them:
+
+ETH transfer (withdraw/deposit/send ETH):
+\`\`\`rust
+use stylus_sdk::call::transfer::transfer_eth;
+
+pub fn withdraw(&mut self, to: Address, amount: U256) -> Result<(), Vec<u8>> {
+    transfer_eth(self.vm(), to, amount)?;
+    Ok(())
+}
+\`\`\`
+
+Cross-contract call (interact with another deployed contract):
+\`\`\`rust
+sol_interface! {
+    interface IToken {
+        function balanceOf(address account) external view returns (uint256);
+        function transfer(address to, uint256 amount) external returns (bool);
+    }
+}
+
+// In a #[public] &mut self method:
+pub fn get_token_balance(&mut self, token: Address, account: Address) -> Result<U256, Vec<u8>> {
+    let token = IToken::new(token);
+    let balance = token.balance_of(self.vm(), Call::new(), account)?;
+    Ok(balance)
+}
+\`\`\`
+
 Output format:
 1. Brief explanation of changes (1-2 sentences)
 2. Complete lib.rs in a \`\`\`rust code block

@@ -195,6 +195,36 @@ IMPORTS - USE THESE PATTERNS:
 - For cross-contract calls: define with sol_interface! {{ interface IFoo {{ function bar(address) external returns (uint256); }} }}
 - Call pattern: `ifoo.bar(self.vm(), Call::new(), addr)?` — Call is from prelude, self.vm() is ALWAYS first arg
 - External calls require &mut self (NOT &self — view functions revert on external calls)
+- Do NOT use stylus_sdk::evm (removed in 0.10.0) or stylus_sdk::msg
+
+REFERENCE CODE — copy these EXACTLY when the user's request needs them:
+
+ETH transfer (withdraw/deposit/send ETH):
+```rust
+use stylus_sdk::call::transfer::transfer_eth;
+
+pub fn withdraw(&mut self, to: Address, amount: U256) -> Result<(), Vec<u8>> {{
+    transfer_eth(self.vm(), to, amount)?;
+    Ok(())
+}}
+```
+
+Cross-contract call (interact with another deployed contract):
+```rust
+sol_interface! {{
+    interface IToken {{
+        function balanceOf(address account) external view returns (uint256);
+        function transfer(address to, uint256 amount) external returns (bool);
+    }}
+}}
+
+// In a #[public] &mut self method:
+pub fn get_token_balance(&mut self, token: Address, account: Address) -> Result<U256, Vec<u8>> {{
+    let token = IToken::new(token);
+    let balance = token.balance_of(self.vm(), Call::new(), account)?;
+    Ok(balance)
+}}
+```
 
 Output format:
 1. Brief explanation of changes (1-2 sentences)
@@ -799,6 +829,17 @@ class GenerateStylusCodeTool(BaseTool):
             'transfer_eth(self.vm(), ',
             fixed,
         )
+
+        # Fix 13: Remove deprecated stylus_sdk::evm and stylus_sdk::msg imports
+        fixed = re.sub(r'^use stylus_sdk::evm.*;\s*$', '', fixed, flags=re.MULTILINE)
+        fixed = re.sub(r'^use stylus_sdk::msg.*;\s*$', '', fixed, flags=re.MULTILINE)
+
+        # Fix 14: Fix deprecated msg::sender() → self.vm().msg_sender()
+        fixed = re.sub(r'msg::sender\(\)', 'self.vm().msg_sender()', fixed)
+        fixed = re.sub(r'msg::value\(\)', 'self.vm().msg_value()', fixed)
+
+        # Fix 15: Fix deprecated evm::log(...) → self.vm().log(...)
+        fixed = re.sub(r'evm::log\(', 'self.vm().log(', fixed)
 
         # Fix 8: Ensure #[entrypoint] is inside sol_storage! if missing
         if "#[entrypoint]" not in fixed:

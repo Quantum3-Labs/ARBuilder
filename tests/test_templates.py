@@ -521,6 +521,29 @@ impl MyContract {
         prompt = get_template_system_prompt(COUNTER_TEMPLATE, "0.10.0")
         assert "Rename the contract struct" in prompt
 
+    def test_template_prompt_has_reference_code_snippets(self):
+        """Template system prompt must include concrete code snippets for transfer_eth and sol_interface!."""
+        from src.mcp.tools.generate_stylus_code import get_template_system_prompt
+        from src.templates.stylus_templates import COUNTER_TEMPLATE
+        prompt = get_template_system_prompt(COUNTER_TEMPLATE, "0.10.0")
+        # Must have actual ETH transfer code snippet
+        assert "transfer_eth(self.vm(), to, amount)?" in prompt
+        assert "use stylus_sdk::call::transfer::transfer_eth;" in prompt
+        # Must have actual sol_interface! code snippet
+        assert "sol_interface! {" in prompt
+        assert "IToken::new(token)" in prompt
+        assert "token.balance_of(self.vm(), Call::new(), account)?" in prompt
+        # Must be labeled as REFERENCE CODE
+        assert "REFERENCE CODE" in prompt
+
+    def test_fix_code_removes_deprecated_evm_import(self):
+        """_fix_code should remove deprecated use stylus_sdk::evm imports."""
+        from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
+        tool = GenerateStylusCodeTool.__new__(GenerateStylusCodeTool)
+        broken = 'use stylus_sdk::evm;\nevm::log(Transfer { from, to, value });'
+        fixed = tool._fix_code(broken, None)
+        assert "use stylus_sdk::evm" not in fixed
+
 
 # Integration tests that require cargo-stylus
 @pytest.mark.integration

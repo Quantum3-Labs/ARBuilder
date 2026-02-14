@@ -24,6 +24,7 @@ import { selectTemplate, StylusTemplate } from "../templates/stylusTemplates";
 
 /**
  * Validate and fix common LLM mistakes in generated code.
+ * Mirrors the Python _fix_code() safety nets in generate_stylus_code.py.
  */
 function validateAndFixCode(code: string, template: StylusTemplate): string {
   let fixed = code;
@@ -32,10 +33,20 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
   fixed = fixed.replace(/sol_storage!\s*\{\s*\}/g, "");
 
   // Fix 2: Ensure proper cfg_attr if missing
-  if (!fixed.includes("#![cfg_attr(not(any(test")) {
+  if (!fixed.includes('#![cfg_attr(not(any(test')) {
     const templateStart = template.libRs.split("extern crate alloc")[0];
     if (!fixed.startsWith("#![cfg_attr")) {
       fixed = templateStart + fixed;
+    } else {
+      // Replace wrong cfg_attr patterns with correct ones
+      fixed = fixed.replace(
+        /#!\[cfg_attr\(not\(any\(feature\s*=\s*"export-abi",\s*test\)\),\s*no_std\)\]/g,
+        '#![cfg_attr(not(any(test, feature = "export-abi")), no_std)]'
+      );
+      fixed = fixed.replace(
+        /#!\[cfg_attr\(not\(test\),\s*no_main\)\]/g,
+        '#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]'
+      );
     }
   }
 
@@ -53,32 +64,96 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
   fixed = fixed.replace(/^use stylus_sdk::alloy_sol_types::sol;\s*$/gm, "");
 
   // Fix 5: Handle Vec imports - avoid duplicates
-  // If we have both "use alloc::vec::Vec" and "use alloc::{...vec::Vec...}", remove the standalone
   if (fixed.includes("use alloc::vec::Vec;") && fixed.includes("use alloc::{") && fixed.includes("vec::Vec")) {
     fixed = fixed.replace(/use alloc::vec::Vec;\n?/g, "");
   }
-  // If Vec<u8> is used but no import, add it
-  if (fixed.includes("Vec<u8>") && !fixed.includes("alloc::vec::Vec") && !fixed.includes("alloc::{") ) {
+  if (fixed.includes("Vec<u8>") && !fixed.includes("alloc::vec::Vec") && !fixed.includes("alloc::{")) {
     fixed = fixed.replace(
       /(extern crate alloc;)/,
       "$1\n\nuse alloc::vec::Vec;"
     );
   }
 
-  // Fix 6: Ensure there's exactly one sol_storage! block with #[entrypoint]
+  // Fix 6: Ensure use alloc::vec; is present (sol_storage! needs vec module)
+  if (!fixed.includes("use alloc::vec;") && !fixed.includes("use alloc::{")) {
+    fixed = fixed.replace(
+      /(extern crate alloc;\s*\n)/,
+      "$1\nuse alloc::{vec, vec::Vec};\n"
+    );
+  } else if (fixed.includes("use alloc::vec::Vec;") && !fixed.includes("use alloc::vec;") && !fixed.includes("alloc::{")) {
+    // Has Vec but not vec module — replace with combined import
+    fixed = fixed.replace(
+      "use alloc::vec::Vec;",
+      "use alloc::{vec, vec::Vec};"
+    );
+  }
+
+  // Fix 7: Ensure there's exactly one sol_storage! block with #[entrypoint]
   const solStorageCount = (fixed.match(/sol_storage!\s*\{/g) || []).length;
   if (solStorageCount === 0) {
-    // If no sol_storage! block, the code is likely broken - use template
     return template.libRs;
   }
 
-  // Fix 7: Ensure #[entrypoint] is inside sol_storage! if missing
+  // Fix 8: Ensure #[entrypoint] is inside sol_storage! if missing
   if (!fixed.includes("#[entrypoint]")) {
     fixed = fixed.replace(
       /sol_storage!\s*\{\s*(\n?\s*pub struct)/,
       "sol_storage! {\n    #[entrypoint]$1"
     );
   }
+
+  // Fix 9: Convert sol! { interface ... } to sol_interface! { interface ... }
+  // LLMs often use sol! for interfaces, but Stylus requires sol_interface!
+  fixed = fixed.replace(
+    /sol!\s*\{\s*(interface\b)/g,
+    "sol_interface! { $1"
+  );
+
+  // Fix 10: Fix wrong transfer_eth import paths
+  // Wrong: use stylus_sdk::call::transfer_eth;
+  // Correct: use stylus_sdk::call::transfer::transfer_eth;
+  fixed = fixed.replace(
+    /use stylus_sdk::call::transfer_eth;/g,
+    "use stylus_sdk::call::transfer::transfer_eth;"
+  );
+  // Wrong: use stylus_sdk::call::{transfer_eth, ...};
+  // Split into separate imports
+  fixed = fixed.replace(
+    /use stylus_sdk::call::\{([^}]*)\btransfer_eth\b([^}]*)\};/g,
+    (_match, before: string, after: string) => {
+      const others = (before.replace("transfer_eth", "").trim().replace(/^,|,$/g, "").trim()
+        + ", " + after.trim().replace(/^,|,$/g, "").trim()).replace(/^,\s*|,\s*$/g, "").trim();
+      const transferLine = "use stylus_sdk::call::transfer::transfer_eth;";
+      if (others) {
+        return `${transferLine}\nuse stylus_sdk::call::{${others}};`;
+      }
+      return transferLine;
+    }
+  );
+
+  // Fix 11: self.transfer_eth(to, amount) → transfer_eth(self.vm(), to, amount)
+  fixed = fixed.replace(
+    /self\.transfer_eth\(([^)]+)\)/g,
+    "transfer_eth(self.vm(), $1)"
+  );
+
+  // Fix 12: transfer_eth(self, ...) → transfer_eth(self.vm(), ...)
+  // LLMs write self instead of self.vm() — must be the vm Host context
+  fixed = fixed.replace(
+    /transfer_eth\(self,\s*/g,
+    "transfer_eth(self.vm(), "
+  );
+
+  // Fix 13: Remove deprecated stylus_sdk::evm and stylus_sdk::msg imports
+  fixed = fixed.replace(/^use stylus_sdk::evm.*;\s*$/gm, "");
+  fixed = fixed.replace(/^use stylus_sdk::msg.*;\s*$/gm, "");
+
+  // Fix 14: Fix deprecated msg::sender() → self.vm().msg_sender()
+  fixed = fixed.replace(/msg::sender\(\)/g, "self.vm().msg_sender()");
+  fixed = fixed.replace(/msg::value\(\)/g, "self.vm().msg_value()");
+
+  // Fix 15: Fix deprecated evm::log(...) → self.vm().log(...)
+  fixed = fixed.replace(/evm::log\(/g, "self.vm().log(");
 
   return fixed;
 }
