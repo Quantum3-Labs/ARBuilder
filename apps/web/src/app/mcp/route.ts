@@ -382,7 +382,7 @@ const TOOLS = [
   {
     name: "orchestrate_dapp",
     description:
-      "Generate a complete dApp with multiple components: Stylus contract, backend, frontend, indexer, and oracle. Creates a monorepo structure with all necessary configuration.",
+      "Scaffold a template-based dApp monorepo with starter components: Stylus contract, backend, frontend, indexer, and oracle. Creates a project structure with generic templates to customize.",
     inputSchema: {
       type: "object" as const,
       properties: {

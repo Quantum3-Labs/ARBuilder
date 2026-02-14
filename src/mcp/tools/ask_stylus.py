@@ -47,6 +47,7 @@ IMPORTANT SDK 0.10.0 changes:
 - ALWAYS include `use alloc::vec;` (the module) — sol_storage! macro needs it in scope
 - RawCall::new_with_value(self.vm(), amount) — needs self.vm() as first arg and requires unsafe block
 - uint8 in sol_storage! maps to Uint<8,1> not native u8 — comparisons with native u8 won't compile, prefer uint256
+- For sol_interface! cross-contract calls: generated methods take (self.vm(), Call::new(), ...args) — NOT the old Call::new_in(self) from 0.9.x
 
 Your expertise includes:
 - Stylus SDK and its features (sol_storage!, #[entrypoint], storage types)

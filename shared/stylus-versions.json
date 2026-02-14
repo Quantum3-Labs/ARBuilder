@@ -83,7 +83,9 @@
       "crate_type": ["lib", "cdylib"],
       "required_imports": ["use alloc::{vec, vec::Vec};"],
       "raw_call_api": "RawCall::new_with_value(self.vm(), amount) — requires unsafe block",
-      "uint8_note": "uint8 in sol_storage! maps to Uint<8,1>, not native u8"
+      "uint8_note": "uint8 in sol_storage! maps to Uint<8,1>, not native u8",
+      "cross_contract_calls": "sol_interface! methods: method(self.vm(), Call::new(), ...args). Call::new_in() removed.",
+      "sol_interface_host_arg": "First arg is always self.vm() (host), second is Call context"
     },
     "0.9": {
       "attributes": ["#[public]", "#[entrypoint]"],

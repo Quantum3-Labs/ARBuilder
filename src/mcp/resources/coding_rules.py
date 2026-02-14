@@ -163,6 +163,36 @@ path = "src/main.rs"''',
             "note": "Comparisons between Uint<8,1> and u8 won't compile. Either use .try_into() or prefer uint256 for simplicity.",
         },
 
+        "cross_contract_calls": {
+            "description": "Call external contracts using sol_interface! macro with Host + CallContext pattern",
+            "definition": '''sol_interface! {
+    interface IToken {
+        function transfer(address to, uint256 amount) external returns (bool);
+        function balanceOf(address account) external view returns (uint256);
+    }
+}''',
+            "usage": '''use stylus_sdk::call::Call;
+
+// sol_interface! generates methods with signature:
+//   method_name(&self, host: &impl Host, context: impl CallContext, ...solidity_args)
+//
+// host = self.vm()
+// context = Call::new() | Call::new_mutating() | Call::new_payable()
+
+// View call:
+let balance = token.balance_of(self.vm(), Call::new(), account)?;
+
+// Mutating call:
+let success = token.transfer(self.vm(), Call::new(), recipient, amount)?;
+
+// Payable call with gas/value config:
+let config = Call::new()
+    .gas(100_000)
+    .value(U256::from(1_000_000));
+let result = token.transfer(self.vm(), config, recipient, amount)?;''',
+            "note": "In SDK 0.10.0, Call::new_in(self) from 0.9.x is removed. Use Call::new() with self.vm() as host arg.",
+        },
+
         "tests": {
             "description": "Unit tests with stylus-test feature",
             "example": '''#[cfg(test)]
@@ -206,11 +236,13 @@ mod tests {
         "Missing use alloc::vec; - sol_storage! macro needs the vec module in scope",
         "RawCall without self.vm() - RawCall::new_with_value needs self.vm() as first arg and unsafe block",
         "uint8 in sol_storage! - Maps to Uint<8,1>, not u8. Use .try_into() for comparisons or prefer uint256",
+        "Using Call::new_in(self) — removed in 0.10.0. Use Call::new() / Call::new_mutating() / Call::new_payable() with self.vm() as host",
     ],
 
     "forbidden_imports": [
         "stylus_sdk::evm",
         "stylus_sdk::msg",
+        "Call::new_in",
     ],
 
     "required_files": {

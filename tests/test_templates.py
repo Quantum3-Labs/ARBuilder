@@ -369,6 +369,27 @@ class TestSystemPromptsAndDisclaimer:
         assert "main_rs" in STYLUS_CODING_RULES["patterns"]
         assert "print_from_args" in STYLUS_CODING_RULES["patterns"]["main_rs"]["example"]
 
+    def test_coding_rules_has_cross_contract_calls(self):
+        """Coding rules should document sol_interface! call pattern."""
+        from src.mcp.resources.coding_rules import STYLUS_CODING_RULES
+        assert "cross_contract_calls" in STYLUS_CODING_RULES["patterns"]
+        pattern = STYLUS_CODING_RULES["patterns"]["cross_contract_calls"]
+        assert "sol_interface!" in pattern["definition"]
+        assert "Call::new()" in pattern["usage"]
+        assert "self.vm()" in pattern["usage"]
+
+    def test_coding_rules_forbids_call_new_in(self):
+        """Coding rules should forbid Call::new_in (0.9.x pattern)."""
+        from src.mcp.resources.coding_rules import STYLUS_CODING_RULES
+        assert "Call::new_in" in STYLUS_CODING_RULES["forbidden_imports"]
+
+    def test_system_prompt_mentions_sol_interface(self):
+        """System prompt should mention sol_interface! call pattern."""
+        from src.mcp.tools.generate_stylus_code import get_system_prompt
+        prompt = get_system_prompt("0.10.0")
+        assert "sol_interface" in prompt
+        assert "Call::new()" in prompt
+
 
 # Integration tests that require cargo-stylus
 @pytest.mark.integration
@@ -687,6 +708,14 @@ class TestOrchestratorDeployScripts:
         assert "hardhat.config.ts" in oracle["files"]
         assert "contracts/OracleConsumer.sol" in oracle["files"]
         assert "scripts/deploy.ts" in oracle["files"]
+
+
+    def test_orchestrate_dapp_description_says_scaffold(self):
+        """orchestrate_dapp description should say 'Scaffold', not 'Generate a complete'."""
+        from src.mcp.tools.orchestrate_dapp import OrchestrateDappTool
+        tool = OrchestrateDappTool()
+        assert "Scaffold" in tool.description
+        assert "Generate a complete" not in tool.description
 
 
 class TestSetupScriptScaffolding:

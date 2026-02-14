@@ -263,6 +263,24 @@ fn main() {
 // evm::log(...)  → self.vm().log(...)
 ```
 
+### Cross-Contract Calls (sol_interface!)
+```rust
+use stylus_sdk::call::Call;
+
+sol_interface! {
+    interface IToken {
+        function transfer(address to, uint256 amount) external returns (bool);
+        function balanceOf(address account) external view returns (uint256);
+    }
+}
+
+// Generated methods take: (self.vm(), Call context, ...solidity_args)
+let balance = token.balance_of(self.vm(), Call::new(), account)?;
+let success = token.transfer(self.vm(), Call::new(), recipient, amount)?;
+
+// Call::new_in(self) from 0.9.x is REMOVED — use Call::new() with self.vm() as host
+```
+
 ### Key Constraints
 - **24KB size limit** (Brotli-compressed WASM)
 - **Rust 1.88.0** (via rust-toolchain.toml)

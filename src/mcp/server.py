@@ -418,7 +418,7 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "orchestrate_dapp",
-        "description": "Generate a complete dApp with multiple components (contract, backend, frontend, indexer, oracle).",
+        "description": "Scaffold a template-based dApp monorepo with starter components (contract, backend, frontend, indexer, oracle).",
         "inputSchema": {
             "type": "object",
             "properties": {

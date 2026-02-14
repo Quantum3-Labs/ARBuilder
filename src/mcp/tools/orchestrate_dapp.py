@@ -35,17 +35,18 @@ class OrchestrateDappTool(BaseTool):
     """Orchestrate generation of complete dApps."""
 
     name = "orchestrate_dapp"
-    description = """Generate a complete dApp with multiple components.
+    description = """Scaffold a template-based dApp monorepo with starter components.
 
-This tool coordinates the generation of:
-- Smart contracts (Stylus Rust/WASM)
+Generates a production-ready project structure with generic templates for:
+- Smart contracts (Stylus Rust/WASM) — selected by contract_type parameter
 - Backend services (NestJS/Express with viem)
 - Frontend applications (Next.js with wagmi/RainbowKit)
 - Subgraph indexers (The Graph)
 - Oracle integrations (Chainlink)
 
 Generates executable setup.sh, deploy.sh, and start.sh scripts.
-ABI is auto-extracted from the contract and injected into backend/frontend."""
+ABI is auto-extracted from the contract and injected into backend/frontend.
+Templates provide a working starting point — customize for your specific use case."""
 
     input_schema = {
         "type": "object",

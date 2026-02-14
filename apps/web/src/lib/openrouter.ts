@@ -134,6 +134,7 @@ Key patterns for v${targetVersion}:
 - Package name in Cargo.toml MUST use underscores (e.g., "my_contract") — hyphens break cargo-stylus
 - src/main.rs is REQUIRED — use print_from_args() (NOT print_abi()) for ABI export
 - crate-type in [lib] must be ["lib", "cdylib"]
+- For sol_interface! cross-contract calls: methods take (self.vm(), Call::new(), ...args). Call::new_in(self) from 0.9.x is removed.
 
 Security best practices:
 - Check for overflows using checked_add/checked_sub

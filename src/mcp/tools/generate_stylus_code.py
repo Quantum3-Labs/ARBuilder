@@ -116,6 +116,7 @@ Key Stylus patterns for v{target_version}:
 21. A src/main.rs is REQUIRED — cargo stylus deploy uses `cargo run` to check for constructors
 22. The correct ABI export function in 0.10.0 is `print_from_args()` (NOT `print_abi()`)
 23. crate-type in [lib] must be ["lib", "cdylib"] — "lib" is needed for bin target linking
+24. For sol_interface! cross-contract calls: methods take (self.vm(), Call::new(), ...solidity_args). Call::new_in(self) from 0.9.x is removed.
 
 Dependencies for v{target_version}:
 - stylus-sdk = "{target_version}"
