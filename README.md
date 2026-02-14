@@ -628,6 +628,7 @@ Complete dApp scaffolding with all components:
 - **ABI-Aware Generation**: Indexer schema/mappings, frontend hooks, and backend routes are generated from contract ABI
 - **Compiler Verification**: Docker-based `cargo check` loop catches and auto-fixes compilation errors
 - **Executable Scripts**: Generated `setup.sh`, `deploy.sh`, and `start.sh` for one-command workflows
+- **CLI Scaffolding**: `setup.sh` uses a scaffold-first, backfill pattern with official CLI tools (`cargo stylus new`, `create-next-app`, `@nestjs/cli`) to fill in config files our templates don't generate, with graceful fallback if tools aren't installed
 - **Env Standardization**: Centralized env var config (PORT 3001, CORS, BACKEND_URL) across all components
 
 **Backend Templates:**

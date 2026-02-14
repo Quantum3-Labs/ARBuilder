@@ -582,3 +582,195 @@ class TestTemplateCompilation:
             f"Template {template.name} WASM size ({wasm_size / 1024:.1f}KB) "
             f"exceeds limit ({max_uncompressed_size / 1024:.1f}KB)"
         )
+
+
+class TestOracleScaffold:
+    """Test oracle tool generates Hardhat scaffold files."""
+
+    def test_generate_oracle_returns_hardhat_config(self):
+        """generate_oracle should include hardhat.config.ts in files."""
+        from src.mcp.tools.generate_oracle import GenerateOracleTool
+        tool = GenerateOracleTool()
+        result = tool.execute(prompt="price feed oracle", oracle_type="price_feed")
+        assert "hardhat.config.ts" in result["files"]
+        assert "HardhatUserConfig" in result["files"]["hardhat.config.ts"]
+
+    def test_generate_oracle_returns_package_json(self):
+        """generate_oracle should include package.json in files."""
+        from src.mcp.tools.generate_oracle import GenerateOracleTool
+        tool = GenerateOracleTool()
+        result = tool.execute(prompt="price feed oracle", oracle_type="price_feed")
+        assert "package.json" in result["files"]
+        assert "hardhat" in result["files"]["package.json"]
+        assert "@chainlink/contracts" in result["files"]["package.json"]
+
+    def test_generate_oracle_returns_env_example(self):
+        """generate_oracle should include .env.example in files."""
+        from src.mcp.tools.generate_oracle import GenerateOracleTool
+        tool = GenerateOracleTool()
+        result = tool.execute(prompt="price feed oracle", oracle_type="price_feed")
+        assert ".env.example" in result["files"]
+        assert "PRIVATE_KEY" in result["files"][".env.example"]
+
+    def test_generate_oracle_all_types_have_scaffold(self):
+        """All oracle types should include Hardhat scaffold files."""
+        from src.mcp.tools.generate_oracle import GenerateOracleTool
+        tool = GenerateOracleTool()
+        for oracle_type in ["price_feed", "vrf", "automation", "functions"]:
+            result = tool.execute(prompt=f"{oracle_type} oracle", oracle_type=oracle_type)
+            assert "hardhat.config.ts" in result["files"], f"{oracle_type} missing hardhat.config.ts"
+            assert "package.json" in result["files"], f"{oracle_type} missing package.json"
+            assert ".env.example" in result["files"], f"{oracle_type} missing .env.example"
+
+
+class TestOrchestratorDeployScripts:
+    """Test orchestrator generates deploy/setup scripts with oracle+indexer sections."""
+
+    def test_deploy_script_includes_oracle_section(self):
+        """deploy.sh should include oracle deploy section when oracle is a component."""
+        from src.mcp.tools.orchestrate_dapp import OrchestrateDappTool
+        tool = OrchestrateDappTool()
+        result = tool.execute(
+            prompt="token dapp",
+            components=["contract", "backend", "frontend", "oracle"],
+        )
+        deploy_sh = result["root_files"]["deploy.sh"]
+        assert "packages/oracle" in deploy_sh
+        assert "hardhat run scripts/deploy.ts" in deploy_sh
+
+    def test_deploy_script_includes_indexer_section(self):
+        """deploy.sh should include indexer deploy section when indexer is a component."""
+        from src.mcp.tools.orchestrate_dapp import OrchestrateDappTool
+        tool = OrchestrateDappTool()
+        result = tool.execute(
+            prompt="token dapp",
+            components=["contract", "backend", "frontend", "indexer"],
+        )
+        deploy_sh = result["root_files"]["deploy.sh"]
+        assert "packages/indexer" in deploy_sh
+        assert "GRAPH_DEPLOY_KEY" in deploy_sh
+        assert "npm run codegen" in deploy_sh
+
+    def test_deploy_script_excludes_oracle_when_not_requested(self):
+        """deploy.sh should NOT include oracle section when oracle is not a component."""
+        from src.mcp.tools.orchestrate_dapp import OrchestrateDappTool
+        tool = OrchestrateDappTool()
+        result = tool.execute(
+            prompt="token dapp",
+            components=["contract", "backend", "frontend"],
+        )
+        deploy_sh = result["root_files"]["deploy.sh"]
+        assert "packages/oracle" not in deploy_sh
+
+    def test_setup_script_includes_oracle_install(self):
+        """setup.sh should include oracle npm install when oracle is a component."""
+        from src.mcp.tools.orchestrate_dapp import OrchestrateDappTool
+        tool = OrchestrateDappTool()
+        result = tool.execute(
+            prompt="token dapp",
+            components=["contract", "backend", "frontend", "oracle"],
+        )
+        setup_sh = result["root_files"]["setup.sh"]
+        assert "packages/oracle" in setup_sh
+        assert "Installing oracle dependencies" in setup_sh
+
+    def test_orchestrator_oracle_has_files(self):
+        """Oracle component in orchestrator should have deployable files."""
+        from src.mcp.tools.orchestrate_dapp import OrchestrateDappTool
+        tool = OrchestrateDappTool()
+        result = tool.execute(
+            prompt="token dapp",
+            components=["contract", "oracle"],
+        )
+        oracle = result["components"]["oracle"]
+        assert "files" in oracle
+        assert "hardhat.config.ts" in oracle["files"]
+        assert "contracts/OracleConsumer.sol" in oracle["files"]
+        assert "scripts/deploy.ts" in oracle["files"]
+
+
+class TestSetupScriptScaffolding:
+    """Test that setup.sh uses official CLI scaffolding with backfill pattern."""
+
+    def _get_setup_sh(self, components, backend_framework="nestjs"):
+        from src.mcp.tools.orchestrate_dapp import OrchestrateDappTool
+        tool = OrchestrateDappTool()
+        result = tool.execute(
+            prompt="token dapp",
+            components=components,
+            backend_framework=backend_framework,
+        )
+        return result["root_files"]["setup.sh"]
+
+    def test_setup_script_has_backfill_helper(self):
+        """setup.sh should define the backfill_from_scaffold function."""
+        setup_sh = self._get_setup_sh(["contract", "backend", "frontend"])
+        assert "backfill_from_scaffold()" in setup_sh
+        assert "scaffold_dir" in setup_sh
+        assert 'case "$rel" in src/*)' in setup_sh
+
+    def test_setup_script_contract_scaffold(self):
+        """setup.sh should include cargo stylus new scaffold when contract is present."""
+        setup_sh = self._get_setup_sh(["contract", "backend", "frontend"])
+        assert "cargo stylus new" in setup_sh
+        assert "backfill_from_scaffold" in setup_sh
+
+    def test_setup_script_frontend_scaffold(self):
+        """setup.sh should include create-next-app scaffold when frontend is present."""
+        setup_sh = self._get_setup_sh(["contract", "backend", "frontend"])
+        assert "create-next-app" in setup_sh
+        assert "--tailwind" in setup_sh
+
+    def test_setup_script_backend_nestjs_scaffold(self):
+        """setup.sh should include @nestjs/cli scaffold for NestJS backend."""
+        setup_sh = self._get_setup_sh(
+            ["contract", "backend", "frontend"], backend_framework="nestjs"
+        )
+        assert "@nestjs/cli" in setup_sh
+
+    def test_setup_script_backend_express_no_scaffold(self):
+        """setup.sh should NOT include @nestjs/cli scaffold for Express backend."""
+        setup_sh = self._get_setup_sh(
+            ["contract", "backend", "frontend"], backend_framework="express"
+        )
+        assert "@nestjs/cli" not in setup_sh
+
+    def test_setup_script_no_contract_no_scaffold(self):
+        """setup.sh should NOT include cargo stylus new when contract is absent."""
+        setup_sh = self._get_setup_sh(["backend", "frontend"])
+        assert "cargo stylus new" not in setup_sh
+
+    def test_setup_script_graceful_fallback(self):
+        """setup.sh should include 'scaffold skipped' fallback messages."""
+        setup_sh = self._get_setup_sh(["contract", "backend", "frontend"])
+        assert "scaffold skipped" in setup_sh
+
+
+class TestEnvConfigOracleIndexer:
+    """Test env_config generates oracle/indexer env vars."""
+
+    def test_env_template_includes_graph_deploy_key(self):
+        """Env template should include GRAPH_DEPLOY_KEY when indexer is present."""
+        from src.utils.env_config import generate_env_template
+        env = generate_env_template(["contract", "backend", "frontend", "indexer"])
+        assert "GRAPH_DEPLOY_KEY" in env
+        assert "SUBGRAPH_NAME" in env
+
+    def test_env_template_includes_oracle_address(self):
+        """Env template should include ORACLE_CONTRACT_ADDRESS when oracle is present."""
+        from src.utils.env_config import generate_env_template
+        env = generate_env_template(["contract", "backend", "frontend", "oracle"])
+        assert "ORACLE_CONTRACT_ADDRESS" in env
+
+    def test_env_template_includes_subgraph_url_for_frontend(self):
+        """Env template should include NEXT_PUBLIC_SUBGRAPH_URL when both indexer and frontend."""
+        from src.utils.env_config import generate_env_template
+        env = generate_env_template(["contract", "backend", "frontend", "indexer"])
+        assert "NEXT_PUBLIC_SUBGRAPH_URL" in env
+
+    def test_env_template_excludes_oracle_when_not_requested(self):
+        """Env template should NOT include oracle vars when oracle is not present."""
+        from src.utils.env_config import generate_env_template
+        env = generate_env_template(["contract", "backend", "frontend"])
+        assert "ORACLE_CONTRACT_ADDRESS" not in env
+        assert "GRAPH_DEPLOY_KEY" not in env

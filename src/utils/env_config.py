@@ -31,6 +31,15 @@ FRONTEND_ENV_VARS = {
     "NEXT_PUBLIC_WALLET_CONNECT_ID": "WalletConnect project ID (from cloud.walletconnect.com)",
 }
 
+INDEXER_ENV_VARS = {
+    "GRAPH_DEPLOY_KEY": "The Graph Studio deploy key (from thegraph.com/studio)",
+    "SUBGRAPH_NAME": "Subgraph name in The Graph Studio",
+}
+
+ORACLE_ENV_VARS = {
+    "ORACLE_CONTRACT_ADDRESS": "Deployed oracle consumer contract address",
+}
+
 # Network presets
 NETWORK_CONFIGS = {
     "arbitrumSepolia": {
@@ -95,10 +104,23 @@ def generate_env_template(
         lines.append("NEXT_PUBLIC_WALLET_CONNECT_ID=YOUR_WALLETCONNECT_PROJECT_ID")
         lines.append("")
 
+    # Frontend — subgraph URL when indexer is present
+    if "indexer" in components and "frontend" in components:
+        lines.append("# Frontend — Subgraph")
+        lines.append("NEXT_PUBLIC_SUBGRAPH_URL=https://api.thegraph.com/subgraphs/name/YOUR_SUBGRAPH")
+        lines.append("")
+
     # Indexer
     if "indexer" in components:
         lines.append("# Indexer (The Graph)")
-        lines.append("SUBGRAPH_URL=https://api.thegraph.com/subgraphs/name/YOUR_SUBGRAPH")
+        lines.append("GRAPH_DEPLOY_KEY=YOUR_GRAPH_STUDIO_DEPLOY_KEY")
+        lines.append("SUBGRAPH_NAME=my-subgraph")
+        lines.append("")
+
+    # Oracle
+    if "oracle" in components:
+        lines.append("# Oracle (Chainlink)")
+        lines.append("ORACLE_CONTRACT_ADDRESS=0x_ORACLE_ADDRESS_HERE")
         lines.append("")
 
     return "\n".join(lines)

@@ -139,6 +139,11 @@ ruff check .
 4. **ABI Injection** → Backend/frontend templates have `__ABI_PLACEHOLDER__` markers replaced with actual ABI
 5. **Env Config** → `env_config.py` generates standardized `.env.example` (PORT=3001, CORS, BACKEND_URL)
 6. **Script Generation** → `setup.sh`, `deploy.sh`, `start.sh` for one-command workflows
+7. **CLI Scaffolding** → `setup.sh` uses a **scaffold-first, backfill** pattern: official CLI tools scaffold into a temp dir, then only config files missing from the project are copied over (our generated `src/` always takes precedence). Supported CLI tools:
+   - **Contract**: `cargo stylus new` → `.cargo/config.toml`, latest `rust-toolchain.toml`
+   - **Frontend**: `npx create-next-app@latest` → `postcss.config.mjs`, `tailwind.config.ts`, `public/` icons
+   - **Backend (NestJS only)**: `npx @nestjs/cli@latest new` → `nest-cli.json`, `.prettierrc`, test scaffold
+   - Falls back gracefully if CLI tools are not installed
 
 ### Utility Modules (`src/utils/`)
 - **env_config.py**: Single source of truth for env var names (PORT=3001, FRONTEND_URL, NEXT_PUBLIC_BACKEND_URL)

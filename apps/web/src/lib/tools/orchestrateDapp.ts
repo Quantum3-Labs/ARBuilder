@@ -203,6 +203,25 @@ function generateEnvTemplate(
     lines.push("");
   }
 
+  if (components.includes("indexer") && components.includes("frontend")) {
+    lines.push("# Frontend — Subgraph");
+    lines.push("NEXT_PUBLIC_SUBGRAPH_URL=https://api.thegraph.com/subgraphs/name/YOUR_SUBGRAPH");
+    lines.push("");
+  }
+
+  if (components.includes("indexer")) {
+    lines.push("# Indexer (The Graph)");
+    lines.push("GRAPH_DEPLOY_KEY=YOUR_GRAPH_STUDIO_DEPLOY_KEY");
+    lines.push("SUBGRAPH_NAME=my-subgraph");
+    lines.push("");
+  }
+
+  if (components.includes("oracle")) {
+    lines.push("# Oracle (Chainlink)");
+    lines.push("ORACLE_CONTRACT_ADDRESS=0x_ORACLE_ADDRESS_HERE");
+    lines.push("");
+  }
+
   return lines.join("\n");
 }
 
@@ -218,6 +237,23 @@ function generateSetupScript(components: Component[]): string {
     '  echo "Created .env from template — edit it with your keys before deploying."',
     "fi",
     "",
+    "# --- Scaffold helper ---",
+    "# Copies only files that do NOT already exist in the target dir.",
+    "# src/ is always skipped — our generated code is authoritative.",
+    "backfill_from_scaffold() {",
+    '  local scaffold_dir="$1"',
+    '  local target_dir="$2"',
+    '  if [ ! -d "$scaffold_dir" ]; then return 0; fi',
+    '  find "$scaffold_dir" -type f | while read -r f; do',
+    '    rel="${f#$scaffold_dir/}"',
+    '    case "$rel" in src/*) continue ;; esac',
+    '    if [ ! -f "$target_dir/$rel" ]; then',
+    '      mkdir -p "$target_dir/$(dirname "$rel")"',
+    '      cp "$f" "$target_dir/$rel"',
+    "    fi",
+    "  done",
+    "}",
+    "",
   ];
 
   if (components.includes("contract")) {
@@ -225,17 +261,66 @@ function generateSetupScript(components: Component[]): string {
     lines.push("rustup target add wasm32-unknown-unknown 2>/dev/null || true");
     lines.push("cargo install cargo-stylus 2>/dev/null || true");
     lines.push("");
+    lines.push("# Scaffold contract baseline with cargo stylus new");
+    lines.push("if command -v cargo-stylus &>/dev/null || cargo stylus --version &>/dev/null 2>&1; then");
+    lines.push('  echo "  Scaffolding contract config from cargo stylus new..."');
+    lines.push("  SCAFFOLD_TMP=$(mktemp -d)");
+    lines.push('  cargo stylus new "$SCAFFOLD_TMP/scaffold" 2>/dev/null && \\');
+    lines.push('    backfill_from_scaffold "$SCAFFOLD_TMP/scaffold" packages/contracts || \\');
+    lines.push('    echo "  (scaffold skipped — cargo stylus new failed)"');
+    lines.push('  rm -rf "$SCAFFOLD_TMP"');
+    lines.push("else");
+    lines.push('  echo "  (scaffold skipped — cargo-stylus not available)"');
+    lines.push("fi");
+    lines.push("");
   }
 
   if (components.includes("backend")) {
+    // TS always uses NestJS, so always include NestJS scaffold
+    lines.push("# Scaffold backend baseline with @nestjs/cli");
+    lines.push("if command -v npx &>/dev/null; then");
+    lines.push('  echo "  Scaffolding backend config from @nestjs/cli..."');
+    lines.push("  SCAFFOLD_TMP=$(mktemp -d)");
+    lines.push('  npx @nestjs/cli@latest new scaffold --package-manager npm --skip-git --skip-install --directory "$SCAFFOLD_TMP" 2>/dev/null && \\');
+    lines.push('    backfill_from_scaffold "$SCAFFOLD_TMP/scaffold" packages/backend || \\');
+    lines.push('    echo "  (scaffold skipped — @nestjs/cli failed)"');
+    lines.push('  rm -rf "$SCAFFOLD_TMP"');
+    lines.push("else");
+    lines.push('  echo "  (scaffold skipped — npx not available)"');
+    lines.push("fi");
+    lines.push("");
     lines.push('echo "Installing backend dependencies..."');
     lines.push("cd packages/backend && npm install && cd ../..");
     lines.push("");
   }
 
   if (components.includes("frontend")) {
+    lines.push("# Scaffold frontend baseline with create-next-app");
+    lines.push("if command -v npx &>/dev/null; then");
+    lines.push('  echo "  Scaffolding frontend config from create-next-app..."');
+    lines.push("  SCAFFOLD_TMP=$(mktemp -d)");
+    lines.push('  npx create-next-app@latest "$SCAFFOLD_TMP/scaffold" --ts --tailwind --app --src-dir --use-npm --no-git --no-eslint --skip-install 2>/dev/null && \\');
+    lines.push('    backfill_from_scaffold "$SCAFFOLD_TMP/scaffold" packages/frontend || \\');
+    lines.push('    echo "  (scaffold skipped — create-next-app failed)"');
+    lines.push('  rm -rf "$SCAFFOLD_TMP"');
+    lines.push("else");
+    lines.push('  echo "  (scaffold skipped — npx not available)"');
+    lines.push("fi");
+    lines.push("");
     lines.push('echo "Installing frontend dependencies..."');
     lines.push("cd packages/frontend && npm install && cd ../..");
+    lines.push("");
+  }
+
+  if (components.includes("indexer")) {
+    lines.push('echo "Installing indexer dependencies..."');
+    lines.push("cd packages/indexer && npm install && cd ../..");
+    lines.push("");
+  }
+
+  if (components.includes("oracle")) {
+    lines.push('echo "Installing oracle dependencies..."');
+    lines.push("cd packages/oracle && npm install && cd ../..");
     lines.push("");
   }
 
@@ -273,6 +358,35 @@ function generateDeployScript(components: Component[]): string {
     lines.push("  rm -f .env.bak");
     lines.push("else");
     lines.push('  echo "Could not extract address. Update .env manually."');
+    lines.push("  cd ../..");
+    lines.push("fi");
+    lines.push("");
+  }
+
+  if (components.includes("oracle")) {
+    lines.push("# Oracle deploy");
+    lines.push('if [ -d "packages/oracle" ]; then');
+    lines.push('  echo "Deploying oracle contract..."');
+    lines.push("  cd packages/oracle");
+    lines.push('  npx hardhat run scripts/deploy.ts --network ${NETWORK:-arbitrumSepolia}');
+    lines.push("  cd ../..");
+    lines.push("fi");
+    lines.push("");
+  }
+
+  if (components.includes("indexer")) {
+    lines.push("# Indexer deploy");
+    lines.push('if [ -d "packages/indexer" ]; then');
+    lines.push('  echo "Building subgraph..."');
+    lines.push("  cd packages/indexer");
+    lines.push("  npm run codegen");
+    lines.push("  npm run build");
+    lines.push('  if [ -n "${GRAPH_DEPLOY_KEY:-}" ]; then');
+    lines.push('    echo "Deploying subgraph..."');
+    lines.push('    graph deploy --studio ${SUBGRAPH_NAME:-my-subgraph} --deploy-key "$GRAPH_DEPLOY_KEY"');
+    lines.push("  else");
+    lines.push('    echo "Skipping subgraph deploy (set GRAPH_DEPLOY_KEY and SUBGRAPH_NAME in .env to auto-deploy)"');
+    lines.push("  fi");
     lines.push("  cd ../..");
     lines.push("fi");
     lines.push("");

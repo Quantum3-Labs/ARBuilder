@@ -166,7 +166,9 @@ ABI is auto-extracted from the contract and injected into backend/frontend."""
             project["setup_instructions"].append("5. Set up Chainlink oracle integration")
 
         # Generate root configuration files (includes scripts)
-        project["root_files"] = self._generate_root_files(project, components, network)
+        project["root_files"] = self._generate_root_files(
+            project, components, network, backend_framework
+        )
 
         # Add development workflow
         project["development_workflow"] = self._generate_dev_workflow(components)
@@ -248,6 +250,14 @@ ABI is auto-extracted from the contract and injected into backend/frontend."""
                 "src/",
                 "schema.graphql",
                 "subgraph.yaml",
+                "package.json",
+            ]
+
+        if "oracle" in components:
+            structure["packages/oracle"] = [
+                "contracts/",
+                "scripts/",
+                "hardhat.config.ts",
                 "package.json",
             ]
 
@@ -424,24 +434,126 @@ ABI is auto-extracted from the contract and injected into backend/frontend."""
         network: str,
         abi_json: Optional[list] = None,
     ) -> dict:
-        """Generate oracle component with optional ABI context."""
+        """Generate oracle component with deployable Hardhat scaffold."""
         template = select_oracle_template(prompt)
+        network_key = "arbitrumSepolia" if network == "arbitrumSepolia" else "arbitrum"
+        network_config = template.networks.get(network_key, {})
+
+        # Build deployable files
+        files = {}
+        files["contracts/OracleConsumer.sol"] = template.solidity_code
+        files["scripts/deploy.ts"] = self._generate_oracle_deploy_script(
+            template, network
+        )
+        files["hardhat.config.ts"] = self._generate_oracle_hardhat_config()
+        files["package.json"] = self._generate_oracle_package_json(network)
+        files[".env.example"] = "PRIVATE_KEY=your-private-key-without-0x-prefix\n"
+
+        if template.frontend_hook:
+            files["src/hooks/useOracle.ts"] = template.frontend_hook
 
         return {
             "template": template.name,
             "type": template.oracle_type,
+            "files": files,
             "solidity_code": template.solidity_code,
             "stylus_code": template.stylus_code,
             "frontend_hook": template.frontend_hook,
-            "network_config": template.networks.get(
-                "arbitrumSepolia" if network == "arbitrumSepolia" else "arbitrum",
-                {},
-            ),
+            "network_config": network_config,
             "features": template.features,
         }
 
+    @staticmethod
+    def _generate_oracle_deploy_script(template, network: str) -> str:
+        """Generate a Hardhat deploy script for the oracle contract."""
+        network_key = "arbitrumSepolia" if network == "arbitrumSepolia" else "arbitrum"
+        network_config = template.networks.get(network_key, {})
+
+        if template.oracle_type == "price_feed":
+            feed_address = network_config.get("ETH/USD", "0x...")
+            return f'''import {{ ethers }} from "hardhat";
+
+async function main() {{
+  const priceFeedAddress = "{feed_address}";
+  const PriceFeedConsumer = await ethers.getContractFactory("PriceFeedConsumer");
+  const consumer = await PriceFeedConsumer.deploy(priceFeedAddress);
+  await consumer.waitForDeployment();
+  console.log("PriceFeedConsumer deployed to:", await consumer.getAddress());
+}}
+
+main().catch((error) => {{
+  console.error(error);
+  process.exitCode = 1;
+}});
+'''
+        # Default deploy script for other oracle types
+        contract_name = template.name.replace(" ", "")
+        return f'''import {{ ethers }} from "hardhat";
+
+async function main() {{
+  const {contract_name} = await ethers.getContractFactory("{contract_name}");
+  const contract = await {contract_name}.deploy();
+  await contract.waitForDeployment();
+  console.log("{contract_name} deployed to:", await contract.getAddress());
+}}
+
+main().catch((error) => {{
+  console.error(error);
+  process.exitCode = 1;
+}});
+'''
+
+    @staticmethod
+    def _generate_oracle_hardhat_config() -> str:
+        """Generate Hardhat config for oracle package."""
+        return '''import { HardhatUserConfig } from "hardhat/config";
+import "@nomicfoundation/hardhat-toolbox";
+import "dotenv/config";
+
+const config: HardhatUserConfig = {
+  solidity: "0.8.19",
+  networks: {
+    arbitrumSepolia: {
+      url: "https://sepolia-rollup.arbitrum.io/rpc",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
+    arbitrumOne: {
+      url: "https://arb1.arbitrum.io/rpc",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
+  },
+};
+
+export default config;
+'''
+
+    @staticmethod
+    def _generate_oracle_package_json(network: str) -> str:
+        """Generate package.json for oracle package."""
+        network_flag = "arbitrumSepolia" if network == "arbitrumSepolia" else "arbitrumOne"
+        pkg = {
+            "name": "arbbuilder-oracle",
+            "version": "1.0.0",
+            "scripts": {
+                "compile": "hardhat compile",
+                "deploy": f"hardhat run scripts/deploy.ts --network {network_flag}",
+                "test": "hardhat test",
+            },
+            "devDependencies": {
+                "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+                "hardhat": "^2.19.0",
+                "@chainlink/contracts": "^1.1.0",
+                "dotenv": "^16.0.0",
+            },
+        }
+        return json.dumps(pkg, indent=2)
+
     def _generate_root_files(
-        self, project: dict, components: List[str], network: str
+        self,
+        project: dict,
+        components: List[str],
+        network: str,
+        backend_framework: str = "nestjs",
     ) -> dict[str, str]:
         """Generate root-level configuration files including executable scripts."""
         files = {}
@@ -542,6 +654,8 @@ npm-debug.log*
             workspaces.append("packages/frontend")
         if "indexer" in components:
             workspaces.append("packages/indexer")
+        if "oracle" in components:
+            workspaces.append("packages/oracle")
 
         files["package.json"] = json.dumps({
             "name": project["name"],
@@ -562,14 +676,22 @@ npm-debug.log*
         files[".env.example"] = generate_env_template(components, network)
 
         # Executable scripts
-        files["setup.sh"] = self._generate_setup_script(components)
+        files["setup.sh"] = self._generate_setup_script(components, backend_framework)
         files["deploy.sh"] = self._generate_deploy_script(components)
         files["start.sh"] = self._generate_start_script(components)
 
         return files
 
-    def _generate_setup_script(self, components: List[str]) -> str:
-        """Generate setup.sh that installs all dependencies."""
+    def _generate_setup_script(
+        self, components: List[str], backend_framework: str = "nestjs"
+    ) -> str:
+        """Generate setup.sh that installs all dependencies.
+
+        Uses a scaffold-first, backfill pattern: official CLI tools scaffold
+        into a temp dir, then only config files missing from the project are
+        copied over.  Custom business-logic files (lib.rs, pages, etc.) that
+        were already written by the MCP tool always take precedence.
+        """
         lines = [
             "#!/usr/bin/env bash",
             "set -euo pipefail",
@@ -582,6 +704,23 @@ npm-debug.log*
             '  echo "Created .env from template — edit it with your keys before deploying."',
             "fi",
             "",
+            "# --- Scaffold helper ---",
+            "# Copies only files that do NOT already exist in the target dir.",
+            "# src/ is always skipped — our generated code is authoritative.",
+            "backfill_from_scaffold() {",
+            '  local scaffold_dir="$1"',
+            '  local target_dir="$2"',
+            '  if [ ! -d "$scaffold_dir" ]; then return 0; fi',
+            '  find "$scaffold_dir" -type f | while read -r f; do',
+            '    rel="${f#$scaffold_dir/}"',
+            '    case "$rel" in src/*) continue ;; esac',
+            '    if [ ! -f "$target_dir/$rel" ]; then',
+            '      mkdir -p "$target_dir/$(dirname "$rel")"',
+            '      cp "$f" "$target_dir/$rel"',
+            "    fi",
+            "  done",
+            "}",
+            "",
         ]
 
         if "contract" in components:
@@ -591,9 +730,38 @@ npm-debug.log*
                 "rustup target add wasm32-unknown-unknown 2>/dev/null || true",
                 "cargo install cargo-stylus 2>/dev/null || true",
                 "",
+                "# Scaffold contract baseline with cargo stylus new",
+                "if command -v cargo-stylus &>/dev/null || cargo stylus --version &>/dev/null 2>&1; then",
+                '  echo "  Scaffolding contract config from cargo stylus new..."',
+                "  SCAFFOLD_TMP=$(mktemp -d)",
+                '  cargo stylus new "$SCAFFOLD_TMP/scaffold" 2>/dev/null && \\',
+                '    backfill_from_scaffold "$SCAFFOLD_TMP/scaffold" packages/contract || \\',
+                '    echo "  (scaffold skipped — cargo stylus new failed)"',
+                '  rm -rf "$SCAFFOLD_TMP"',
+                "else",
+                '  echo "  (scaffold skipped — cargo-stylus not available)"',
+                "fi",
+                "",
             ])
 
         if "backend" in components:
+            # NestJS gets scaffold; Express does not
+            if backend_framework == "nestjs":
+                lines.extend([
+                    "# Scaffold backend baseline with @nestjs/cli",
+                    "if command -v npx &>/dev/null; then",
+                    '  echo "  Scaffolding backend config from @nestjs/cli..."',
+                    "  SCAFFOLD_TMP=$(mktemp -d)",
+                    '  npx @nestjs/cli@latest new scaffold --package-manager npm --skip-git --skip-install --directory "$SCAFFOLD_TMP" 2>/dev/null && \\',
+                    '    backfill_from_scaffold "$SCAFFOLD_TMP/scaffold" packages/backend || \\',
+                    '    echo "  (scaffold skipped — @nestjs/cli failed)"',
+                    '  rm -rf "$SCAFFOLD_TMP"',
+                    "else",
+                    '  echo "  (scaffold skipped — npx not available)"',
+                    "fi",
+                    "",
+                ])
+
             lines.extend([
                 "# Backend dependencies",
                 'echo "Installing backend dependencies..."',
@@ -605,6 +773,18 @@ npm-debug.log*
 
         if "frontend" in components:
             lines.extend([
+                "# Scaffold frontend baseline with create-next-app",
+                "if command -v npx &>/dev/null; then",
+                '  echo "  Scaffolding frontend config from create-next-app..."',
+                "  SCAFFOLD_TMP=$(mktemp -d)",
+                '  npx create-next-app@latest "$SCAFFOLD_TMP/scaffold" --ts --tailwind --app --src-dir --use-npm --no-git --no-eslint --skip-install 2>/dev/null && \\',
+                '    backfill_from_scaffold "$SCAFFOLD_TMP/scaffold" packages/frontend || \\',
+                '    echo "  (scaffold skipped — create-next-app failed)"',
+                '  rm -rf "$SCAFFOLD_TMP"',
+                "else",
+                '  echo "  (scaffold skipped — npx not available)"',
+                "fi",
+                "",
                 "# Frontend dependencies",
                 'echo "Installing frontend dependencies..."',
                 "cd packages/frontend",
@@ -618,6 +798,16 @@ npm-debug.log*
                 "# Indexer dependencies",
                 'echo "Installing indexer dependencies..."',
                 "cd packages/indexer",
+                "npm install",
+                "cd ../..",
+                "",
+            ])
+
+        if "oracle" in components:
+            lines.extend([
+                "# Oracle dependencies",
+                'echo "Installing oracle dependencies..."',
+                "cd packages/oracle",
                 "npm install",
                 "cd ../..",
                 "",
@@ -684,6 +874,37 @@ npm-debug.log*
                 '  echo "Deploy output:"',
                 '  echo "$DEPLOY_OUTPUT"',
                 '  cd ../..',
+                "fi",
+                "",
+            ])
+
+        if "oracle" in components:
+            lines.extend([
+                "# Oracle deploy",
+                'if [ -d "packages/oracle" ]; then',
+                '  echo "Deploying oracle contract..."',
+                "  cd packages/oracle",
+                '  npx hardhat run scripts/deploy.ts --network ${NETWORK:-arbitrumSepolia}',
+                "  cd ../..",
+                "fi",
+                "",
+            ])
+
+        if "indexer" in components:
+            lines.extend([
+                "# Indexer deploy",
+                'if [ -d "packages/indexer" ]; then',
+                '  echo "Building subgraph..."',
+                "  cd packages/indexer",
+                "  npm run codegen",
+                "  npm run build",
+                '  if [ -n "${GRAPH_DEPLOY_KEY:-}" ]; then',
+                '    echo "Deploying subgraph..."',
+                '    graph deploy --studio ${SUBGRAPH_NAME:-my-subgraph} --deploy-key "$GRAPH_DEPLOY_KEY"',
+                "  else",
+                '    echo "Skipping subgraph deploy (set GRAPH_DEPLOY_KEY and SUBGRAPH_NAME in .env to auto-deploy)"',
+                "  fi",
+                "  cd ../..",
                 "fi",
                 "",
             ])

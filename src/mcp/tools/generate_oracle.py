@@ -124,6 +124,11 @@ Generates both Solidity contracts and frontend integration hooks."""
         # Add deployment script
         files["scripts/deploy.ts"] = self._generate_deploy_script(template, network)
 
+        # Add Hardhat scaffold files
+        files["hardhat.config.ts"] = self._generate_hardhat_config()
+        files["package.json"] = self._generate_package_json(template, network)
+        files[".env.example"] = "PRIVATE_KEY=your-private-key-without-0x-prefix\n"
+
         # Build response
         result = {
             "template_used": template.name,
@@ -272,6 +277,49 @@ main().catch((error) => {{
 '''
 
         return "// Deploy script not available for this oracle type"
+
+    def _generate_hardhat_config(self) -> str:
+        """Generate Hardhat configuration with Arbitrum network settings."""
+        return '''import { HardhatUserConfig } from "hardhat/config";
+import "@nomicfoundation/hardhat-toolbox";
+import "dotenv/config";
+
+const config: HardhatUserConfig = {
+  solidity: "0.8.19",
+  networks: {
+    arbitrumSepolia: {
+      url: "https://sepolia-rollup.arbitrum.io/rpc",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
+    arbitrumOne: {
+      url: "https://arb1.arbitrum.io/rpc",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
+  },
+};
+
+export default config;
+'''
+
+    def _generate_package_json(self, template: OracleTemplate, network: str) -> str:
+        """Generate package.json with Hardhat and Chainlink dependencies."""
+        network_flag = "arbitrumSepolia" if network == "arbitrumSepolia" else "arbitrumOne"
+        pkg = {
+            "name": "arbbuilder-oracle",
+            "version": "1.0.0",
+            "scripts": {
+                "compile": "hardhat compile",
+                "deploy": f"hardhat run scripts/deploy.ts --network {network_flag}",
+                "test": "hardhat test",
+            },
+            "devDependencies": {
+                "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+                "hardhat": "^2.19.0",
+                "@chainlink/contracts": "^1.1.0",
+                "dotenv": "^16.0.0",
+            },
+        }
+        return json.dumps(pkg, indent=2)
 
     def _get_setup_instructions(self, template: OracleTemplate, network: str) -> list[str]:
         """Get setup instructions for the oracle."""
