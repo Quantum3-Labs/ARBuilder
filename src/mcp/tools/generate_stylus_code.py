@@ -116,7 +116,7 @@ Key Stylus patterns for v{target_version}:
 21. A src/main.rs is REQUIRED — cargo stylus deploy uses `cargo run` to check for constructors
 22. The correct ABI export function in 0.10.0 is `print_from_args()` (NOT `print_abi()`)
 23. crate-type in [lib] must be ["lib", "cdylib"] — "lib" is needed for bin target linking
-24. EXTERNAL INTERFACES: use `sol_interface!` (NOT `sol!`) for external contract interfaces. CALL PATTERN: `ifoo.method(self.vm(), Call::new(), arg1, arg2)?` — first arg is ALWAYS self.vm(), second is ALWAYS Call::new(). Call::new_in(self) is removed.
+24. EXTERNAL INTERFACES: use `sol_interface!` (NOT `sol!`) for external contract interfaces. CALL PATTERN: `ifoo.method(self.vm(), Call::new(), arg1, arg2)?` — first arg is ALWAYS self.vm(), second is a Call context (`Call::new()` for non-reentrant, `Call::new_in(self)` for reentrant contracts).
 25. Stylus exports snake_case Rust fn names as camelCase in the ABI (create_market → createMarket). Frontend must use camelCase in functionName.
 26. Stylus &self view functions CANNOT make external contract calls (they revert). Use &mut self for cross-contract calls.
 
@@ -173,7 +173,7 @@ COMPILATION-CRITICAL — these mistakes WILL break the build:
 - STORAGE ACCESS: ALWAYS use .get() to read storage: `self.field.get()` NOT `self.field`. ALWAYS use .set(val) to write: `self.field.set(val)`. For mappings: read with `self.map.get(key)`, write with `self.map.setter(key).set(val)`.
 - TRANSFER ETH: `use stylus_sdk::call::transfer::transfer_eth;` then `transfer_eth(self.vm(), to, amount)?;`. Do NOT use `self.transfer_eth()`, `call::transfer_eth()`, or any other path.
 - EXTERNAL INTERFACES: use `sol_interface!` macro (NOT `sol!`). `sol!` is ONLY for events and errors.
-- CROSS-CONTRACT CALLS: pattern is `ifoo.method(self.vm(), Call::new(), arg1, arg2)?`. The first arg is ALWAYS `self.vm()`, second is ALWAYS a Call context (`Call::new()`). Do NOT use `ifoo.method(self, arg1, arg2)` or `ifoo.method(arg1, arg2)`. Call is available from prelude.
+- CROSS-CONTRACT CALLS: pattern is `ifoo.method(self.vm(), Call::new(), arg1, arg2)?`. The first arg is ALWAYS `self.vm()`, second is a Call context (`Call::new()` for non-reentrant, `Call::new_in(self)` for reentrant contracts). Do NOT use `ifoo.method(self, arg1, arg2)` or `ifoo.method(arg1, arg2)`.
 - External calls require `&mut self` (NOT `&self` — view functions revert on external calls)
 
 WHAT YOU MAY DO:
@@ -193,7 +193,8 @@ IMPORTS - USE THESE PATTERNS:
 - For ETH transfers: `use stylus_sdk::call::transfer::transfer_eth;` then `transfer_eth(self.vm(), to, amount)?;`
 - For errors: return Err(ErrorName {{ ... }}.abi_encode()) — requires use alloy_sol_types::SolError;
 - For cross-contract calls: define with sol_interface! {{ interface IFoo {{ function bar(address) external returns (uint256); }} }}
-- Call pattern: `ifoo.bar(self.vm(), Call::new(), addr)?` — Call is from prelude, self.vm() is ALWAYS first arg
+- Call pattern: `ifoo.bar(self.vm(), Call::new(), addr)?` — self.vm() is ALWAYS first arg
+- For reentrant contracts use `Call::new_in(self)` instead of `Call::new()`
 - External calls require &mut self (NOT &self — view functions revert on external calls)
 - Do NOT use stylus_sdk::evm (removed in 0.10.0) or stylus_sdk::msg
 

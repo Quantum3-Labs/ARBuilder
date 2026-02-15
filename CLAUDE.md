@@ -279,7 +279,7 @@ sol_interface! {
 let balance = token.balance_of(self.vm(), Call::new(), account)?;
 let success = token.transfer(self.vm(), Call::new(), recipient, amount)?;
 
-// Call::new_in(self) from 0.9.x is REMOVED — use Call::new() with self.vm() as host
+// Call::new() for non-reentrant contracts, Call::new_in(self) for reentrant contracts
 ```
 
 ### Key Constraints
