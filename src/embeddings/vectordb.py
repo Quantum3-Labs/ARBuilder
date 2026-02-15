@@ -101,8 +101,25 @@ class VectorDB:
         """
         total_ingested = 0
         failed_batches = 0
+
+        # Deduplicate chunks by ID before batching
+        # (scaffold/challenge repos share identical template files → same content hash → same ID)
+        seen_ids = set()
+        deduped_chunks = []
+        for chunk in chunks:
+            chunk_id = chunk.get("id", "")
+            if chunk_id not in seen_ids:
+                seen_ids.add(chunk_id)
+                deduped_chunks.append(chunk)
+
+        if len(deduped_chunks) < len(chunks):
+            console.print(
+                f"[yellow]Deduplicated {len(chunks) - len(deduped_chunks)} chunks "
+                f"with identical IDs ({len(chunks)} → {len(deduped_chunks)})[/yellow]"
+            )
+
         batches = [
-            chunks[i:i + batch_size] for i in range(0, len(chunks), batch_size)
+            deduped_chunks[i:i + batch_size] for i in range(0, len(deduped_chunks), batch_size)
         ]
         # Reduced default workers from 5 to 2 to avoid rate limiting
         worker_count = max_workers or 2
@@ -185,10 +202,11 @@ class VectorDB:
                     logger.error(error_msg)
                     return 0, error_msg
 
-                # Add to collection (guarded for thread safety)
+                # Upsert to collection (guarded for thread safety)
+                # Using upsert instead of add to handle any remaining duplicates gracefully
                 try:
                     with collection_lock:
-                        self.collection.add(
+                        self.collection.upsert(
                             ids=ids,
                             embeddings=embeddings,
                             documents=documents,
