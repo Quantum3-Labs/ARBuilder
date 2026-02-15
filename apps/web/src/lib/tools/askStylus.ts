@@ -146,6 +146,28 @@ function fixCodeInResponse(content: string): string {
     fixed = fixed.replace(/^use stylus_sdk::evm.*;\s*$/gm, "");
     fixed = fixed.replace(/^use stylus_sdk::msg.*;\s*$/gm, "");
 
+    // Fix .getter(key) → .get(key) — .getter() does not exist in SDK 0.10.0
+    fixed = fixed.replace(/\.getter\(/g, ".get(");
+
+    // Fix Rust types inside sol_storage! — must use Solidity syntax
+    // StorageMap<StorageX, StorageY> → mapping(x => y)
+    fixed = fixed.replace(
+      /StorageMap<Storage(\w+),\s*Storage(\w+)>/g,
+      (_m, k: string, v: string) => `mapping(${k.toLowerCase()} => ${v.toLowerCase()})`
+    );
+    // StorageVec<StorageX> → x[]
+    fixed = fixed.replace(
+      /StorageVec<Storage(\w+)>/g,
+      (_m, t: string) => `${t.toLowerCase()}[]`
+    );
+    // StorageAddress → address, StorageU256 → uint256, etc.
+    fixed = fixed.replace(/StorageAddress/g, "address");
+    fixed = fixed.replace(/StorageU256/g, "uint256");
+    fixed = fixed.replace(/StorageBool/g, "bool");
+    fixed = fixed.replace(/StorageU8/g, "uint8");
+    fixed = fixed.replace(/StorageU64/g, "uint64");
+    fixed = fixed.replace(/StorageU128/g, "uint128");
+
     return `\`\`\`${lang}\n${fixed}\`\`\``;
   });
 }

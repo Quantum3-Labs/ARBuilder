@@ -361,6 +361,31 @@ class AskStylusTool(BaseTool):
             code = re.sub(r'^use stylus_sdk::evm.*;\s*$', '', code, flags=re.MULTILINE)
             code = re.sub(r'^use stylus_sdk::msg.*;\s*$', '', code, flags=re.MULTILINE)
 
+            # Fix .getter(key) → .get(key) — .getter() does not exist in SDK 0.10.0
+            code = re.sub(r'\.getter\(', '.get(', code)
+
+            # Fix Rust types inside sol_storage! — must use Solidity syntax
+            # StorageMap<StorageX, StorageY> → mapping(x => y)
+            code = re.sub(
+                r'StorageMap<Storage(\w+),\s*Storage(\w+)>',
+                lambda m: f'mapping({m.group(1).lower()} => {m.group(2).lower()})',
+                code,
+            )
+            # StorageVec<StorageX> → x[]
+            code = re.sub(
+                r'StorageVec<Storage(\w+)>',
+                lambda m: f'{m.group(1).lower()}[]',
+                code,
+            )
+            # StorageAddress → address, StorageU256 → uint256, etc.
+            # (only inside sol_storage! blocks — but as a safe heuristic, fix standalone uses too)
+            code = code.replace('StorageAddress', 'address')
+            code = code.replace('StorageU256', 'uint256')
+            code = code.replace('StorageBool', 'bool')
+            code = code.replace('StorageU8', 'uint8')
+            code = code.replace('StorageU64', 'uint64')
+            code = code.replace('StorageU128', 'uint128')
+
             return f"```{lang}\n{code}```"
 
         # Fix all code blocks in the response
