@@ -144,6 +144,26 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     "transfer_eth(self.vm(), "
   );
 
+  // Fix 16: Enforce .get() on bare storage field reads
+  // Extract field names from sol_storage! block
+  const storageFields = new Set<string>();
+  // Match Solidity-type field declarations: type field_name;
+  const typeFieldPattern = /\b(?:uint\d*|int\d*|address|bool|string|bytes\d*)\s+(\w+)\s*;/g;
+  let fieldMatch;
+  while ((fieldMatch = typeFieldPattern.exec(fixed)) !== null) {
+    storageFields.add(fieldMatch[1]);
+  }
+  // Match mapping fields: mapping(...) field_name;
+  const mappingFieldPattern = /mapping\([^)]*\)\s+(\w+)\s*;/g;
+  while ((fieldMatch = mappingFieldPattern.exec(fixed)) !== null) {
+    storageFields.add(fieldMatch[1]);
+  }
+  // For each storage field, fix bare self.<field> reads (not followed by . or ()
+  for (const field of storageFields) {
+    const bareFieldPattern = new RegExp(`self\\.${field}(?!\\s*[.(])`, "g");
+    fixed = fixed.replace(bareFieldPattern, `self.${field}.get()`);
+  }
+
   // Fix 13: Remove deprecated stylus_sdk::evm and stylus_sdk::msg imports
   fixed = fixed.replace(/^use stylus_sdk::evm.*;\s*$/gm, "");
   fixed = fixed.replace(/^use stylus_sdk::msg.*;\s*$/gm, "");

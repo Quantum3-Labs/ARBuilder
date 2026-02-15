@@ -711,13 +711,236 @@ fn main() {
 };
 
 /**
+ * DeFi Vault template - ETH deposits, withdrawals, cross-contract calls
+ * Demonstrates ALL advanced SDK 0.10.0 patterns:
+ * - transfer_eth for ETH withdrawals
+ * - sol_interface! for cross-contract calls
+ * - (self.vm(), Call::new(), args) call pattern
+ * - Events and errors with sol!
+ * - .get() on all storage reads
+ */
+export const DEFI_VAULT_TEMPLATE: StylusTemplate = {
+  name: "DeFiVault",
+  description: "ETH vault with deposits, withdrawals, oracle price feeds, and access control",
+  contractType: "defi",
+  sdkVersion: "0.10.0",
+  features: ["ETH transfer", "cross-contract calls", "events", "errors", "access control", "mappings"],
+  libRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+#![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
+#[macro_use]
+extern crate alloc;
+
+use alloc::{vec, vec::Vec};
+use stylus_sdk::{
+    alloy_primitives::{Address, U256},
+    alloy_sol_types::{sol, SolError},
+    call::transfer::transfer_eth,
+    prelude::*,
+};
+
+// Events
+sol! {
+    event Deposit(address indexed user, uint256 amount);
+    event Withdrawal(address indexed user, uint256 amount, address indexed to);
+}
+
+// Errors
+sol! {
+    error InsufficientBalance(address user, uint256 have, uint256 want);
+    error Unauthorized(address caller, address owner);
+}
+
+#[derive(SolidityError)]
+pub enum VaultError {
+    InsufficientBalance(InsufficientBalance),
+    Unauthorized(Unauthorized),
+}
+
+// Cross-contract interface — use sol_interface! (NOT sol!) for external calls
+sol_interface! {
+    interface IPriceFeed {
+        function latestPrice() external view returns (uint256);
+    }
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct Vault {
+        address owner;
+        mapping(address => uint256) balances;
+        uint256 total_deposits;
+        address price_feed;
+    }
+}
+
+#[public]
+impl Vault {
+    /// Initialize the vault with an owner and price feed address
+    pub fn initialize(&mut self, price_feed: Address) {
+        self.owner.set(self.vm().msg_sender());
+        self.price_feed.set(price_feed);
+    }
+
+    /// Deposit ETH into the vault
+    #[payable]
+    pub fn deposit(&mut self) -> Result<(), Vec<u8>> {
+        let sender = self.vm().msg_sender();
+        let amount = self.vm().msg_value();
+
+        // Read current balance with .get(), then write with .setter().set()
+        let current = self.balances.get(sender);
+        self.balances.setter(sender).set(current + amount);
+
+        let total = self.total_deposits.get();
+        self.total_deposits.set(total + amount);
+
+        self.vm().log(Deposit {
+            user: sender,
+            amount,
+        });
+        Ok(())
+    }
+
+    /// Withdraw ETH from the vault — uses transfer_eth(self.vm(), to, amount)
+    pub fn withdraw(&mut self, amount: U256, to: Address) -> Result<(), Vec<u8>> {
+        let sender = self.vm().msg_sender();
+        let balance = self.balances.get(sender);
+
+        if balance < amount {
+            return Err(InsufficientBalance {
+                user: sender,
+                have: balance,
+                want: amount,
+            }
+            .abi_encode());
+        }
+
+        self.balances.setter(sender).set(balance - amount);
+        let total = self.total_deposits.get();
+        self.total_deposits.set(total - amount);
+
+        // transfer_eth requires self.vm() as first arg (Host context)
+        transfer_eth(self.vm(), to, amount)?;
+
+        self.vm().log(Withdrawal {
+            user: sender,
+            amount,
+            to,
+        });
+        Ok(())
+    }
+
+    /// Read price from external oracle — sol_interface! call pattern
+    pub fn get_price(&mut self) -> Result<U256, Vec<u8>> {
+        let feed_addr = self.price_feed.get();
+        let feed = IPriceFeed::new(feed_addr);
+        // Cross-contract call: (self.vm(), Call::new(), ...args)
+        let price = feed.latest_price(self.vm(), Call::new())?;
+        Ok(price)
+    }
+
+    /// Get balance for a user
+    pub fn balance_of(&self, user: Address) -> U256 {
+        self.balances.get(user)
+    }
+
+    /// Get total deposits
+    pub fn total_deposits(&self) -> U256 {
+        self.total_deposits.get()
+    }
+
+    /// Get vault owner
+    pub fn owner(&self) -> Address {
+        self.owner.get()
+    }
+
+    /// Owner-only withdrawal
+    pub fn owner_withdraw(&mut self, amount: U256, to: Address) -> Result<(), Vec<u8>> {
+        let caller = self.vm().msg_sender();
+        let owner = self.owner.get();
+        if caller != owner {
+            return Err(Unauthorized { caller, owner }.abi_encode());
+        }
+        transfer_eth(self.vm(), to, amount)?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use stylus_sdk::testing::*;
+    use stylus_sdk::alloy_primitives::address;
+
+    #[test]
+    fn test_deposit_and_balance() {
+        let vm = TestVM::default();
+        let mut contract = Vault::from(&vm);
+
+        let user = address!("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266");
+
+        vm.set_sender(user);
+        vm.set_value(U256::from(1000));
+        assert!(contract.deposit().is_ok());
+        assert_eq!(contract.balance_of(user), U256::from(1000));
+        assert_eq!(contract.total_deposits(), U256::from(1000));
+    }
+}`,
+  cargoToml: `[package]
+name = "stylus_vault"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+stylus-sdk = "0.10.0"
+alloy-primitives = "1.0.1"
+alloy-sol-types = "1.0.1"
+[dev-dependencies]
+stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
+
+[features]
+default = ["mini-alloc"]
+export-abi = ["stylus-sdk/export-abi"]
+debug = ["stylus-sdk/debug"]
+mini-alloc = ["stylus-sdk/mini-alloc"]
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[[bin]]
+name = "stylus_vault"
+path = "src/main.rs"
+
+[profile.release]
+codegen-units = 1
+strip = true
+lto = true
+panic = "abort"
+opt-level = "s"`,
+  mainRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+
+#[cfg(not(any(test, feature = "export-abi")))]
+#[unsafe(no_mangle)]
+pub extern "C" fn main() {}
+
+#[cfg(feature = "export-abi")]
+fn main() {
+    stylus_vault::print_from_args();
+}`,
+  stylusToml: `[workspace]\n\n[workspace.networks]\n\n[contract]\n`,
+  rustToolchainToml: `[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
+};
+
+/**
  * All available templates indexed by contract type
  */
 export const TEMPLATES: Record<string, StylusTemplate> = {
   counter: COUNTER_TEMPLATE,
   utility: COUNTER_TEMPLATE,
   vending_machine: VENDING_MACHINE_TEMPLATE,
-  defi: VENDING_MACHINE_TEMPLATE,
+  vault: DEFI_VAULT_TEMPLATE,
+  defi: DEFI_VAULT_TEMPLATE,
   token: SIMPLE_ERC20_TEMPLATE,
   erc20: SIMPLE_ERC20_TEMPLATE,
   access_control: ACCESS_CONTROL_TEMPLATE,
@@ -761,6 +984,17 @@ export function selectTemplate(
     return VENDING_MACHINE_TEMPLATE;
   }
 
+  // DeFi patterns that need transfer_eth, sol_interface!, cross-contract calls
+  const defiKeywords = [
+    "vault", "deposit", "withdraw", "stake", "staking", "swap",
+    "pool", "liquidity", "oracle", "price", "feed",
+    "prediction", "market", "bet", "wager", "auction",
+    "lending", "borrow", "collateral", "bridge",
+  ];
+  if (defiKeywords.some((kw) => lowerPrompt.includes(kw))) {
+    return DEFI_VAULT_TEMPLATE;
+  }
+
   // Fall back to contract type
   return TEMPLATES[contractType] || COUNTER_TEMPLATE;
 }
@@ -779,6 +1013,7 @@ export function listTemplates(): StylusTemplate[] {
   return [
     COUNTER_TEMPLATE,
     VENDING_MACHINE_TEMPLATE,
+    DEFI_VAULT_TEMPLATE,
     SIMPLE_ERC20_TEMPLATE,
     ACCESS_CONTROL_TEMPLATE,
   ];

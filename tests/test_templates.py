@@ -37,9 +37,9 @@ class TestTemplateSelection:
         assert template.name == "SimpleERC20"
 
     def test_select_by_contract_type_defi(self):
-        """DeFi contract type should select VendingMachine template."""
+        """DeFi contract type should select DeFiVault template."""
         template = select_template("defi", "create a defi contract")
-        assert template.name == "VendingMachine"
+        assert template.name == "DeFiVault"
 
     def test_select_by_contract_type_utility(self):
         """Utility contract type should select Counter template."""
@@ -91,7 +91,7 @@ class TestTemplateSelection:
         assert get_template("counter").name == "Counter"
         assert get_template("erc20").name == "SimpleERC20"
         assert get_template("token").name == "SimpleERC20"
-        assert get_template("defi").name == "VendingMachine"
+        assert get_template("defi").name == "DeFiVault"
         assert get_template("ownable").name == "AccessControl"
 
     def test_get_template_unknown_returns_none(self):
@@ -99,11 +99,11 @@ class TestTemplateSelection:
         assert get_template("unknown") is None
 
     def test_list_templates_returns_all(self):
-        """list_templates should return all 4 templates."""
+        """list_templates should return all 5 templates."""
         templates = list_templates()
-        assert len(templates) == 4
+        assert len(templates) == 5
         names = {t.name for t in templates}
-        assert names == {"Counter", "VendingMachine", "SimpleERC20", "AccessControl"}
+        assert names == {"Counter", "VendingMachine", "DeFiVault", "SimpleERC20", "AccessControl"}
 
 
 class TestTemplateContent:
@@ -543,6 +543,48 @@ impl MyContract {
         broken = 'use stylus_sdk::evm;\nevm::log(Transfer { from, to, value });'
         fixed = tool._fix_code(broken, None)
         assert "use stylus_sdk::evm" not in fixed
+
+    def test_defi_vault_template_has_all_advanced_patterns(self):
+        """DeFiVault template must demonstrate all 5 advanced patterns."""
+        from src.templates.stylus_templates import DEFI_VAULT_TEMPLATE
+        t = DEFI_VAULT_TEMPLATE
+        assert "transfer_eth(self.vm(), to, amount)?" in t.lib_rs
+        assert "call::transfer::transfer_eth" in t.lib_rs
+        assert "sol_interface!" in t.lib_rs
+        assert "Call::new()" in t.lib_rs
+        assert "self.vm().msg_sender()" in t.lib_rs
+        assert "self.vm().log(" in t.lib_rs
+        assert ".abi_encode()" in t.lib_rs
+        assert "self.balances.get(sender)" in t.lib_rs
+        assert "self.total_deposits.get()" in t.lib_rs
+
+    def test_defi_keywords_select_vault_template(self):
+        """DeFi keywords should route to DeFiVault template."""
+        for kw in ["prediction market", "staking pool", "swap contract",
+                    "deposit ETH", "oracle price feed", "lending protocol"]:
+            template = select_template("utility", kw)
+            assert template.name == "DeFiVault", f"'{kw}' should select DeFiVault, got {template.name}"
+
+    def test_fix_code_enforces_get_on_storage_reads(self):
+        """_fix_code should add .get() to bare storage field reads."""
+        from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
+        tool = GenerateStylusCodeTool.__new__(GenerateStylusCodeTool)
+        broken = '''sol_storage! {
+    #[entrypoint]
+    pub struct Market {
+        uint256 count;
+        address owner;
+    }
+}
+let c = self.count;
+let o = self.owner;
+self.count.set(val);
+self.owner.set(addr);'''
+        fixed = tool._fix_code(broken, None)
+        assert "self.count.get()" in fixed, "bare self.count should get .get()"
+        assert "self.owner.get()" in fixed, "bare self.owner should get .get()"
+        assert "self.count.set(val)" in fixed, ".set() should not be changed"
+        assert "self.owner.set(addr)" in fixed, ".set() should not be changed"
 
 
 # Integration tests that require cargo-stylus

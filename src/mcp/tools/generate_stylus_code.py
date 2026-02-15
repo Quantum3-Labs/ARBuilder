@@ -841,6 +841,31 @@ class GenerateStylusCodeTool(BaseTool):
         # Fix 15: Fix deprecated evm::log(...) → self.vm().log(...)
         fixed = re.sub(r'evm::log\(', 'self.vm().log(', fixed)
 
+        # Fix 16: Enforce .get() on bare storage field reads
+        # Extract field names from sol_storage! block, then fix self.<field> missing .get()
+        storage_fields = set()
+        # Match Solidity-type field declarations: type field_name;
+        for field_match in re.finditer(
+            r'\b(?:uint\d*|int\d*|address|bool|string|bytes\d*)\s+(\w+)\s*;',
+            fixed,
+        ):
+            storage_fields.add(field_match.group(1))
+        # Also match mapping fields: mapping(...) field_name;
+        for field_match in re.finditer(
+            r'mapping\([^)]*\)\s+(\w+)\s*;',
+            fixed,
+        ):
+            storage_fields.add(field_match.group(1))
+        # For each storage field, fix bare self.<field> reads (not followed by . or ()
+        for field in storage_fields:
+            # self.field NOT followed by . or ( → add .get()
+            # Also exclude assignment (= without ==)
+            fixed = re.sub(
+                rf'self\.{field}(?!\s*[.(])',
+                f'self.{field}.get()',
+                fixed,
+            )
+
         # Fix 8: Ensure #[entrypoint] is inside sol_storage! if missing
         if "#[entrypoint]" not in fixed:
             fixed = re.sub(
