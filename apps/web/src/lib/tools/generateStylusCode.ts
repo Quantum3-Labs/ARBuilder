@@ -158,10 +158,12 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
   while ((fieldMatch = mappingFieldPattern.exec(fixed)) !== null) {
     storageFields.add(fieldMatch[1]);
   }
-  // For each storage field, fix bare self.<field> reads (not followed by . or ()
+  // For each storage field, fix bare <var>.<field> reads (not followed by . or ()
+  // This catches both self.<field> AND nested struct fields like market.<field>
+  // where market = self.markets.get(id) returns a storage accessor
   for (const field of storageFields) {
-    const bareFieldPattern = new RegExp(`self\\.${field}(?!\\s*[.(])`, "g");
-    fixed = fixed.replace(bareFieldPattern, `self.${field}.get()`);
+    const bareFieldPattern = new RegExp(`(\\w+)\\.${field}(?!\\s*[.(])`, "g");
+    fixed = fixed.replace(bareFieldPattern, `$1.${field}.get()`);
   }
 
   // Fix 13: Remove deprecated stylus_sdk::evm and stylus_sdk::msg imports

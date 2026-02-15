@@ -62,8 +62,33 @@ opt-level = "s"''',
             "access": {
                 "read_value": ".get()",
                 "write_value": ".set(value)",
-                "read_mapping": ".getter(key)",
-                "write_mapping": ".setter(key)",
+                "read_mapping": ".get(key)",
+                "write_mapping": ".setter(key).set(value)",
+            },
+            "nested_mapping": {
+                "description": "Nested mappings like mapping(address => mapping(address => uint256))",
+                "sol_storage_syntax": "mapping(address => mapping(address => uint256)) allowances;",
+                "read": "self.allowances.get(owner).get(spender)",
+                "write": "self.allowances.setter(owner).setter(spender).set(value)",
+                "note": "Chaining .setter() calls works in a single expression. Do NOT split into separate statements.",
+            },
+            "dynamic_arrays": {
+                "description": "Dynamic arrays in sol_storage! use Solidity syntax uint256[]",
+                "sol_storage_syntax": "uint256[] values;",
+                "note": "StorageVec<T> is the underlying Rust type, but inside sol_storage! use Solidity syntax (uint256[], address[]). Access: .get(index), .setter(index).set(val), .len(), .grow(). Use .push() to append.",
+                "example": '''// In sol_storage!:
+//   uint256[] values;
+//   address[] participants;
+
+// Read length:
+let count = self.values.len();
+
+// Read element (returns Option or zero-default):
+let val = self.values.get(index).unwrap_or_default();
+
+// Grow and set:
+self.values.grow();
+self.values.setter(self.values.len() - U256::from(1)).set(new_val);''',
             },
         },
 
@@ -241,7 +266,7 @@ mod tests {
         "Using `use stylus_sdk::evm` - Module removed in 0.10.0, use self.vm() methods",
         "Using evm::transfer_eth() - Moved to stylus_sdk::call::transfer::transfer_eth(self.vm(), to, amount)",
         "Missing SolError import - .abi_encode() on errors requires use alloy_sol_types::SolError",
-        "Chained .setter() borrows - Read with .get() first, then .setter().set() separately",
+        "Nested mapping writes — chain in one expression: self.map.setter(k1).setter(k2).set(v). Do NOT split into separate variables (causes multiple active borrows)",
         "Missing src/main.rs - Required for cargo stylus deploy (uses print_from_args(), NOT print_abi())",
         "Package name with hyphens - Must use underscores in Cargo.toml (my_contract, NOT my-contract)",
         "crate-type only cdylib - Must be ['lib', 'cdylib'] so bin target can link to lib",

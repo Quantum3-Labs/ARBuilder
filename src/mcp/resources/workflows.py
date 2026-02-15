@@ -223,6 +223,10 @@ DEPLOY_WORKFLOW = {
             "error": "activation failed",
             "solution": "Check for unsupported WASM features, verify imports",
         },
+        "gas_underestimation": {
+            "error": "max fee per gas less than block base fee",
+            "solution": "On Arbitrum Sepolia, MetaMask and default gas estimation may underestimate maxFeePerGas. For cargo stylus deploy, retry or add --estimate-gas first. For frontend interactions via wagmi/viem, add explicit gas overrides: { maxFeePerGas: parseGwei('0.5'), maxPriorityFeePerGas: parseGwei('0.01') }",
+        },
     },
 }
 

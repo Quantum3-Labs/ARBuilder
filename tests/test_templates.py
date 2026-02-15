@@ -586,6 +586,34 @@ self.owner.set(addr);'''
         assert "self.count.set(val)" in fixed, ".set() should not be changed"
         assert "self.owner.set(addr)" in fixed, ".set() should not be changed"
 
+    def test_fix_code_enforces_get_on_nested_struct_fields(self):
+        """_fix_code should add .get() to nested struct storage field reads."""
+        from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
+        tool = GenerateStylusCodeTool.__new__(GenerateStylusCodeTool)
+        broken = '''sol_storage! {
+    #[entrypoint]
+    pub struct PredictionMarket {
+        mapping(uint256 => Market) markets;
+    }
+}
+sol_storage! {
+    pub struct Market {
+        bool resolved;
+        uint256 total_up;
+        uint256 total_down;
+    }
+}
+let market = self.markets.get(market_id);
+if !market.resolved {
+    let total = market.total_up + market.total_down;
+}
+market.resolved.set(true);'''
+        fixed = tool._fix_code(broken, None)
+        assert "market.resolved.get()" in fixed, "nested market.resolved should get .get()"
+        assert "market.total_up.get()" in fixed, "nested market.total_up should get .get()"
+        assert "market.total_down.get()" in fixed, "nested market.total_down should get .get()"
+        assert "market.resolved.set(true)" in fixed, ".set() should not be changed"
+
     def test_ask_stylus_fix_code_in_response(self):
         """ask_stylus _fix_code_in_response should fix wrong patterns in code blocks."""
         from src.mcp.tools.ask_stylus import AskStylusTool

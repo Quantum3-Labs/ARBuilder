@@ -857,13 +857,14 @@ class GenerateStylusCodeTool(BaseTool):
             fixed,
         ):
             storage_fields.add(field_match.group(1))
-        # For each storage field, fix bare self.<field> reads (not followed by . or ()
+        # For each storage field, fix bare <var>.<field> reads (not followed by . or ()
+        # This catches both self.<field> AND nested struct fields like market.<field>
+        # where market = self.markets.get(id) returns a storage accessor
         for field in storage_fields:
-            # self.field NOT followed by . or ( → add .get()
-            # Also exclude assignment (= without ==)
+            # <word>.<field> NOT followed by . or ( → add .get()
             fixed = re.sub(
-                rf'self\.{field}(?!\s*[.(])',
-                f'self.{field}.get()',
+                rf'(\w+)\.{field}(?!\s*[.(])',
+                rf'\1.{field}.get()',
                 fixed,
             )
 

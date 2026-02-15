@@ -127,7 +127,7 @@ Key patterns for v${targetVersion}:
 - TRANSFER ETH: \`use stylus_sdk::call::transfer::transfer_eth;\` then \`transfer_eth(self.vm(), to, amount)?;\` — NOT self.transfer_eth() or call::transfer_eth()
 - For error types: define with sol! { error MyError(...); }, wrap in enum with #[derive(SolidityError)]
 - For .abi_encode() on errors: import SolError via use alloy_sol_types::SolError
-- Avoid chained .setter() borrows — get value with .get() first, then .setter().set() separately
+- Nested mapping writes: chain in one expression: self.map.setter(k1).setter(k2).set(v). Do NOT split into separate variables (causes multiple active borrows)
 - Do NOT use stylus_sdk::evm (removed in 0.10.0) or stylus_sdk::msg
 - ALWAYS include \`use alloc::{vec, vec::Vec};\` — sol_storage! needs vec module in scope
 - RawCall::new_with_value(self.vm(), amount) — requires self.vm() as first arg and unsafe block
@@ -351,7 +351,7 @@ IMPORTANT SDK 0.10.0 changes:
 - transfer_eth: use stylus_sdk::call::transfer::transfer_eth; then call transfer_eth(self.vm(), to, amount)?
 - Error types: define with sol! { error MyError(...); }, wrap enum with #[derive(SolidityError)]
 - For .abi_encode() on errors: import use alloy_sol_types::SolError;
-- Chained .setter() borrows cause compile errors — read with .get() first, then .setter().set() separately
+- Nested mapping writes: chain in one expression: self.map.setter(k1).setter(k2).set(v). Do NOT split into separate variables (causes multiple active borrows)
 - Projects MUST include Stylus.toml with [workspace], [workspace.networks], and [contract] sections
 - Projects MUST include rust-toolchain.toml with channel = "1.88.0"
 - Projects MUST include src/main.rs — cargo stylus deploy uses cargo run to check constructors
@@ -402,6 +402,29 @@ let balance = self.balances.get(user);
 // Write: use .set() or .setter().set()
 self.my_field.set(new_val);
 self.balances.setter(user).set(new_balance);
+\`\`\`
+
+Nested mapping (e.g. mapping(address => mapping(address => uint256))):
+\`\`\`rust
+// In sol_storage! — use Solidity syntax, NOT Rust types:
+//   mapping(address => mapping(address => uint256)) allowances;
+
+// Read nested: chain .get() calls
+let allowance = self.allowances.get(owner).get(spender);
+
+// Write nested: chain .setter() calls in ONE expression
+self.allowances.setter(owner).setter(spender).set(value);
+\`\`\`
+
+Dynamic arrays (sol_storage! uses Solidity syntax: uint256[], address[]):
+\`\`\`rust
+// In sol_storage! — use Solidity syntax, NOT StorageVec<T>:
+//   uint256[] values;
+
+// Read: .get(index), .len()
+// Append: .grow() then .setter(last_index).set(val)
+self.values.grow();
+self.values.setter(self.values.len() - U256::from(1)).set(new_val);
 \`\`\``,
     },
     {
