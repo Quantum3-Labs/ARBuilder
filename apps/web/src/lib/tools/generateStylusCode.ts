@@ -158,6 +158,22 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
   return fixed;
 }
 
+/**
+ * Derive a snake_case project name from the user prompt.
+ * Mirrors Python _derive_project_name() in generate_stylus_code.py.
+ */
+function deriveProjectName(prompt: string): string {
+  const stopWords = new Set([
+    "a", "an", "the", "for", "with", "and", "or", "that", "this",
+    "create", "build", "make", "generate", "implement",
+  ]);
+  const words = (prompt.match(/[a-zA-Z]+/g) || [])
+    .map((w) => w.toLowerCase())
+    .filter((w) => !stopWords.has(w));
+  const nameWords = words.length > 0 ? words.slice(0, 3) : ["stylus", "contract"];
+  return nameWords.join("_");
+}
+
 export interface GenerateStylusCodeInput {
   prompt: string;
   contextQuery?: string;
@@ -271,7 +287,19 @@ export async function generateStylusCode(
 
   // ALWAYS use template's Cargo.toml - don't trust LLM-generated Cargo.toml
   // LLM often makes typos (alloy-sol_types) or misses deps (ruint)
-  const generatedCargo = template.cargoToml;
+  let generatedCargo = template.cargoToml;
+  let mainRs = template.mainRs;
+
+  // Derive project name from prompt and fix Cargo.toml/main.rs references
+  const projectName = deriveProjectName(prompt);
+  generatedCargo = generatedCargo.replace(
+    /name\s*=\s*"[^"]+"/g,
+    `name = "${projectName}"`
+  );
+  mainRs = mainRs.replace(
+    /(\w+)::print_from_args\b/,
+    `${projectName}::print_from_args`
+  );
 
   // Validate and fix common LLM mistakes in code
   code = validateAndFixCode(code, template);
@@ -305,7 +333,7 @@ export async function generateStylusCode(
   return {
     code,
     cargoToml: generatedCargo,
-    mainRs: template.mainRs,
+    mainRs,
     explanation: explanation || "Contract generated based on your requirements.",
     dependencies,
     warnings,
