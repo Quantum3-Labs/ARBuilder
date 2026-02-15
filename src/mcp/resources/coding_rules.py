@@ -75,20 +75,25 @@ opt-level = "s"''',
             "dynamic_arrays": {
                 "description": "Dynamic arrays in sol_storage! use Solidity syntax uint256[]",
                 "sol_storage_syntax": "uint256[] values;",
-                "note": "StorageVec<T> is the underlying Rust type, but inside sol_storage! use Solidity syntax (uint256[], address[]). Access: .get(index), .setter(index).set(val), .len(), .grow(). Use .push() to append.",
+                "note": "StorageVec<T> is the underlying Rust type, but inside sol_storage! use Solidity syntax (uint256[], address[]). push() works for primitive arrays; grow() is needed for struct arrays.",
                 "example": '''// In sol_storage!:
 //   uint256[] values;
 //   address[] participants;
 
-// Read length:
+// Read length (returns usize):
 let count = self.values.len();
 
-// Read element (returns Option or zero-default):
+// Read element:
 let val = self.values.get(index).unwrap_or_default();
 
-// Grow and set:
-self.values.grow();
-self.values.setter(self.values.len() - U256::from(1)).set(new_val);''',
+// Append primitive value — use push():
+self.values.push(new_val);
+self.participants.push(addr);
+
+// For struct arrays — use grow() then set fields:
+// let mut item = self.items.grow();
+// item.field_a.set(val_a);
+// item.field_b.set(val_b);''',
             },
         },
 

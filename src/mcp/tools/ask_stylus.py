@@ -108,14 +108,19 @@ Dynamic arrays (sol_storage! uses Solidity syntax: uint256[], address[]):
 ```rust
 // In sol_storage! — use Solidity syntax, NOT StorageVec<T>:
 //   uint256[] values;
+//   address[] participants;
 
-// Read length and element:
+// Read length (returns usize) and element:
 let count = self.values.len();
 let val = self.values.get(index).unwrap_or_default();
 
-// Append: grow then set last element
-self.values.grow();
-self.values.setter(self.values.len() - U256::from(1)).set(new_val);
+// Append primitive value — use push():
+self.values.push(new_val);
+
+// For struct arrays — use grow() then set fields:
+let mut item = self.items.grow();
+item.field_a.set(val_a);
+item.field_b.set(val_b);
 ```
 
 Your expertise includes:
