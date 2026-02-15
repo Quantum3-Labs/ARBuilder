@@ -586,6 +586,56 @@ self.owner.set(addr);'''
         assert "self.count.set(val)" in fixed, ".set() should not be changed"
         assert "self.owner.set(addr)" in fixed, ".set() should not be changed"
 
+    def test_ask_stylus_fix_code_in_response(self):
+        """ask_stylus _fix_code_in_response should fix wrong patterns in code blocks."""
+        from src.mcp.tools.ask_stylus import AskStylusTool
+        tool = AskStylusTool.__new__(AskStylusTool)
+
+        response = '''Here's how to transfer ETH:
+
+```rust
+use stylus_sdk::call::transfer_eth;
+
+pub fn withdraw(&mut self, to: Address, amount: U256) -> Result<(), Vec<u8>> {
+    transfer_eth(self, to, amount)?;
+    Ok(())
+}
+```
+
+And for cross-contract calls:
+
+```rust
+sol! {
+    interface IToken {
+        function transfer(address to, uint256 amount) external returns (bool);
+    }
+}
+```
+
+Use msg::sender() to get the caller.
+'''
+        fixed = tool._fix_code_in_response(response)
+
+        # Check transfer_eth import path is fixed
+        assert "call::transfer::transfer_eth" in fixed
+        assert "call::transfer_eth;" not in fixed
+
+        # Check transfer_eth first arg is fixed
+        assert "transfer_eth(self.vm(), to, amount)" in fixed
+        assert "transfer_eth(self, to" not in fixed
+
+        # Check sol! { interface → sol_interface!
+        assert "sol_interface!" in fixed
+
+    def test_ask_stylus_system_prompt_has_reference_code(self):
+        """ask_stylus system prompt should include reference code examples."""
+        from src.mcp.tools.ask_stylus import SYSTEM_PROMPT
+        assert "REFERENCE CODE" in SYSTEM_PROMPT
+        assert "call::transfer::transfer_eth" in SYSTEM_PROMPT
+        assert "sol_interface!" in SYSTEM_PROMPT
+        assert "self.vm(), Call::new()" in SYSTEM_PROMPT
+        assert ".get()" in SYSTEM_PROMPT
+
 
 # Integration tests that require cargo-stylus
 @pytest.mark.integration

@@ -361,7 +361,47 @@ IMPORTANT SDK 0.10.0 changes:
 - RawCall::new_with_value(self.vm(), amount) — needs self.vm() as first arg and unsafe block
 - uint8 in sol_storage! maps to Uint<8,1>, not u8 — comparisons with u8 won't compile
 
-When asked about versions, ALWAYS use the version info above, NOT from retrieved context which may be outdated.`,
+When asked about versions, ALWAYS use the version info above, NOT from retrieved context which may be outdated.
+
+REFERENCE CODE — use these EXACT patterns in your code examples:
+
+ETH transfer (withdraw/deposit/send ETH):
+\`\`\`rust
+use stylus_sdk::call::transfer::transfer_eth;
+
+pub fn withdraw(&mut self, to: Address, amount: U256) -> Result<(), Vec<u8>> {
+    transfer_eth(self.vm(), to, amount)?;
+    Ok(())
+}
+\`\`\`
+
+Cross-contract call (interact with another deployed contract):
+\`\`\`rust
+sol_interface! {
+    interface IToken {
+        function balanceOf(address account) external view returns (uint256);
+        function transfer(address to, uint256 amount) external returns (bool);
+    }
+}
+
+// In a #[public] &mut self method:
+pub fn get_balance(&mut self, token: Address, account: Address) -> Result<U256, Vec<u8>> {
+    let token_contract = IToken::new(token);
+    let balance = token_contract.balance_of(self.vm(), Call::new(), account)?;
+    Ok(balance)
+}
+\`\`\`
+
+Storage access:
+\`\`\`rust
+// Read: ALWAYS use .get()
+let val = self.my_field.get();
+let balance = self.balances.get(user);
+
+// Write: use .set() or .setter().set()
+self.my_field.set(new_val);
+self.balances.setter(user).set(new_balance);
+\`\`\``,
     },
     {
       role: "user",

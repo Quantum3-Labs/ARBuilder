@@ -52,6 +52,46 @@ IMPORTANT SDK 0.10.0 changes:
 - Stylus &self view functions CANNOT make external contract calls (they revert). Use &mut self or read from frontend instead.
 - On Arbitrum Sepolia, MetaMask may underestimate maxFeePerGas — add explicit gas overrides in frontend if you see "max fee per gas less than block base fee"
 
+## REFERENCE CODE — use these EXACT patterns in your code examples
+
+ETH transfer (withdraw/deposit/send ETH):
+```rust
+use stylus_sdk::call::transfer::transfer_eth;
+
+pub fn withdraw(&mut self, to: Address, amount: U256) -> Result<(), Vec<u8>> {
+    transfer_eth(self.vm(), to, amount)?;
+    Ok(())
+}
+```
+
+Cross-contract call (interact with another deployed contract):
+```rust
+sol_interface! {
+    interface IToken {
+        function balanceOf(address account) external view returns (uint256);
+        function transfer(address to, uint256 amount) external returns (bool);
+    }
+}
+
+// In a #[public] &mut self method:
+pub fn get_balance(&mut self, token: Address, account: Address) -> Result<U256, Vec<u8>> {
+    let token_contract = IToken::new(token);
+    let balance = token_contract.balance_of(self.vm(), Call::new(), account)?;
+    Ok(balance)
+}
+```
+
+Storage access:
+```rust
+// Read: ALWAYS use .get()
+let val = self.my_field.get();
+let balance = self.balances.get(user);
+
+// Write: use .set() or .setter().set()
+self.my_field.set(new_val);
+self.balances.setter(user).set(new_balance);
+```
+
 Your expertise includes:
 - Stylus SDK and its features (sol_storage!, #[entrypoint], storage types)
 - Rust programming patterns for smart contracts
@@ -241,8 +281,80 @@ class AskStylusTool(BaseTool):
 
         return "\n".join(parts)
 
+    def _fix_code_in_response(self, response: str) -> str:
+        """Fix common wrong patterns in code blocks within LLM responses.
+
+        The RAG context often contains outdated SDK 0.9.x patterns that override
+        the system prompt's correct 0.10.0 patterns. This post-processes code
+        blocks to fix the most critical compilation-breaking mistakes.
+        """
+        def fix_code_block(match: re.Match) -> str:
+            lang = match.group(1) or ""
+            code = match.group(2)
+
+            # Only fix rust/toml code blocks (or unspecified)
+            if lang and lang not in ("rust", "toml", ""):
+                return match.group(0)
+
+            # Fix sol! { interface → sol_interface! { interface
+            code = re.sub(r'sol!\s*\{\s*(interface\b)', r'sol_interface! { \1', code)
+
+            # Fix wrong transfer_eth import paths
+            code = code.replace(
+                "use stylus_sdk::call::transfer_eth;",
+                "use stylus_sdk::call::transfer::transfer_eth;",
+            )
+            code = re.sub(
+                r'use stylus_sdk::call::\{([^}]*)\btransfer_eth\b([^}]*)\};',
+                lambda m: self._split_transfer_eth_import(m),
+                code,
+            )
+
+            # Fix self.transfer_eth(args) → transfer_eth(self.vm(), args)
+            code = re.sub(
+                r'self\.transfer_eth\(([^)]+)\)',
+                r'transfer_eth(self.vm(), \1)',
+                code,
+            )
+
+            # Fix transfer_eth(self, ...) → transfer_eth(self.vm(), ...)
+            code = re.sub(
+                r'transfer_eth\(self,\s*',
+                'transfer_eth(self.vm(), ',
+                code,
+            )
+
+            # Fix deprecated msg::sender() → self.vm().msg_sender()
+            code = code.replace("msg::sender()", "self.vm().msg_sender()")
+            code = code.replace("msg::value()", "self.vm().msg_value()")
+
+            # Fix deprecated evm::log( → self.vm().log(
+            code = code.replace("evm::log(", "self.vm().log(")
+
+            # Remove deprecated imports
+            code = re.sub(r'^use stylus_sdk::evm.*;\s*$', '', code, flags=re.MULTILINE)
+            code = re.sub(r'^use stylus_sdk::msg.*;\s*$', '', code, flags=re.MULTILINE)
+
+            return f"```{lang}\n{code}```"
+
+        # Fix all code blocks in the response
+        return re.sub(r'```(\w*)\n([\s\S]*?)```', fix_code_block, response)
+
+    def _split_transfer_eth_import(self, match: re.Match) -> str:
+        """Split combined import that includes transfer_eth into separate imports."""
+        before = match.group(1).replace("transfer_eth", "").strip().strip(",").strip()
+        after = match.group(2).strip().strip(",").strip()
+        others = ", ".join(filter(None, [before, after]))
+        transfer_line = "use stylus_sdk::call::transfer::transfer_eth;"
+        if others:
+            return f"{transfer_line}\nuse stylus_sdk::call::{{{others}}};"
+        return transfer_line
+
     def _parse_response(self, response: str) -> tuple[str, list[dict]]:
         """Parse answer and code examples from response."""
+        # Fix wrong patterns in code blocks before parsing
+        response = self._fix_code_in_response(response)
+
         code_examples = []
 
         # Extract code blocks

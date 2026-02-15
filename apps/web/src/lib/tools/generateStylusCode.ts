@@ -305,6 +305,12 @@ export async function generateStylusCode(
   const codeMatch = response.content.match(/```rust\n([\s\S]*?)```/);
   let code = codeMatch ? codeMatch[1].trim() : response.content;
 
+  // Safety net: if LLM returned empty content, fall back to template
+  if (!code || code.trim().length === 0) {
+    code = template.libRs;
+    warnings.push("LLM returned empty content — using template code as fallback");
+  }
+
   // ALWAYS use template's Cargo.toml - don't trust LLM-generated Cargo.toml
   // LLM often makes typos (alloy-sol_types) or misses deps (ruint)
   let generatedCargo = template.cargoToml;
