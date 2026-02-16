@@ -8,6 +8,8 @@ Sources (migrated to SDK 0.10.0):
 - ERC20: Simplified version based on Stylus patterns
 """
 
+import json
+import re
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -944,31 +946,139 @@ TEMPLATES = {
 }
 
 
-def select_template(contract_type: str, prompt: str) -> StylusTemplate:
-    """Select the best template based on contract type and prompt keywords."""
+def adapt_template(template: StylusTemplate, target_version: str) -> StylusTemplate:
+    """Adapt a template to a different SDK version.
+
+    For 0.10.x targets: returns template as-is (templates are already 0.10.0).
+    For 0.9.x targets: reverse-transforms lib_rs, adjusts Cargo.toml deps,
+    clears 0.10-only files (main_rs, stylus_toml, rust_toolchain_toml),
+    adds back evm/msg imports.
+
+    Args:
+        template: Source template (always 0.10.0).
+        target_version: Target SDK version (e.g., "0.9.0", "0.10.0").
+
+    Returns:
+        Adapted StylusTemplate (new object if changed, same object if no change).
+    """
+    # Import version_manager lazily to avoid circular imports
+    try:
+        from src.utils.version_manager import (
+            apply_version_transforms,
+            get_cargo_deps_for_version,
+            _to_major_minor,
+            is_at_least_010,
+        )
+    except ImportError:
+        return template
+
+    target_mm = _to_major_minor(target_version)
+    template_mm = _to_major_minor(template.sdk_version)
+
+    # No adaptation needed if same major.minor
+    if target_mm == template_mm:
+        return template
+
+    # Apply reverse transforms to lib.rs (0.10.0 → 0.9.x)
+    adapted_lib_rs = apply_version_transforms(template.lib_rs, template.sdk_version, target_version)
+
+    # Get dependency versions for target
+    deps = get_cargo_deps_for_version(target_version)
+
+    # Adapt Cargo.toml
+    adapted_cargo = template.cargo_toml
+    adapted_cargo = re.sub(
+        r'stylus-sdk = "([^"]+)"',
+        f'stylus-sdk = "{deps["stylus_sdk"]}"',
+        adapted_cargo,
+    )
+    adapted_cargo = re.sub(
+        r'(stylus-sdk = \{{ version = )"([^"]+)"',
+        rf'\1"{deps["stylus_sdk"]}"',
+        adapted_cargo,
+    )
+    adapted_cargo = re.sub(
+        r'alloy-primitives = "([^"]+)"',
+        f'alloy-primitives = "{deps["alloy_primitives"]}"',
+        adapted_cargo,
+    )
+    adapted_cargo = re.sub(
+        r'alloy-sol-types = "([^"]+)"',
+        f'alloy-sol-types = "{deps["alloy_sol_types"]}"',
+        adapted_cargo,
+    )
+
+    # Adjust crate-type for 0.9.x (only cdylib, no lib)
+    crate_type_str = json.dumps(deps["crate_type"])
+    adapted_cargo = re.sub(
+        r'crate-type = \[.*?\]',
+        f'crate-type = {crate_type_str}',
+        adapted_cargo,
+    )
+
+    # For 0.9.x: remove [[bin]] section and dev-dependencies stylus-test feature
+    is_pre_010 = not is_at_least_010(target_version)
+    if is_pre_010:
+        # Remove [[bin]] section
+        adapted_cargo = re.sub(
+            r'\[\[bin\]\]\n.*?path = "src/main\.rs"\n\n?',
+            '',
+            adapted_cargo,
+            flags=re.DOTALL,
+        )
+
+    # Build adapted template
+    return StylusTemplate(
+        name=template.name,
+        description=template.description,
+        contract_type=template.contract_type,
+        sdk_version=target_version,
+        features=template.features,
+        lib_rs=adapted_lib_rs,
+        cargo_toml=adapted_cargo,
+        # 0.9.x doesn't need main_rs, stylus_toml, rust_toolchain_toml
+        main_rs="" if is_pre_010 else template.main_rs,
+        stylus_toml="" if is_pre_010 else template.stylus_toml,
+        rust_toolchain_toml="" if is_pre_010 else template.rust_toolchain_toml,
+    )
+
+
+def select_template(contract_type: str, prompt: str, target_version: Optional[str] = None) -> StylusTemplate:
+    """Select the best template based on contract type, prompt keywords, and target version.
+
+    Args:
+        contract_type: Type of contract (token, defi, utility, custom).
+        prompt: User's description of the contract.
+        target_version: Target SDK version. If not 0.10.x, template is adapted.
+
+    Returns:
+        Best-matching StylusTemplate, adapted to target_version if needed.
+    """
     lower_prompt = prompt.lower()
 
     # Check for specific keywords in prompt
     if any(kw in lower_prompt for kw in ["erc20", "token", "transfer", "balance"]):
-        return SIMPLE_ERC20_TEMPLATE
-
-    if any(kw in lower_prompt for kw in ["owner", "admin", "access control", "permission"]):
-        return ACCESS_CONTROL_TEMPLATE
-
-    if any(kw in lower_prompt for kw in ["vending", "claim", "cooldown", "rate limit"]):
-        return VENDING_MACHINE_TEMPLATE
-
-    # DeFi patterns that need transfer_eth, sol_interface!, cross-contract calls
-    if any(kw in lower_prompt for kw in [
+        template = SIMPLE_ERC20_TEMPLATE
+    elif any(kw in lower_prompt for kw in ["owner", "admin", "access control", "permission"]):
+        template = ACCESS_CONTROL_TEMPLATE
+    elif any(kw in lower_prompt for kw in ["vending", "claim", "cooldown", "rate limit"]):
+        template = VENDING_MACHINE_TEMPLATE
+    elif any(kw in lower_prompt for kw in [
         "vault", "deposit", "withdraw", "stake", "staking", "swap",
         "pool", "liquidity", "oracle", "price", "feed",
         "prediction", "market", "bet", "wager", "auction",
         "lending", "borrow", "collateral", "bridge",
     ]):
-        return DEFI_VAULT_TEMPLATE
+        template = DEFI_VAULT_TEMPLATE
+    else:
+        # Fall back to contract type
+        template = TEMPLATES.get(contract_type, COUNTER_TEMPLATE)
 
-    # Fall back to contract type
-    return TEMPLATES.get(contract_type, COUNTER_TEMPLATE)
+    # Adapt to target version if specified and different from template's version
+    if target_version:
+        template = adapt_template(template, target_version)
+
+    return template
 
 
 def get_template(contract_type: str) -> Optional[StylusTemplate]:

@@ -13,6 +13,13 @@ import json
 import sys
 from typing import Any
 
+# Version manager — single source of truth for SDK versions
+try:
+    from src.utils.version_manager import get_main_version
+    _MAIN_VERSION = get_main_version()
+except Exception:
+    _MAIN_VERSION = "0.10.0"  # last-resort fallback
+
 # M1: Stylus Tools
 from .tools import (
     GetStylusContextTool,
@@ -109,8 +116,8 @@ TOOL_DEFINITIONS = [
                 },
                 "target_version": {
                     "type": "string",
-                    "description": "Target stylus-sdk version (default: 0.9.0). Use this to generate code for a specific SDK version.",
-                    "default": "0.9.0",
+                    "description": f"Target stylus-sdk version (default: {_MAIN_VERSION}). Use this to generate code for a specific SDK version.",
+                    "default": _MAIN_VERSION,
                 },
                 "cargo_toml": {
                     "type": "string",
@@ -122,7 +129,7 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "ask_stylus",
-        "description": "Ask questions about Stylus development, get concept explanations, or debug code issues.",
+        "description": "Ask questions about Stylus development, get concept explanations, or debug code issues. Supports version-specific guidance.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -139,6 +146,10 @@ TOOL_DEFINITIONS = [
                     "enum": ["concept", "debugging", "comparison", "howto", "general"],
                     "description": "Type of question for optimized response (default: general)",
                     "default": "general",
+                },
+                "target_version": {
+                    "type": "string",
+                    "description": f"Target stylus-sdk version for version-specific guidance (default: {_MAIN_VERSION}).",
                 },
             },
             "required": ["question"],

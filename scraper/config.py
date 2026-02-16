@@ -2,6 +2,14 @@
 Configuration for ARBuilder data scraping.
 Contains all target URLs organized by type: Documentation vs Project Examples.
 
+FORK STRATEGY:
+All Stylus repos are sourced from the ARBuilder-Forks GitHub org
+(https://github.com/ARBuilder-Forks) to ensure resilience against upstream
+deletions. Each entry includes a `forked_from` field tracking the original repo.
+- 6 forks are fully migrated to SDK 0.10.0
+- 7 forks retain original code (blocked by upstream dependency conflicts)
+  and rely on the dual-chunk strategy for 0.10.0 coverage
+
 CURATION POLICY:
 - Only include sources verified to work with current SDK version
 - Official docs: Always include (maintained by Arbitrum team)
@@ -19,13 +27,9 @@ INCLUSION CRITERIA:
 - Projects (official_repos): SDK/tutorial repos maintained by OffchainLabs
 - Projects (community_examples): Third-party @arbitrum/sdk usage, verified SDK version
 
-LAST VERIFICATION: 2026-02-10
-  Tool: scripts/verify_source.py --all --steps 1,2,4
-  Before: 34 repos | After cleanup: 16 repos | After M2 additions: 19 repos
-  Removed: 10 challenge submissions (98% identical), 5 broken scaffold forks,
-           2 broken community projects, 1 broken verified_production repo
-  Added: 3 community @arbitrum/sdk repos (kevinb1003/arbitrum-api,
-         gelatodigital/how-tos-18, gelatodigital/clink-bridging)
+LAST VERIFICATION: 2026-02-16
+  Migrated all Stylus repos to ARBuilder-Forks org.
+  6/13 forks compile with SDK 0.10.0; 7 reverted to original code.
 """
 
 # SDK version requirements (from shared/stylus-versions.json)
@@ -82,49 +86,69 @@ DOCS = {
 PROJECT_EXAMPLES = {
     "stylus": {
         "official_examples": [
-            # Official examples maintained by OffchainLabs/ArbitrumFoundation
-            # VERIFIED 2026-02-10 with verify_source.py --steps 1,2,4:
-            {"url": "https://github.com/OffchainLabs/stylus-hello-world", "sdk_version": "0.9.0", "verified": "2026-02-10"},
-            {"url": "https://github.com/OffchainLabs/stylus-quickstart-vending-machine", "sdk_version": "0.8.4", "verified": "2026-02-10"},
-            {"url": "https://github.com/ArbitrumFoundation/stylus-workshop-gol", "sdk_version": "0.9.0", "verified": "2026-02-10",
-             "note": "Compiles but tests fail (0 passed) — workshop format, test setup requires devnode"},
+            # Official examples forked to ARBuilder-Forks org
+            # hello-world & vending-machine: fully migrated to SDK 0.10.0
+            # workshop-gol: reverted to original (OZ alloy-primitives conflict)
+            {"url": "https://github.com/ARBuilder-Forks/stylus-hello-world",
+             "sdk_version": "0.10.0", "verified": "2026-02-16",
+             "forked_from": "OffchainLabs/stylus-hello-world"},
+            {"url": "https://github.com/ARBuilder-Forks/stylus-quickstart-vending-machine",
+             "sdk_version": "0.10.0", "verified": "2026-02-16",
+             "forked_from": "OffchainLabs/stylus-quickstart-vending-machine"},
+            {"url": "https://github.com/ARBuilder-Forks/stylus-workshop-gol",
+             "sdk_version": "0.9.0", "verified": "2026-02-16",
+             "forked_from": "ArbitrumFoundation/stylus-workshop-gol",
+             "note": "Reverted to original — OZ alloy-primitives conflict blocks 0.10.0 migration"},
         ],
         "verified_production": [
-            # Production codebases verified to use current SDK
-            # VERIFIED 2026-02-10 with verify_source.py --steps 1,2,4:
-            {"url": "https://github.com/OpenZeppelin/rust-contracts-stylus", "sdk_version": "0.9.0", "verified": "2026-02-10"},
-            {"url": "https://github.com/OpenZeppelin/stylus-test-helpers", "sdk_version": "0.9.0", "verified": "2026-02-10",
-             "note": "Helper library — no direct stylus-sdk dep but compiles and has 47 tests"},
-            {"url": "https://github.com/oak-security/stylusport", "sdk_version": "0.9.0", "verified": "2026-02-10",
-             "note": "Linker error on native arm64 — may compile to wasm32 target"},
-            {"url": "https://github.com/gnosisguild/stylus-provider", "sdk_version": "0.8.4", "verified": "2026-02-10",
-             "note": "Compiles but tests fail — production library"},
-            # REMOVED 2026-02-10: stylus-developers-guild/reentrancy-transient-storage — compile fails (trait bound error)
+            # Production codebases forked to ARBuilder-Forks org
+            # All reverted to original code — blocked by c-kzg/alloy version conflicts
+            {"url": "https://github.com/ARBuilder-Forks/rust-contracts-stylus",
+             "sdk_version": "0.9.0", "verified": "2026-02-16",
+             "forked_from": "OpenZeppelin/rust-contracts-stylus",
+             "note": "Reverted to original — c-kzg + alloy version conflict blocks 0.10.0"},
+            {"url": "https://github.com/ARBuilder-Forks/stylus-test-helpers",
+             "sdk_version": "0.9.0", "verified": "2026-02-16",
+             "forked_from": "OpenZeppelin/stylus-test-helpers",
+             "note": "Reverted to original — c-kzg native library conflict blocks 0.10.0"},
+            {"url": "https://github.com/ARBuilder-Forks/stylusport",
+             "sdk_version": "0.9.0", "verified": "2026-02-16",
+             "forked_from": "oak-security/stylusport",
+             "note": "Reverted to original — c-kzg native library conflict blocks 0.10.0"},
+            {"url": "https://github.com/ARBuilder-Forks/stylus-provider",
+             "sdk_version": "0.8.4", "verified": "2026-02-16",
+             "forked_from": "gnosisguild/stylus-provider",
+             "note": "Reverted to original — c-kzg native library conflict blocks 0.10.0"},
         ],
         "community_projects": [
-            # VERIFIED 2026-02-10 with verify_source.py --steps 1,2,4:
-            {"url": "https://github.com/philogicae/ethbuc2025-gyges", "sdk_version": "0.8.4", "verified": "2026-02-10"},
-            {"url": "https://github.com/Oluwatobilobaoke/erc6909-with-arbitrum-stylus", "sdk_version": "0.9.0", "verified": "2026-02-10"},
-            {"url": "https://github.com/hummusonrails/fortune-generator", "sdk_version": "0.8.0", "verified": "2026-02-10"},
-            # REMOVED 2026-02-10: IndexMaker/vaultworks — archived, no stylus-sdk detected
-            # REMOVED 2026-02-10: Inteli-Club5/EdCation — compile fails (StorageAddress::new wrong args)
+            # Community projects forked to ARBuilder-Forks org
+            # All 3 fully migrated to SDK 0.10.0
+            {"url": "https://github.com/ARBuilder-Forks/ethbuc2025-gyges",
+             "sdk_version": "0.10.0", "verified": "2026-02-16",
+             "forked_from": "philogicae/ethbuc2025-gyges"},
+            {"url": "https://github.com/ARBuilder-Forks/erc6909-with-arbitrum-stylus",
+             "sdk_version": "0.10.0", "verified": "2026-02-16",
+             "forked_from": "Oluwatobilobaoke/erc6909-with-arbitrum-stylus"},
+            {"url": "https://github.com/ARBuilder-Forks/fortune-generator",
+             "sdk_version": "0.10.0", "verified": "2026-02-16",
+             "forked_from": "hummusonrails/fortune-generator"},
         ],
         "scaffold_projects": [
-            # VERIFIED 2026-02-10 with verify_source.py --steps 1,2,4:
-            {"url": "https://github.com/Arb-Stylus/scaffold-stylus", "sdk_version": "0.9.0", "verified": "2026-02-10",
-             "note": "Canonical scaffold — OZ 0.3.0 incompatible with sdk 0.9.0, own contract compiles"},
-            {"url": "https://github.com/iyansr/cross-protocol-defi-tracker", "sdk_version": "0.9.0", "verified": "2026-02-10"},
-            {"url": "https://github.com/Einarmig/WalletNaming-scaffold-stylus", "sdk_version": "0.9.0", "verified": "2026-02-10"},
-            # REMOVED 2026-02-10: mavix21/poap-scaffold-stylus — compile fails (openzeppelin-stylus 0.3.0 incompatible)
-            # REMOVED 2026-02-10: dchagast/scaffold-stylus-staking — compile fails (linker errors on arm64)
-            # REMOVED 2026-02-10: cidkagenow/EmersonApp-scaffold-stylus — compile fails (non-exhaustive patterns)
-            # REMOVED 2026-02-10: autodidacttrade/DeFi-Project-ERC20 — compile fails (linker errors)
-            # REMOVED 2026-02-10: ByteToHex/VRF-scaffold-stylus — compile fails (linker errors)
+            # Scaffold-stylus projects forked to ARBuilder-Forks org
+            # WalletNaming: fully migrated to 0.10.0
+            # scaffold-stylus & cross-protocol-defi-tracker: reverted (OZ conflict)
+            {"url": "https://github.com/ARBuilder-Forks/scaffold-stylus",
+             "sdk_version": "0.9.0", "verified": "2026-02-16",
+             "forked_from": "Arb-Stylus/scaffold-stylus",
+             "note": "Reverted to original — OZ v0.3.0 incompatible with SDK 0.10.0"},
+            {"url": "https://github.com/ARBuilder-Forks/cross-protocol-defi-tracker",
+             "sdk_version": "0.9.0", "verified": "2026-02-16",
+             "forked_from": "iyansr/cross-protocol-defi-tracker",
+             "note": "Reverted to original — OZ alloy-primitives conflict blocks 0.10.0"},
+            {"url": "https://github.com/ARBuilder-Forks/WalletNaming-scaffold-stylus",
+             "sdk_version": "0.10.0", "verified": "2026-02-16",
+             "forked_from": "Einarmig/WalletNaming-scaffold-stylus"},
         ],
-        # REMOVED 2026-02-10: All 10 challenge submissions removed — 98% identical template code,
-        # zero unique value, adds 4700+ duplicate chunks that pollute retrieval results.
-        # Repos: Huygon764, Fnz11, ndrewlex, athallarizky, dimasd-angga, ammar-rasyidi,
-        # rizkianakbar, math-marcellino, lucky-ivanius (x2), dante4rt (404)
     },
     "arbitrum_sdk": {
         "official_repos": [
@@ -167,7 +191,7 @@ def get_all_config_repo_urls() -> set[str]:
 
 
 def get_config_repo_info() -> dict[str, dict]:
-    """Return a mapping of repo URL -> {category, subcategory, sdk_version, verified}."""
+    """Return a mapping of repo URL -> {category, subcategory, sdk_version, verified, forked_from}."""
     info = {}
     for category, subcategories in PROJECT_EXAMPLES.items():
         for subcategory, entries in subcategories.items():
@@ -177,6 +201,7 @@ def get_config_repo_info() -> dict[str, dict]:
                     "subcategory": subcategory,
                     "sdk_version": entry.get("sdk_version", ""),
                     "verified": entry.get("verified", ""),
+                    "forked_from": entry.get("forked_from", ""),
                 }
     return info
 

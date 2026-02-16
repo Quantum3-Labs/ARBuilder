@@ -11,16 +11,16 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.embeddings.vectordb import VectorDB
-from src.embeddings.reranker import Reranker, BM25Reranker, HybridReranker
+from src.embeddings.reranker import Reranker, HybridReranker
 from tests.test_queries import TEST_QUERIES
 
 
 class TestBM25Reranker:
-    """Test BM25-based reranking."""
+    """Test BM25-based reranking (via HybridReranker with use_llm=False)."""
 
     @pytest.fixture
     def reranker(self):
-        return BM25Reranker()
+        return HybridReranker(use_llm=False)
 
     def test_basic_reranking(self, reranker):
         """Test that BM25 reranks based on keyword relevance."""
@@ -104,13 +104,10 @@ class TestHybridReranker:
             "Transfer tokens between accounts using ERC20.",
             "Stock prices fluctuated today.",
         ]
-        # Simulated vector distances (lower = more similar)
-        vector_distances = [0.3, 0.9, 0.4, 0.8]
 
         results = reranker.rerank(
             query=query,
             documents=documents,
-            vector_distances=vector_distances,
             top_k=4,
         )
 
@@ -134,7 +131,7 @@ class TestRerankerIntegration:
 
     @pytest.fixture
     def bm25_reranker(self):
-        return BM25Reranker()
+        return HybridReranker(use_llm=False)
 
     @pytest.fixture
     def hybrid_reranker(self):
@@ -188,7 +185,6 @@ class TestRerankerIntegration:
             reranked = hybrid_reranker.rerank(
                 query=query,
                 documents=docs,
-                vector_distances=distances,
                 top_k=10,
             )
 

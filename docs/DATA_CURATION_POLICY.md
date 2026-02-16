@@ -40,38 +40,40 @@ ARBuilder's knowledge base must only contain **verified, working code** that com
 
 **Note:** Anything below stylus-sdk 0.8.0 is deprecated (uses `#[external]` instead of `#[public]`).
 
-## Current Verified Sources (19 repos, verified 2026-02-10)
+## Current Verified Sources (19 repos, verified 2026-02-16)
+
+> **Fork Strategy:** All 13 Stylus repos are sourced from the [ARBuilder-Forks](https://github.com/ARBuilder-Forks) GitHub org. This ensures resilience against upstream deletions. Each entry's `forked_from` field tracks the original repo.
 
 ### M1: Stylus Development
 
 **Official Examples:**
-| Source | SDK Version | Status | Notes |
-|--------|-------------|--------|-------|
-| OffchainLabs/stylus-hello-world | 0.9.0 | Verified | Official example |
-| OffchainLabs/stylus-quickstart-vending-machine | 0.8.4 | Verified | Official example |
-| ArbitrumFoundation/stylus-workshop-gol | 0.9.0 | Verified | Tests fail (needs devnode) |
+| Source (ARBuilder-Forks) | Forked From | SDK Version | Notes |
+|--------------------------|-------------|-------------|-------|
+| ARBuilder-Forks/stylus-hello-world | OffchainLabs/stylus-hello-world | 0.10.0 | Migrated to SDK 0.10.0 |
+| ARBuilder-Forks/stylus-quickstart-vending-machine | OffchainLabs/stylus-quickstart-vending-machine | 0.10.0 | Migrated to SDK 0.10.0 |
+| ARBuilder-Forks/stylus-workshop-gol | ArbitrumFoundation/stylus-workshop-gol | 0.9.0 | Reverted — OZ alloy conflict |
 
 **Production Libraries:**
-| Source | SDK Version | Status | Notes |
-|--------|-------------|--------|-------|
-| OpenZeppelin/rust-contracts-stylus | 0.9.0 | Verified | Production library (146 stars) |
-| OpenZeppelin/stylus-test-helpers | 0.9.0 | Verified | Motsu testing framework (47 tests) |
-| oak-security/stylusport | 0.9.0 | Verified | Linker error on arm64, compiles to wasm32 |
-| gnosisguild/stylus-provider | 0.8.4 | Verified | Tests fail, production library |
+| Source (ARBuilder-Forks) | Forked From | SDK Version | Notes |
+|--------------------------|-------------|-------------|-------|
+| ARBuilder-Forks/rust-contracts-stylus | OpenZeppelin/rust-contracts-stylus | 0.9.0 | Reverted — c-kzg + alloy conflict |
+| ARBuilder-Forks/stylus-test-helpers | OpenZeppelin/stylus-test-helpers | 0.9.0 | Reverted — c-kzg native lib conflict |
+| ARBuilder-Forks/stylusport | oak-security/stylusport | 0.9.0 | Reverted — c-kzg native lib conflict |
+| ARBuilder-Forks/stylus-provider | gnosisguild/stylus-provider | 0.8.4 | Reverted — c-kzg native lib conflict |
 
 **Community Projects:**
-| Source | SDK Version | Status | Notes |
-|--------|-------------|--------|-------|
-| philogicae/ethbuc2025-gyges | 0.8.4 | Verified | Hackathon project |
-| Oluwatobilobaoke/erc6909-with-arbitrum-stylus | 0.9.0 | Verified | ERC6909 implementation |
-| hummusonrails/fortune-generator | 0.8.0 | Verified | Randomness example |
+| Source (ARBuilder-Forks) | Forked From | SDK Version | Notes |
+|--------------------------|-------------|-------------|-------|
+| ARBuilder-Forks/ethbuc2025-gyges | philogicae/ethbuc2025-gyges | 0.10.0 | Migrated to SDK 0.10.0 |
+| ARBuilder-Forks/erc6909-with-arbitrum-stylus | Oluwatobilobaoke/erc6909-with-arbitrum-stylus | 0.10.0 | Migrated to SDK 0.10.0 |
+| ARBuilder-Forks/fortune-generator | hummusonrails/fortune-generator | 0.10.0 | Migrated to SDK 0.10.0 |
 
 **Scaffold-Stylus Projects:**
-| Source | SDK Version | Status | Notes |
-|--------|-------------|--------|-------|
-| Arb-Stylus/scaffold-stylus | 0.9.0 | Verified | Canonical scaffold template |
-| iyansr/cross-protocol-defi-tracker | 0.9.0 | Verified | DeFi tracker dApp |
-| Einarmig/WalletNaming-scaffold-stylus | 0.9.0 | Verified | Wallet naming dApp |
+| Source (ARBuilder-Forks) | Forked From | SDK Version | Notes |
+|--------------------------|-------------|-------------|-------|
+| ARBuilder-Forks/scaffold-stylus | Arb-Stylus/scaffold-stylus | 0.9.0 | Reverted — OZ v0.3.0 incompatible |
+| ARBuilder-Forks/cross-protocol-defi-tracker | iyansr/cross-protocol-defi-tracker | 0.9.0 | Reverted — OZ alloy conflict |
+| ARBuilder-Forks/WalletNaming-scaffold-stylus | Einarmig/WalletNaming-scaffold-stylus | 0.10.0 | Migrated to SDK 0.10.0 |
 
 ### M2: Arbitrum SDK
 
@@ -124,6 +126,116 @@ All fail to compile due to OZ 0.3.0 incompatibility or linker errors:
 ### Irrelevant Code
 - nestjs/nest, saadeghi/daisyui, rainbow-me/rainbowkit
 - smartcontractkit/chainlink, messari/subgraphs
+
+## Multi-Version Data Strategy
+
+### Overview
+
+The pipeline supports both SDK 0.9.x and 0.10.0 code through two complementary approaches:
+
+1. **Dual-chunk ingestion**: Original 0.9.x code is preserved alongside a modernized 0.10.0 copy
+2. **Forked repos**: Community repos are forked and fully migrated to SDK 0.10.0
+
+### Fork Strategy
+
+All 13 Stylus repos in the config are sourced from the [ARBuilder-Forks](https://github.com/ARBuilder-Forks) GitHub org. This ensures resilience against upstream deletions. 6 forks are fully migrated to SDK 0.10.0; 7 retain original code (blocked by upstream dependency conflicts) and rely on the dual-chunk strategy for 0.10.0 coverage.
+
+```bash
+# Fork and migrate all repos
+python scripts/fork_and_migrate.py --all
+
+# Dry run first to review changes
+python scripts/fork_and_migrate.py --all --dry-run
+```
+
+The script:
+1. Forks the repo to `ARBuilder-Forks/{repo-name}` via `gh`
+2. Applies `apply_version_transforms()` to all `.rs` files
+3. Updates Cargo.toml with 0.10.0 dependencies
+4. Adds required files (Stylus.toml, rust-toolchain.toml, src/main.rs)
+5. Runs compilation verification (`cargo check`)
+6. Auto-fixes failures using `_fix_code()` patterns (up to 2 attempts)
+7. Commits and pushes
+
+**Results (2026-02-16):** 6 of 13 repos compile with SDK 0.10.0:
+
+| Fork | Original | Status |
+|------|----------|--------|
+| ARBuilder-Forks/stylus-hello-world | OffchainLabs/stylus-hello-world | Compiling |
+| ARBuilder-Forks/stylus-quickstart-vending-machine | OffchainLabs/stylus-quickstart-vending-machine | Compiling |
+| ARBuilder-Forks/erc6909-with-arbitrum-stylus | Oluwatobilobaoke/erc6909-with-arbitrum-stylus | Compiling |
+| ARBuilder-Forks/fortune-generator | hummusonrails/fortune-generator | Compiling |
+| ARBuilder-Forks/ethbuc2025-gyges | philogicae/ethbuc2025-gyges | Compiling |
+| ARBuilder-Forks/WalletNaming-scaffold-stylus | Einarmig/WalletNaming-scaffold-stylus | Compiling |
+| ARBuilder-Forks/rust-contracts-stylus | OpenZeppelin/rust-contracts-stylus | Blocked: c-kzg + alloy version conflict |
+| ARBuilder-Forks/stylus-test-helpers | OpenZeppelin/stylus-test-helpers | Blocked: c-kzg native library conflict |
+| ARBuilder-Forks/stylusport | oak-security/stylusport | Blocked: c-kzg native library conflict |
+| ARBuilder-Forks/stylus-provider | gnosisguild/stylus-provider | Blocked: c-kzg native library conflict |
+| ARBuilder-Forks/stylus-workshop-gol | ArbitrumFoundation/stylus-workshop-gol | Blocked: OZ alloy-primitives mismatch |
+| ARBuilder-Forks/cross-protocol-defi-tracker | iyansr/cross-protocol-defi-tracker | Blocked: OZ alloy-primitives mismatch |
+| ARBuilder-Forks/scaffold-stylus | Arb-Stylus/scaffold-stylus | Blocked: OZ v0.3.0 incompatible with SDK 0.10.0 |
+
+The 7 blocked repos all depend on OpenZeppelin's rust-contracts-stylus or its test helpers (motsu), which pin `alloy-primitives = "=0.8.20"` — incompatible with stylus-sdk 0.10.0's requirement for alloy-primitives 1.0.1. These will unblock when OZ releases a compatible version.
+
+All Stylus repos in `scraper/config.py` now point to ARBuilder-Forks URLs. Each entry includes a `forked_from` field tracking the original repo:
+```python
+{"url": "https://github.com/ARBuilder-Forks/stylus-hello-world",
+ "sdk_version": "0.10.0", "verified": "2026-02-16",
+ "forked_from": "OffchainLabs/stylus-hello-world"},
+```
+
+Repos that couldn't be migrated to 0.10.0 retain their original `sdk_version` and use the dual-chunk strategy for 0.10.0 coverage.
+
+### Dual-Chunk Ingestion
+
+During preprocessing, legacy 0.9.x `.rs` chunks get both their original form and a modernized copy:
+
+```
+Original chunk (sdk_version: "0.9.0")  → kept as-is
+  └── Modernized copy (sdk_version: "0.10.0", modernized: true)  → new chunk with _mod ID suffix
+```
+
+The modernized copy uses `apply_version_transforms()` from `version_manager.py` (centralized transform rules).
+
+### Transform Rules (0.9.x → 0.10.0)
+
+| Old Pattern (0.9.x) | New Pattern (0.10.0) |
+|---------------------|---------------------|
+| `msg::sender()` | `self.vm().msg_sender()` |
+| `msg::value()` | `self.vm().msg_value()` |
+| `evm::log(...)` | `self.vm().log(...)` |
+| `use stylus_sdk::evm` | (removed) |
+| `use stylus_sdk::msg` | (removed) |
+| `.getter(...)` | `.get(...)` |
+| `sol! { interface ... }` | `sol_interface! { interface ... }` |
+| `StorageMap<K, V>` | `mapping(k => v)` |
+| `StorageVec<X>` | `x[]` |
+| `StorageAddress` | `address` |
+| `StorageU256` | `uint256` |
+| `print_abi()` | `print_from_args()` |
+
+These transforms are defined centrally in `VERSION_TRANSFORMS` in `src/utils/version_manager.py` and consumed by:
+- `src/preprocessing/processor.py` (dual-chunk creation)
+- `src/templates/stylus_templates.py` (template adaptation)
+- `src/mcp/tools/generate_stylus_code.py` (`_fix_code()`)
+- `src/mcp/tools/ask_stylus.py` (`_fix_code_in_response()`)
+- `scripts/fork_and_migrate.py` (repo migration)
+
+### Version-Aware Generation
+
+All code generation tools accept `target_version`:
+- `generate_stylus_code(target_version="0.9.0")` → produces 0.9.x code with msg::sender(), .getter(), etc.
+- `ask_stylus(target_version="0.9.0")` → fixes code blocks in responses to use 0.9.x patterns
+- Templates are adapted via `adapt_template()` to strip 0.10-only files and reverse transforms
+
+### Version-Aware Retrieval
+
+The RAG pipeline applies version-aware scoring during retrieval:
+
+- Chunks matching `target_version` major.minor get a **1.2x boost**
+- Chunks from deprecated SDK versions (< 0.8.0) get a **0.8x penalty**
+- Modernized chunks matching target get **1.1x boost**; non-matching modernized chunks don't get version boost (lets real 0.9.x chunks win when targeting 0.9.x)
+- `target_version` flows from MCP schema → `generate_stylus_code` → `get_stylus_context` → `vectordb.hybrid_search`
 
 ## Maintenance Runbook
 
@@ -191,8 +303,10 @@ python scripts/verify_source.py --all --steps 1,2,4
 | File | Purpose |
 |------|---------|
 | `scraper/config.py` | Source of truth for all data sources |
-| `shared/stylus-versions.json` | SDK version metadata and compatibility |
+| `shared/stylus-versions.json` | SDK version metadata, patterns, and compatibility |
+| `src/utils/version_manager.py` | Version transforms, cargo deps, pattern lookup |
 | `scripts/verify_source.py` | 6-step repo verification pipeline |
+| `scripts/fork_and_migrate.py` | Fork repos to ARBuilder-Forks + migrate to SDK 0.10.0 |
 | `scripts/maintain_sources.py` | SDK monitoring, repo discovery, health checks |
 | `scripts/audit_data.py` | Detect orphans and config drift |
 | `scripts/sync_remote_db.py` | Sync remote Cloudflare DB with local config |

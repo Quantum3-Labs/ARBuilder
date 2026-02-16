@@ -58,11 +58,15 @@ try:
         get_alloy_sol_types_version,
         detect_version_from_cargo_toml,
         get_deprecation_warning,
+        apply_version_transforms,
+        _to_major_minor,
+        is_at_least_010,
     )
     HAS_VERSION_MANAGER = True
 except ImportError:
     HAS_VERSION_MANAGER = False
-    # Fallback defaults
+    # Last-resort fallbacks when version_manager is unavailable.
+    # Source of truth: shared/stylus-versions.json → src/utils/version_manager.py
     def get_main_version(): return "0.10.0"
     def get_minimum_version(): return "0.8.0"
     def is_version_deprecated(v): return False
@@ -76,6 +80,9 @@ except ImportError:
     def get_alloy_sol_types_version(v): return "1.0.1"
     def detect_version_from_cargo_toml(c): return None
     def get_deprecation_warning(v): return None
+    def apply_version_transforms(code, from_v, to_v): return code
+    def _to_major_minor(v): return ".".join(v.split(".")[:2])
+    def is_at_least_010(v): return True
 
 
 def get_system_prompt(target_version: str) -> str:
@@ -356,12 +363,12 @@ class GenerateStylusCodeTool(BaseTool):
             target_version = get_main_version()
 
         try:
-            # Select appropriate template
+            # Select appropriate template (version-aware)
             template = None
             template_name = "legacy"
 
             if HAS_TEMPLATES and select_template:
-                template = select_template(contract_type or "utility", prompt)
+                template = select_template(contract_type or "utility", prompt, target_version=target_version)
                 template_name = template.name
 
             # Retrieve relevant context for additional patterns
@@ -375,6 +382,7 @@ class GenerateStylusCodeTool(BaseTool):
                 content_type="code",
                 rerank=True,
                 category_boosts=None,  # Use default Stylus-focused boosts
+                target_version=target_version,
             )
 
             if "contexts" in context_result:
@@ -418,7 +426,7 @@ class GenerateStylusCodeTool(BaseTool):
 
             # Parse response
             code, cargo_toml_output, explanation = self._parse_template_response(
-                response, template
+                response, template, target_version=target_version
             )
 
             # Compile-verify-fix loop (if Docker available)
@@ -481,9 +489,11 @@ class GenerateStylusCodeTool(BaseTool):
             warnings.extend(validation_warnings)
 
             # Derive project name from prompt and fix Cargo.toml/main.rs references
-            main_rs_output = template.main_rs if template else ""
-            stylus_toml_output = template.stylus_toml if template else ""
-            rust_toolchain_toml_output = template.rust_toolchain_toml if template else ""
+            # Only include 0.10.0-specific files when targeting 0.10.x+
+            target_mm = _to_major_minor(target_version)
+            main_rs_output = (template.main_rs if template else "") if is_at_least_010(target_version) else ""
+            stylus_toml_output = (template.stylus_toml if template else "") if is_at_least_010(target_version) else ""
+            rust_toolchain_toml_output = (template.rust_toolchain_toml if template else "") if is_at_least_010(target_version) else ""
 
             if cargo_toml_output:
                 project_name = self._derive_project_name(prompt)
@@ -622,7 +632,8 @@ class GenerateStylusCodeTool(BaseTool):
         return code, explanation
 
     def _parse_template_response(
-        self, response: str, template: Optional["StylusTemplate"]
+        self, response: str, template: Optional["StylusTemplate"],
+        target_version: Optional[str] = None,
     ) -> tuple[str, str, str]:
         """Parse code, cargo.toml, and explanation from template-based response."""
         code = ""
@@ -662,7 +673,7 @@ class GenerateStylusCodeTool(BaseTool):
 
         # Apply fixes for common LLM mistakes in code only
         # Cargo.toml comes directly from template, no fixes needed
-        code = self._fix_code(code, template)
+        code = self._fix_code(code, template, target_version=target_version or get_main_version())
 
         return code, cargo_toml, explanation
 
@@ -719,22 +730,31 @@ class GenerateStylusCodeTool(BaseTool):
 
         return warnings
 
-    def _fix_code(self, code: str, template: Optional["StylusTemplate"]) -> str:
-        """Fix common LLM mistakes in generated code."""
+    def _fix_code(self, code: str, template: Optional["StylusTemplate"], target_version: str = "0.10.0") -> str:
+        """Fix common LLM mistakes in generated code.
+
+        Applies generic fixes (all versions) + version-specific fixes based on target_version.
+
+        Args:
+            code: Generated code to fix.
+            template: Template used for generation (for fallback).
+            target_version: Target SDK version (default "0.10.0").
+        """
         fixed = code
+        is_010 = is_at_least_010(target_version)
+
+        # ── GENERIC FIXES (all versions) ──
 
         # Fix 1: Remove empty sol_storage! blocks
         fixed = re.sub(r'sol_storage!\s*\{\s*\}', '', fixed)
 
         # Fix 2: Ensure proper cfg_attr — must use (not(any(test, feature = "export-abi")))
-        # Fix wrong patterns like (not(any(feature = "export-abi", test)))
         if "#![cfg_attr(not(any(test" not in fixed:
             if template:
                 template_start = template.lib_rs.split("extern crate alloc")[0]
                 if not fixed.startswith("#![cfg_attr"):
                     fixed = template_start + fixed
                 else:
-                    # Replace wrong cfg_attr patterns with correct ones
                     fixed = re.sub(
                         r'#!\[cfg_attr\(not\(any\(feature\s*=\s*"export-abi",\s*test\)\),\s*no_std\)\]',
                         '#![cfg_attr(not(any(test, feature = "export-abi")), no_std)]',
@@ -756,15 +776,12 @@ class GenerateStylusCodeTool(BaseTool):
             )
 
         # Fix 4: Remove standalone sol! imports (sol! is in prelude)
-        # Only remove the standalone import — preserve combined imports like {sol, SolError}
         fixed = re.sub(r'^use alloy_sol_types::sol;\s*$', '', fixed, flags=re.MULTILINE)
         fixed = re.sub(r'^use stylus_sdk::alloy_sol_types::sol;\s*$', '', fixed, flags=re.MULTILINE)
 
         # Fix 5: Handle Vec imports - avoid duplicates
-        # If we have both "use alloc::vec::Vec" and "use alloc::{...vec::Vec...}", remove the standalone
         if "use alloc::vec::Vec;" in fixed and "use alloc::{" in fixed and "vec::Vec" in fixed:
             fixed = re.sub(r'use alloc::vec::Vec;\n?', '', fixed)
-        # If Vec<u8> is used but no import, add it
         if "Vec<u8>" in fixed and "alloc::vec::Vec" not in fixed and "alloc::{" not in fixed:
             fixed = re.sub(
                 r'(extern crate alloc;)',
@@ -772,101 +789,10 @@ class GenerateStylusCodeTool(BaseTool):
                 fixed
             )
 
-        # Fix 6: Ensure use alloc::vec; is present (sol_storage! needs vec module)
-        if "use alloc::vec;" not in fixed and "use alloc::{" not in fixed:
-            # Add use alloc::vec; after extern crate alloc
-            fixed = re.sub(
-                r'(extern crate alloc;\s*\n)',
-                r'\1\nuse alloc::{vec, vec::Vec};\n',
-                fixed,
-            )
-        elif "use alloc::vec::Vec;" in fixed and "use alloc::vec;" not in fixed and "alloc::{" not in fixed:
-            # Has Vec but not vec module — replace with combined import
-            fixed = fixed.replace(
-                "use alloc::vec::Vec;",
-                "use alloc::{vec, vec::Vec};"
-            )
-
         # Fix 7: Ensure there's exactly one sol_storage! block with #[entrypoint]
         sol_storage_count = len(re.findall(r'sol_storage!\s*\{', fixed))
         if sol_storage_count == 0 and template:
-            # If no sol_storage! block, the code is likely broken - use template
             return template.lib_rs
-
-        # Fix 9: Convert sol! { interface ... } to sol_interface! { interface ... }
-        # LLMs often use sol! for interfaces, but Stylus requires sol_interface!
-        fixed = re.sub(
-            r'sol!\s*\{\s*(interface\b)',
-            r'sol_interface! { \1',
-            fixed,
-        )
-
-        # Fix 10: Fix wrong transfer_eth import paths
-        # Common LLM mistakes: use stylus_sdk::call::transfer_eth;
-        #                       use stylus_sdk::call::{transfer_eth, Call};
-        fixed = re.sub(
-            r'use stylus_sdk::call::transfer_eth;',
-            'use stylus_sdk::call::transfer::transfer_eth;',
-            fixed,
-        )
-        fixed = re.sub(
-            r'use stylus_sdk::call::\{([^}]*)\btransfer_eth\b([^}]*)\};',
-            lambda m: 'use stylus_sdk::call::transfer::transfer_eth;\n'
-            + (f'use stylus_sdk::call::{{{m.group(1).replace("transfer_eth", "").strip(", ")}{m.group(2).strip(", ")}}};'
-               if (m.group(1).replace("transfer_eth", "").strip(", ") + m.group(2).strip(", ")).strip(", ")
-               else ''),
-            fixed,
-        )
-        # Fix: self.transfer_eth(to, amount) → transfer_eth(self.vm(), to, amount)
-        fixed = re.sub(
-            r'self\.transfer_eth\(([^)]+)\)',
-            r'transfer_eth(self.vm(), \1)',
-            fixed,
-        )
-        # Fix: transfer_eth(self, ...) → transfer_eth(self.vm(), ...)
-        # LLMs write self instead of self.vm() — must be the vm Host context
-        fixed = re.sub(
-            r'transfer_eth\(self,\s*',
-            'transfer_eth(self.vm(), ',
-            fixed,
-        )
-
-        # Fix 13: Remove deprecated stylus_sdk::evm and stylus_sdk::msg imports
-        fixed = re.sub(r'^use stylus_sdk::evm.*;\s*$', '', fixed, flags=re.MULTILINE)
-        fixed = re.sub(r'^use stylus_sdk::msg.*;\s*$', '', fixed, flags=re.MULTILINE)
-
-        # Fix 14: Fix deprecated msg::sender() → self.vm().msg_sender()
-        fixed = re.sub(r'msg::sender\(\)', 'self.vm().msg_sender()', fixed)
-        fixed = re.sub(r'msg::value\(\)', 'self.vm().msg_value()', fixed)
-
-        # Fix 15: Fix deprecated evm::log(...) → self.vm().log(...)
-        fixed = re.sub(r'evm::log\(', 'self.vm().log(', fixed)
-
-        # Fix 16: Enforce .get() on bare storage field reads
-        # Extract field names from sol_storage! block, then fix self.<field> missing .get()
-        storage_fields = set()
-        # Match Solidity-type field declarations: type field_name;
-        for field_match in re.finditer(
-            r'\b(?:uint\d*|int\d*|address|bool|string|bytes\d*)\s+(\w+)\s*;',
-            fixed,
-        ):
-            storage_fields.add(field_match.group(1))
-        # Also match mapping fields: mapping(...) field_name;
-        for field_match in re.finditer(
-            r'mapping\([^)]*\)\s+(\w+)\s*;',
-            fixed,
-        ):
-            storage_fields.add(field_match.group(1))
-        # For each storage field, fix bare <var>.<field> reads (not followed by . or ()
-        # This catches both self.<field> AND nested struct fields like market.<field>
-        # where market = self.markets.get(id) returns a storage accessor
-        for field in storage_fields:
-            # <word>.<field> NOT followed by . or ( → add .get()
-            fixed = re.sub(
-                rf'(\w+)\.{field}(?!\s*[.(])',
-                rf'\1.{field}.get()',
-                fixed,
-            )
 
         # Fix 8: Ensure #[entrypoint] is inside sol_storage! if missing
         if "#[entrypoint]" not in fixed:
@@ -875,6 +801,130 @@ class GenerateStylusCodeTool(BaseTool):
                 r'sol_storage! {\n    #[entrypoint]\1',
                 fixed
             )
+
+        # ── VERSION-SPECIFIC FIXES ──
+
+        if is_010:
+            # 0.10.0 fixes (current behavior)
+
+            # Fix 6: Ensure use alloc::vec; is present (sol_storage! needs vec module)
+            if "use alloc::vec;" not in fixed and "use alloc::{" not in fixed:
+                fixed = re.sub(
+                    r'(extern crate alloc;\s*\n)',
+                    r'\1\nuse alloc::{vec, vec::Vec};\n',
+                    fixed,
+                )
+            elif "use alloc::vec::Vec;" in fixed and "use alloc::vec;" not in fixed and "alloc::{" not in fixed:
+                fixed = fixed.replace(
+                    "use alloc::vec::Vec;",
+                    "use alloc::{vec, vec::Vec};"
+                )
+
+            # Fix 9: Convert sol! { interface } to sol_interface! { interface }
+            fixed = re.sub(
+                r'sol!\s*\{\s*(interface\b)',
+                r'sol_interface! { \1',
+                fixed,
+            )
+
+            # Fix 10: Fix wrong transfer_eth import paths
+            fixed = re.sub(
+                r'use stylus_sdk::call::transfer_eth;',
+                'use stylus_sdk::call::transfer::transfer_eth;',
+                fixed,
+            )
+            fixed = re.sub(
+                r'use stylus_sdk::call::\{([^}]*)\btransfer_eth\b([^}]*)\};',
+                lambda m: 'use stylus_sdk::call::transfer::transfer_eth;\n'
+                + (f'use stylus_sdk::call::{{{m.group(1).replace("transfer_eth", "").strip(", ")}{m.group(2).strip(", ")}}};'
+                   if (m.group(1).replace("transfer_eth", "").strip(", ") + m.group(2).strip(", ")).strip(", ")
+                   else ''),
+                fixed,
+            )
+            fixed = re.sub(
+                r'self\.transfer_eth\(([^)]+)\)',
+                r'transfer_eth(self.vm(), \1)',
+                fixed,
+            )
+            fixed = re.sub(
+                r'transfer_eth\(self,\s*',
+                'transfer_eth(self.vm(), ',
+                fixed,
+            )
+
+            # Fix 13: Remove deprecated stylus_sdk::evm and stylus_sdk::msg imports
+            fixed = re.sub(r'^use stylus_sdk::evm.*;\s*$', '', fixed, flags=re.MULTILINE)
+            fixed = re.sub(r'^use stylus_sdk::msg.*;\s*$', '', fixed, flags=re.MULTILINE)
+
+            # Fix 14: Fix deprecated msg::sender()/msg::value() → self.vm()
+            fixed = re.sub(r'msg::sender\(\)', 'self.vm().msg_sender()', fixed)
+            fixed = re.sub(r'msg::value\(\)', 'self.vm().msg_value()', fixed)
+
+            # Fix 15: Fix deprecated evm::log() → self.vm().log()
+            fixed = re.sub(r'evm::log\(', 'self.vm().log(', fixed)
+
+            # Fix 16: Enforce .get() on bare storage field reads
+            storage_fields = set()
+            for field_match in re.finditer(
+                r'\b(?:uint\d*|int\d*|address|bool|string|bytes\d*)\s+(\w+)\s*;',
+                fixed,
+            ):
+                storage_fields.add(field_match.group(1))
+            for field_match in re.finditer(
+                r'mapping\([^)]*\)\s+(\w+)\s*;',
+                fixed,
+            ):
+                storage_fields.add(field_match.group(1))
+            for field in storage_fields:
+                fixed = re.sub(
+                    rf'(\w+)\.{field}(?!\s*[.(])',
+                    rf'\1.{field}.get()',
+                    fixed,
+                )
+        else:
+            # 0.9.x fixes (reverse direction)
+
+            # Reverse: self.vm().msg_sender() → msg::sender()
+            fixed = fixed.replace('self.vm().msg_sender()', 'msg::sender()')
+            fixed = fixed.replace('self.vm().msg_value()', 'msg::value()')
+
+            # Reverse: self.vm().log( → evm::log(
+            fixed = fixed.replace('self.vm().log(', 'evm::log(')
+
+            # Reverse: sol_interface! { interface → sol! { interface
+            fixed = re.sub(
+                r'sol_interface!\s*\{\s*(interface\b)',
+                r'sol! { \1',
+                fixed,
+            )
+
+            # Reverse: transfer_eth import path
+            fixed = fixed.replace(
+                'use stylus_sdk::call::transfer::transfer_eth;',
+                'use stylus_sdk::call::transfer_eth;',
+            )
+
+            # Reverse: .get( → .getter(
+            fixed = re.sub(r'\.get\(', '.getter(', fixed)
+
+            # Reverse: print_from_args() → print_abi()
+            fixed = fixed.replace('print_from_args()', 'print_abi()')
+
+            # Add back evm/msg imports if needed
+            if 'msg::sender()' in fixed or 'msg::value()' in fixed:
+                if 'use stylus_sdk::msg' not in fixed:
+                    fixed = re.sub(
+                        r'(use stylus_sdk::prelude::\*;)',
+                        r'\1\nuse stylus_sdk::msg;',
+                        fixed,
+                    )
+            if 'evm::log(' in fixed:
+                if 'use stylus_sdk::evm' not in fixed:
+                    fixed = re.sub(
+                        r'(use stylus_sdk::prelude::\*;)',
+                        r'\1\nuse stylus_sdk::evm;',
+                        fixed,
+                    )
 
         return fixed
 

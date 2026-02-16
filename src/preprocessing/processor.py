@@ -5,6 +5,7 @@ Main data processor for ARBuilder preprocessing pipeline.
 import hashlib
 import json
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -34,10 +35,12 @@ try:
         is_version_deprecated as check_version_deprecated,
         get_main_version,
         get_minimum_version,
+        apply_version_transforms,
     )
     HAS_VERSION_MANAGER = True
 except ImportError:
     HAS_VERSION_MANAGER = False
+    apply_version_transforms = None
 
 # Import config for repo filtering
 try:
@@ -88,10 +91,82 @@ class DataProcessor:
         self._latest_sdk_version: Optional[str] = None
         # Cache for repo SDK versions
         self._repo_sdk_versions: dict[str, Optional[str]] = {}
+        # Counter for modernized chunks
+        self._modernized_count: int = 0
 
     def _compute_content_hash(self, content: str) -> str:
         """Compute a short hash of the content for diff detection."""
         return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
+
+    @staticmethod
+    def _get_legacy_sdk_versions() -> set[str]:
+        """Get SDK versions that need modernization (all supported but not main).
+
+        Derived from version_manager config: any version with status != 'main'
+        and status != 'deprecated' (deprecated ones are already excluded at ingest).
+        """
+        if not HAS_VERSION_MANAGER:
+            return set()
+        try:
+            from src.utils.version_manager import load_version_config
+            config = load_version_config()
+            main_version = config.get("main_version", "")
+            return {
+                v for v, info in config.get("versions", {}).items()
+                if v != main_version and info.get("status") != "deprecated"
+            }
+        except Exception:
+            return set()
+
+    def _create_modernized_copy(self, chunk: dict) -> Optional[dict]:
+        """
+        Create a modernized copy of a chunk containing legacy SDK 0.9.x patterns.
+
+        Returns a NEW chunk dict with 0.10.0 patterns, or None if no changes needed.
+        The original chunk is NOT modified — both original and modernized versions
+        are kept as separate data sources (dual-chunk strategy).
+
+        Uses apply_version_transforms() from version_manager for centralized transforms.
+
+        Args:
+            chunk: Chunk dict with 'content' and metadata fields.
+
+        Returns:
+            A new modernized chunk dict, or None if no modernization needed.
+        """
+        extension = chunk.get("extension", "")
+        sdk_version = chunk.get("sdk_version", "")
+
+        # Only modernize .rs chunks from legacy SDK versions
+        if extension != ".rs" or sdk_version not in self._get_legacy_sdk_versions():
+            return None
+
+        content = chunk.get("content", "")
+        if not content:
+            return None
+
+        # Use centralized version transforms
+        target = get_main_version() if HAS_VERSION_MANAGER else "0.10.0"
+        if apply_version_transforms is not None:
+            modernized_content = apply_version_transforms(content, sdk_version, target)
+        else:
+            # Fallback: no transforms available
+            return None
+
+        # Only create copy if content actually changed
+        if modernized_content == content:
+            return None
+
+        # Create a copy with modernized content and distinct metadata
+        modernized = dict(chunk)
+        modernized["content"] = modernized_content
+        modernized["modernized"] = True
+        modernized["modernized_from"] = sdk_version
+        modernized["sdk_version"] = target
+        modernized["stylus_version"] = target
+        self._modernized_count += 1
+
+        return modernized
 
     def _get_latest_sdk_version(self) -> Optional[str]:
         """Get the latest SDK version, with caching."""
@@ -170,7 +245,12 @@ class DataProcessor:
                 chunks = self.doc_chunker.chunk(content, metadata)
 
                 for chunk in chunks:
-                    all_chunks.append(chunk.to_dict())
+                    chunk_dict = chunk.to_dict()
+                    all_chunks.append(chunk_dict)  # Keep original
+                    # Create modernized copy if applicable (dual-chunk)
+                    modernized = self._create_modernized_copy(chunk_dict)
+                    if modernized:
+                        all_chunks.append(modernized)
 
                 progress.advance(task)
 
@@ -342,7 +422,12 @@ class DataProcessor:
                         chunks = self.code_chunker.chunk(content, extension, metadata)
 
                     for chunk in chunks:
-                        all_chunks.append(chunk.to_dict())
+                        chunk_dict = chunk.to_dict()
+                        all_chunks.append(chunk_dict)  # Keep original
+                        # Create modernized copy if applicable (dual-chunk)
+                        modernized = self._create_modernized_copy(chunk_dict)
+                        if modernized:
+                            all_chunks.append(modernized)
 
                     progress.advance(task)
 
@@ -369,11 +454,13 @@ class DataProcessor:
 
         # Add deterministic IDs based on content hash
         # This ensures same content always gets same ID (for upsert to work correctly)
+        # Modernized copies get a _mod suffix for distinct IDs
         for chunk in all_chunks:
             # Create hash from source URL + content (first 500 chars for stability)
             hash_input = f"{chunk.get('url', '')}{chunk.get('content', '')[:500]}"
             content_hash = hashlib.sha256(hash_input.encode()).hexdigest()[:12]
-            chunk["id"] = f"chunk_{content_hash}"
+            suffix = "_mod" if chunk.get("modernized") else ""
+            chunk["id"] = f"chunk_{content_hash}{suffix}"
 
         # Save processed data
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -417,6 +504,8 @@ class DataProcessor:
         deprecated_version_count = 0  # Chunks with deprecated SDK version
         current_count = 0
         outdated_count = 0
+        modernized_count = 0
+        modernized_from_versions = {}
 
         for chunk in chunks:
             # By source
@@ -451,6 +540,12 @@ class DataProcessor:
                 if chunk.get("is_version_deprecated", False):
                     deprecated_version_count += 1
 
+                # Count modernized chunks
+                if chunk.get("modernized", False):
+                    modernized_count += 1
+                    from_ver = chunk.get("modernized_from", "unknown")
+                    modernized_from_versions[from_ver] = modernized_from_versions.get(from_ver, 0) + 1
+
         # Get version config info
         main_version = None
         minimum_version = None
@@ -476,6 +571,8 @@ class DataProcessor:
             "outdated_chunks": outdated_count,
             "deprecated_pattern_chunks": deprecated_count,
             "deprecated_version_chunks": deprecated_version_count,
+            "modernized_chunks": modernized_count,
+            "modernized_from_versions": modernized_from_versions,
             "processed_at": datetime.utcnow().isoformat(),
         }
 
@@ -512,6 +609,12 @@ class DataProcessor:
             console.print(f"  Outdated chunks: {stats.get('outdated_chunks', 0):,}")
             console.print(f"  Deprecated version chunks: {stats.get('deprecated_version_chunks', 0):,}")
             console.print(f"  With deprecated patterns: {stats.get('deprecated_pattern_chunks', 0):,}")
+
+            if stats.get("modernized_chunks", 0) > 0:
+                console.print(f"  Modernized chunks: {stats['modernized_chunks']:,}")
+                if stats.get("modernized_from_versions"):
+                    for ver, count in sorted(stats["modernized_from_versions"].items()):
+                        console.print(f"    from {ver}: {count:,}")
 
             if stats.get("by_sdk_version"):
                 console.print("\n[bold]By SDK Version:[/bold]")

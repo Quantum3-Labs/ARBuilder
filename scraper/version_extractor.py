@@ -22,6 +22,14 @@ DEPRECATED_PATTERNS = [
     (r'stylus-sdk\s*=\s*"0\.[0-5]\.', "stylus-sdk < 0.6 is deprecated"),
     (r'mini-alloc\s*=\s*"', "mini-alloc is deprecated, use stylus-sdk/mini-alloc feature"),
     (r"use stylus_sdk::storage::StorageVec;", "StorageVec import path may have changed"),
+    # SDK 0.9.x → 0.10.0 deprecated patterns
+    (r'msg::sender\(\)', "msg::sender() removed in 0.10.0 → self.vm().msg_sender()"),
+    (r'msg::value\(\)', "msg::value() removed in 0.10.0 → self.vm().msg_value()"),
+    (r'evm::log\(', "evm::log() removed in 0.10.0 → self.vm().log()"),
+    (r'use stylus_sdk::msg', "stylus_sdk::msg removed in 0.10.0 → use self.vm() methods"),
+    (r'use stylus_sdk::evm', "stylus_sdk::evm removed in 0.10.0 → use self.vm().log()"),
+    (r'\.getter\(', ".getter() → .get() in 0.10.0"),
+    (r'print_abi\(\)', "print_abi() → print_from_args() in 0.10.0"),
 ]
 
 # Current known good patterns

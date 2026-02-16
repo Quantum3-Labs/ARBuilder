@@ -61,6 +61,7 @@ class GetStylusContextTool(BaseTool):
         content_type: str = "all",
         rerank: bool = True,
         category_boosts: Optional[dict[str, float]] = None,
+        target_version: Optional[str] = None,
         **kwargs,
     ) -> dict:
         """
@@ -74,6 +75,8 @@ class GetStylusContextTool(BaseTool):
             category_boosts: Optional dict mapping category names to boost multipliers.
                            If None, uses default Stylus boosts. Pass {} to disable boosting.
                            Example: {"stylus": 1.3, "arbitrum_sdk": 1.5}
+            target_version: Target stylus-sdk version to prioritize results for.
+                          Results matching this version are boosted, deprecated versions penalized.
 
         Returns:
             Dict with contexts, total_results, and query.
@@ -129,7 +132,7 @@ class GetStylusContextTool(BaseTool):
 
             # Query vector database with enhanced hybrid search
             if self.use_reranking and rerank:
-                # Use hybrid search with BM25 + metadata boosting
+                # Use hybrid search with BM25 + metadata boosting + version scoring
                 raw_results = self.vectordb.hybrid_search(
                     query_text=query,
                     n_results=fetch_count,
@@ -137,6 +140,7 @@ class GetStylusContextTool(BaseTool):
                     alpha=0.5,  # Balanced vector + BM25
                     category_boosts=category_boosts,
                     use_bm25=True,
+                    target_version=target_version,
                 )
             else:
                 # Use standard vector search

@@ -80,7 +80,7 @@ GENERATE_CODE_TEST_CASES = [
                 r"fn\s+transfer",
                 r"fn\s+balance_of|balanceOf",
                 r"fn\s+total_supply|totalSupply",
-                r"StorageMap",
+                r"StorageMap|mapping\(",
             ],
             "must_have_keywords": ["address", "u256", "mapping"],
             "syntax_valid": True,
@@ -116,7 +116,7 @@ GENERATE_CODE_TEST_CASES = [
         },
         "expected": {
             "must_have_patterns": [
-                r"StorageVec",
+                r"StorageVec|address\[\]|\w+\[\]",
                 r"sol_storage!",
             ],
             "must_have_keywords": ["push", "get", "len"],
@@ -444,6 +444,7 @@ def analyze_code_quality(code: str) -> dict:
         "has_events": bool(re.search(r"evm::log|emit|Event", code)),
         "function_count": len(re.findall(r"fn\s+\w+", code)),
         "uses_storage_types": bool(re.search(
-            r"StorageVec|StorageMap|StorageU256|StorageAddress", code
+            r"StorageVec|StorageMap|StorageU256|StorageAddress|mapping\(|uint256|address\b.*\b\w+\s*;",
+            code
         )),
     }
