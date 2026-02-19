@@ -9,22 +9,71 @@ AI-powered development assistant for the Arbitrum ecosystem. ARBuilder transform
 
 ## Architecture
 
-ARBuilder uses a **Retrieval-Augmented Generation (RAG)** pipeline to provide context-aware code generation and assistance. It integrates with Cursor/VS Code via an MCP server.
+ARBuilder uses a **Retrieval-Augmented Generation (RAG)** pipeline with hybrid search (vector + BM25 + cross-encoder reranking) to provide context-aware code generation. Available as a hosted service at [arbuilder.app](https://arbuilder.app) or self-hosted via MCP server.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      ARBuilder                               │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────────┐  │
-│  │   Scraper   │───▶│  Embeddings │───▶│  Vector DB      │  │
-│  │  (crawl4ai) │    │  (Gemini)   │    │  (ChromaDB)     │  │
-│  └─────────────┘    └─────────────┘    └────────┬────────┘  │
-│                                                  │           │
-│  ┌─────────────┐    ┌─────────────┐    ┌────────▼────────┐  │
-│  │  MCP Server │◀───│  RAG Engine │◀───│    Retrieval    │  │
-│  │ (Cursor/VS) │    │ (DeepSeek)  │    │                 │  │
-│  └─────────────┘    └─────────────┘    └─────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                            ARBuilder                                    │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  DATA PIPELINE                                                          │
+│  ┌──────────┐    ┌──────────┐    ┌───────────┐    ┌──────────────────┐ │
+│  │ Scraper  │───▶│Processor │───▶│ Embedder  │───▶│    ChromaDB      │ │
+│  │ crawl4ai │    │ 3-layer  │    │ BGE-M3    │    │ (local vectors)  │ │
+│  │ + GitHub │    │ filters  │    │ 1024-dim  │    │                  │ │
+│  └──────────┘    └──────────┘    └───────────┘    └────────┬─────────┘ │
+│                                                             │           │
+│  RETRIEVAL                                                  │           │
+│  ┌──────────────────────────────────────────────────────────▼─────────┐ │
+│  │                    Hybrid Search Engine                             │ │
+│  │  ┌──────────┐    ┌──────────┐    ┌───────────┐                    │ │
+│  │  │  Vector  │    │   BM25   │    │CrossEncoder│   RRF Fusion      │ │
+│  │  │  Search  │───▶│ Keywords │───▶│ Reranker  │──▶ + MMR           │ │
+│  │  └──────────┘    └──────────┘    └───────────┘                    │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
+│                                         │                               │
+│  GENERATION                             ▼                               │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │                      MCP Server (13 tools)                        │  │
+│  │                                                                   │  │
+│  │  M1: Stylus        M2: SDK           M3: dApp Builder            │  │
+│  │  ┌─────────────┐   ┌─────────────┐   ┌──────────────────────┐   │  │
+│  │  │ generate_    │   │ generate_   │   │ generate_backend     │   │  │
+│  │  │ stylus_code  │   │ bridge_code │   │ generate_frontend    │   │  │
+│  │  │ ask_stylus   │   │ generate_   │   │ generate_indexer     │   │  │
+│  │  │ get_context  │   │ messaging   │   │ generate_oracle      │   │  │
+│  │  │ gen_tests    │   │ ask_bridging│   │ orchestrate_dapp     │   │  │
+│  │  │ get_workflow │   │             │   │                      │   │  │
+│  │  └─────────────┘   └─────────────┘   └──────────────────────┘   │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                           │                                             │
+│  IDE INTEGRATION          ▼                                             │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │  Cursor / VS Code / Claude Desktop / Any MCP Client              │  │
+│  │  <- via local stdio or remote mcp-remote proxy ->                │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                                                                         │
+│  HOSTED SERVICE (Cloudflare Workers)                                    │
+│  ┌──────────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────────┐  │
+│  │  Workers AI  │  │ Vectorize│  │    D1    │  │      KV         │  │
+│  │  BGE-M3 +    │  │ 1024-dim │  │  Users   │  │   Source registry│  │
+│  │  Reranker    │  │  index   │  │  API keys│  │   + Ingest state │  │
+│  └──────────────┘  └──────────┘  └──────────┘  └──────────────────┘  │
+│                                                                       │
+│  INGESTION PIPELINE (Worker-native, cron every 6h)                    │
+│  ┌──────────┐    ┌──────────┐    ┌───────────┐    ┌──────────────┐  │
+│  │ scraper  │───▶│ chunker  │───▶│ Workers AI│───▶│  Vectorize   │  │
+│  │ HTML/    │    │ doc+code │    │  BGE-M3   │    │   upsert     │  │
+│  │ GitHub   │    │ splitter │    │ embedding │    │              │  │
+│  └──────────┘    └──────────┘    └───────────┘    └──────────────┘  │
+│                       │                ▲                             │
+│                       │ >30 files      │ embed messages              │
+│                       ▼                │                             │
+│              ┌─────────────────────────┴──┐                         │
+│              │    CF Queue (async path)    │                         │
+│              │  embed │ continue │finalize │                         │
+│              └────────────────────────────┘                         │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## TL;DR - Quick Start
@@ -37,13 +86,13 @@ ARBuilder uses a **Retrieval-Augmented Generation (RAG)** pipeline to provide co
   "mcpServers": {
     "arbbuilder": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "https://arbbuilder.whymelabs.com/mcp",
+      "args": ["-y", "mcp-remote", "https://arbuilder.app/mcp",
                "--header", "Authorization: Bearer YOUR_API_KEY"]
     }
   }
 }
 ```
-Get your API key at [arbbuilder.whymelabs.com](https://arbbuilder.whymelabs.com)
+Get your API key at [arbuilder.app](https://arbuilder.app)
 
 **Option 2: Self-Hosted**
 ```bash
@@ -142,8 +191,19 @@ ArbBuilder/
 │   └── test_retrieval.py # Retrieval quality tests
 ├── docs/
 │   └── mcp_tools_spec.md # MCP tools specification
+├── apps/web/               # Hosted service (Cloudflare Workers + Next.js)
+│   ├── src/lib/
+│   │   ├── scraper.ts      # Web doc scraping (HTMLRewriter)
+│   │   ├── github.ts       # GitHub repo scraping (Trees/Contents API)
+│   │   ├── chunker.ts      # Document + code chunking
+│   │   ├── ingestPipeline.ts # Ingestion orchestrator (sync + async queue paths)
+│   │   └── vectorize.ts    # Search + embedding utilities
+│   ├── src/app/api/admin/  # Admin APIs (sources, ingest, migrate)
+│   ├── worker.ts           # Worker entry + cron + queue consumer handler
+│   └── wrangler.prod.jsonc # Production config (D1, KV, Vectorize, Queue)
 ├── scripts/
 │   ├── run_benchmarks.py     # Benchmark runner
+│   ├── diff-migrate.ts       # Push chunks to CF Vectorize
 │   └── ingest_m3_sources.py  # M3 source ingestion
 ├── data/
 │   ├── raw/              # Raw scraped data (docs + curated repos)
@@ -183,7 +243,7 @@ Edit `.env` with your credentials:
 OPENROUTER_API_KEY=your-api-key
 NVIDIA_API_KEY=your-nvidia-api-key
 DEFAULT_MODEL=deepseek/deepseek-v3.2
-DEFAULT_EMBEDDING=google/gemini-embedding-001
+DEFAULT_EMBEDDING=baai/bge-m3
 DEFAULT_CROSS_ENCODER=nvidia/llama-3.2-nv-rerankqa-1b-v2
 ```
 
@@ -230,6 +290,8 @@ python -m src.preprocessing.processor
 python -m src.embeddings.vectordb --reset
 ```
 
+**Data Quality Filters:** The pipeline applies a 3-layer filtering system to remove junk data (vendored crates, auto-generated TypeChain files, hex bytecode, lock files, and cross-repo duplicates). See [docs/DATA_CURATION_POLICY.md](docs/DATA_CURATION_POLICY.md) for details.
+
 #### Data Maintenance
 
 Audit and clean up data sources:
@@ -251,6 +313,26 @@ python scripts/audit_data.py --chromadb
 python -m scraper.github_scraper --audit
 python -m scraper.github_scraper --prune --dry-run
 ```
+
+#### Fork & Migrate (SDK 0.10.0)
+
+Fork community Stylus repos and migrate them to SDK 0.10.0:
+
+```bash
+# Dry run: show what would change without modifying anything
+python scripts/fork_and_migrate.py --all --dry-run
+
+# Migrate all 13 Stylus repos
+python scripts/fork_and_migrate.py --all
+
+# Migrate a specific repo
+python scripts/fork_and_migrate.py --repo OffchainLabs/stylus-hello-world
+
+# Re-verify already-forked repos after manual fixes
+python scripts/fork_and_migrate.py --all --verify-only
+```
+
+Reports are saved to `reports/fork_migration_*.json`.
 
 ## Quick Start (IDE Integration)
 
@@ -307,9 +389,9 @@ Ask your AI assistant:
 
 ### Option B: Hosted Service (Zero Setup)
 
-Use our hosted API - no local setup required. Available at [arbbuilder.whymelabs.com](https://arbbuilder.whymelabs.com).
+Use our hosted API - no local setup required. Available at [arbuilder.app](https://arbuilder.app).
 
-1. Sign up at https://arbbuilder.whymelabs.com and get your API key
+1. Sign up at https://arbuilder.app and get your API key
 2. Add to your MCP configuration:
 
 ```json
@@ -317,7 +399,7 @@ Use our hosted API - no local setup required. Available at [arbbuilder.whymelabs
   "mcpServers": {
     "arbbuilder": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "https://arbbuilder.whymelabs.com/mcp",
+      "args": ["-y", "mcp-remote", "https://arbuilder.app/mcp",
                "--header", "Authorization: Bearer YOUR_API_KEY"]
     }
   }
@@ -331,25 +413,25 @@ The hosted service includes:
 
 ## Usage
 
-### Data Scraping (Optional)
+### Data Ingestion
 
-Run the full data collection pipeline to refresh raw data:
+**Hosted (Worker-native)**: The hosted service at [arbuilder.app](https://arbuilder.app) has a built-in ingestion pipeline that runs automatically via cron (every 6 hours). Sources can also be manually ingested via the admin UI at `/admin`.
+
+The pipeline uses two paths based on source size:
+- **Sync path** (docs and repos ≤30 files): scrape → chunk → embed → upsert in a single Worker invocation (~40 subrequests)
+- **Async path** (repos >30 files): scrape → chunk → save to KV → enqueue to CF Queue. The queue consumer processes embed/upsert in batches of 10 chunks (~4 subrequests each), with `continue` messages for additional file batches and a `finalize` message to update source status. This stays within the 50 subrequest/invocation limit on the Free plan.
+
+**Local (Python pipeline)**: For self-hosted setups, run the full data collection pipeline:
 
 ```bash
-# Activate environment
 conda activate arbbuilder
 
 # Run full pipeline (web scraping + GitHub cloning)
 python -m scraper.run
 
-# Scrape only Stylus sources
-python -m scraper.run --categories stylus
-
-# Skip web scraping, only clone GitHub repos
-python -m scraper.run --skip-web
-
-# Skip GitHub cloning, only scrape web
-python -m scraper.run --skip-github
+# Preprocess and push to CF Vectorize
+python -m src.preprocessing.processor
+AUTH_SECRET=xxx npx tsx scripts/diff-migrate.ts --full
 ```
 
 ### Data Sources
@@ -360,11 +442,10 @@ The scraper collects data from 40+ curated sources:
 
 **Stylus (M1)**
 - Official documentation: [docs.arbitrum.io](https://docs.arbitrum.io/stylus/stylus-overview) (7 pages + gas-metering)
-- Official examples: stylus-hello-world (v0.9.0), stylus-quickstart-vending-machine (v0.8.4), stylus-workshop-gol (v0.9.0)
-- Production codebases: OpenZeppelin rust-contracts-stylus (v0.9.0), stylus-test-helpers (v0.9.0), stylusport (v0.9.0)
-- Community projects (5 verified repos, SDK >= 0.8.0)
-- Scaffold-stylus projects (8 repos, all SDK 0.9.0)
-- Challenge submissions (11 repos, all SDK 0.9.0)
+- **All 13 Stylus repos are sourced from [ARBuilder-Forks](https://github.com/ARBuilder-Forks)** for resilience against upstream deletions
+- 6 forks fully migrated to SDK 0.10.0: hello-world, vending-machine, erc6909, fortune-generator, ethbuc2025-gyges, WalletNaming
+- 7 forks retain original code (SDK 0.8.4–0.9.0) with dual-chunk strategy for 0.10.0 coverage
+- Production codebases: OpenZeppelin rust-contracts-stylus, stylus-test-helpers, stylusport, stylus-provider
 - Blog articles
 
 **Curation Policy:**
@@ -372,15 +453,23 @@ The scraper collects data from 40+ curated sources:
 - No unverified community submissions
 - All code repos must compile with stylus-sdk >= 0.8.0
 - SDK version tracked per-repo in config (not extracted at runtime)
+- All Stylus repos forked to ARBuilder-Forks org with `forked_from` provenance tracking
 
 **Stylus SDK Version Support:**
 
 | Version | Status | Notes |
 |---------|--------|-------|
-| 0.9.2 | **Main** (default) | Latest stable, recommended for new projects |
-| 0.9.0 | Supported | Alloy 0.8.x compatible |
-| 0.8.x | Supported | Minimum supported version |
+| 0.10.0 | **Main** (default) | Latest stable, recommended for new projects |
+| 0.9.x | Supported | Original + modernized copies in knowledge base |
+| 0.8.x | Supported | Minimum supported version, dual-chunk strategy |
 | < 0.8.0 | Deprecated | Excluded from knowledge base |
+
+**Multi-Version Strategy:**
+- **Dual-chunk ingestion**: Original 0.9.x code is preserved as-is alongside a modernized 0.10.0 copy
+- **Forked repos**: Community repos are forked to [ARBuilder-Forks](https://github.com/ARBuilder-Forks) and migrated to SDK 0.10.0 for high-quality training data
+- **Version-aware generation**: `generate_stylus_code` and `ask_stylus` accept `target_version` to produce code for any supported SDK version
+- **Version-aware retrieval**: Vector search boosts chunks matching the requested SDK version
+- Config: `shared/stylus-versions.json` is the single source of truth for version patterns
 
 **Arbitrum SDK (M2)**
 - [arbitrum-sdk](https://github.com/OffchainLabs/arbitrum-sdk)
@@ -397,7 +486,7 @@ The scraper collects data from 40+ curated sources:
 The MCP endpoint at `/mcp` is free to use and designed for IDE integration:
 
 ```
-https://arbbuilder.whymelabs.com/mcp
+https://arbuilder.app/mcp
 ```
 
 - Requires `arb_` API key from dashboard
@@ -406,7 +495,7 @@ https://arbbuilder.whymelabs.com/mcp
 
 ### Transparency Page
 
-View all ingested sources and code templates at [arbbuilder.whymelabs.com/transparency](https://arbbuilder.whymelabs.com/transparency).
+View all ingested sources and code templates at [arbuilder.app/transparency](https://arbuilder.app/transparency).
 
 This public page provides:
 - **Ingested Sources**: All documentation and GitHub repos in the knowledge base
@@ -559,9 +648,17 @@ ARBuilder uses **template-based code generation** to ensure generated code compi
 
 | Version | Status | Notes |
 |---------|--------|-------|
-| 0.9.0 | **Main** (default) | Recommended for new projects |
+| 0.10.0 | **Main** (default) | Recommended for new projects |
+| 0.9.x | Supported | Use `target_version: "0.9.0"` for 0.9.x output |
 | 0.8.x | Supported | Minimum supported version |
 | < 0.8.0 | Deprecated | Warning shown, may not compile |
+
+Pass `target_version` to tools for version-specific output:
+```
+User: "Generate a counter contract for SDK 0.9.0"
+AI uses: generate_stylus_code(prompt="...", target_version="0.9.0")
+Returns: Code using msg::sender(), .getter(), print_abi() patterns
+```
 
 Ask your AI assistant to generate contracts:
 
@@ -622,7 +719,7 @@ Returns: Commands for checking balance, deploying, and verifying
 |-----------|-------------|--------|
 | M1 | Stylus Smart Contract Builder | ✅ Complete |
 | M2 | Arbitrum SDK Integration (Bridging & Messaging) | ✅ Complete |
-| M3 | Full dApp Builder | ✅ Complete |
+| M3 | Full dApp Builder (Backend + Frontend + Indexer + Oracle + Orchestration) | ✅ Complete |
 | M4 | Orbit Chain Integration | Planned |
 | M5 | Unified AI Assistant | Planned |
 
@@ -755,7 +852,7 @@ cat .env | grep OPENROUTER_API_KEY
 Ensure:
 - The API key is correctly set (no extra spaces or quotes)
 - Your OpenRouter account has credits
-- The embedding model `google/gemini-embedding-001` is available
+- The embedding model `baai/bge-m3` is available on OpenRouter
 
 **2. Rate Limiting Issues**
 

@@ -64,7 +64,7 @@ python -m src.mcp.server
 echo '{"method": "tools/list"}' | python -m src.mcp.server
 ```
 
-### Data Pipeline
+### Data Pipeline (Local)
 ```bash
 # Scrape documentation and repos
 python -m scraper.run
@@ -75,9 +75,16 @@ python -m src.preprocessing.processor
 # Generate vector database
 python -m src.embeddings.vectordb
 
-# Reset and regenerate
-python -m src.embeddings.vectordb --reset
+# Push to CF Vectorize
+AUTH_SECRET=xxx npx tsx scripts/diff-migrate.ts --full
 ```
+
+### Data Pipeline (Hosted - Worker-Native)
+The hosted service has a Worker-native ingestion pipeline that runs automatically:
+- **Cron**: Every 6 hours, processes next pending/stale source
+- **Admin UI**: `/admin` page with per-source Refresh and "Process Next" buttons
+- **API**: `POST /api/admin/ingest` with `{ url, category }` or `{ action: "process_next" }`
+- **Pipeline**: `scraper.ts` → `chunker.ts` → `ingestPipeline.ts` → Workers AI embedding → Vectorize upsert
 
 ### Testing
 ```bash
@@ -150,10 +157,17 @@ ruff check .
 - **abi_extractor.py**: Regex-based ABI extraction from Stylus Rust code (no Docker needed)
 - **compiler_verifier.py**: Docker-based `cargo check` with structured error parsing and LLM fix loop
 
+### Worker-Native Ingestion Pipeline (`apps/web/src/lib/`)
+- **scraper.ts**: Web documentation scraping via HTMLRewriter + regex HTML-to-markdown
+- **github.ts**: GitHub repo scraping via Trees API + Contents API (no tarball)
+- **chunker.ts**: DocumentChunker (512 tokens) + CodeChunker (1024 tokens), character-based token estimation
+- **ingestPipeline.ts**: Orchestrator — scrape → chunk → embed (BGE-M3) → upsert (Vectorize)
+- **Cron**: `worker.ts` scheduled handler calls ingest API via `WORKER_SELF_REFERENCE`
+- **Admin API**: `/api/admin/ingest` (POST for ingestion, GET for progress)
+
 ### Embedding Model
-- Provider: OpenRouter
-- Model: `google/gemini-embedding-001`
-- Dimensions: 768
+- Model: `@cf/baai/bge-m3` (CF Workers AI)
+- Dimensions: 1024
 
 ### LLM Models
 - Code generation: `deepseek/deepseek-v3.2`
@@ -321,10 +335,17 @@ let success = token.transfer(self.vm(), Call::new(), recipient, amount)?;
 6. Add tests in `tests/mcp_tools/`
 
 ### Updating Knowledge Base
+
+**Via Admin UI (hosted)**:
+1. Go to `/admin`, authenticate
+2. Click "Add Source" with URL and category
+3. Click "Refresh" on the source to trigger ingestion
+
+**Via Local Pipeline**:
 1. Add URLs to `scraper/config.py`
 2. Run `python -m scraper.run`
 3. Run `python -m src.preprocessing.processor`
-4. Run `python -m src.embeddings.vectordb --reset`
+4. Run `AUTH_SECRET=xxx npx tsx scripts/diff-migrate.ts --full`
 
 ### Testing MCP Tools Locally
 ```bash
@@ -338,7 +359,7 @@ Required in `.env`:
 ```env
 OPENROUTER_API_KEY=your-api-key
 DEFAULT_MODEL=deepseek/deepseek-v3.2
-DEFAULT_EMBEDDING=google/gemini-embedding-001
+DEFAULT_EMBEDDING=baai/bge-m3
 ```
 
 ## Commit Guidelines
