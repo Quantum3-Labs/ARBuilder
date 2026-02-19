@@ -347,6 +347,30 @@ let success = token.transfer(self.vm(), Call::new(), recipient, amount)?;
 3. Run `python -m src.preprocessing.processor`
 4. Run `AUTH_SECRET=xxx npx tsx scripts/diff-migrate.ts --full`
 
+### Bulk Registering M3 Sources
+```bash
+ARBBUILDER_ADMIN_SECRET=xxx npx tsx scripts/register_m3_sources.ts
+```
+
+### Running QA Checks Locally
+```bash
+# TypeScript
+cd apps/web && npx tsc --noEmit
+
+# Python
+ruff check .
+pytest tests/ -x --timeout=120
+```
+
+### Source Verification & Maintenance
+```bash
+# Verify all repos (compile, tests, health, dependency audit, AI review)
+python scripts/verify_source.py --all --steps 1,2,4,5 --output reports/verification.json
+
+# SDK monitoring + health check + community discovery
+python scripts/maintain_sources.py all --output reports/maintenance.json
+```
+
 ### Testing MCP Tools Locally
 ```bash
 # Test specific tool

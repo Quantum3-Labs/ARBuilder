@@ -38,9 +38,30 @@ ARBuilder uses automated verification to ensure only working, SDK-compatible cod
 | 1 | SDK Version | Parse Cargo.toml / package.json | stylus-sdk >= 0.8.0 or @arbitrum/sdk >= 4.0.0 |
 | 2 | Compile | `cargo build --release` / `npm run build` | Exit code 0 |
 | 3 | Deploy | Deploy to Arbitrum Sepolia | Successful deployment (optional) |
-| 4 | Tests & Health | `cargo test` + GitHub API | Tests pass, not archived, recent activity |
+| 4 | Tests, Health & Audit | `cargo test` + GitHub API + dependency audit | Tests pass, not archived, no critical vulns |
 | 5 | AI Review | LLM code review | Security, quality, teaching value (optional) |
 | 6 | Fork | Fork to our org | Preservation copy (optional) |
+
+### Dependency Audit (integrated into Step 4)
+
+Step 4 now includes dependency vulnerability scanning:
+
+- **Rust repos**: `cargo audit --json` — checks for known CVEs in Cargo.lock dependencies
+- **TypeScript repos**: `npm audit --json` — checks for known vulnerabilities in package-lock.json
+
+Results are stored in the step details under the `dependency_audit` key:
+```json
+{
+  "dependency_audit": {
+    "audit_run": true,
+    "tool": "cargo audit",
+    "has_vulnerabilities": false,
+    "count": 0
+  }
+}
+```
+
+Prerequisites: `cargo install cargo-audit` for Rust repos, `npm` for TypeScript repos.
 
 ### Usage
 

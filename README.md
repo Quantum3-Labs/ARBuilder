@@ -438,7 +438,7 @@ AUTH_SECRET=xxx npx tsx scripts/diff-migrate.ts --full
 
 Data sources are split into **Documentation** (web pages) and **Project Examples** (GitHub repos with runnable code). Each project repo entry tracks its SDK version in `scraper/config.py` as the source of truth.
 
-The scraper collects data from 40+ curated sources:
+The scraper collects data from 135+ curated sources across 4 milestones:
 
 **Stylus (M1)**
 - Official documentation: [docs.arbitrum.io](https://docs.arbitrum.io/stylus/stylus-overview) (7 pages + gas-metering)
@@ -474,7 +474,14 @@ The scraper collects data from 40+ curated sources:
 **Arbitrum SDK (M2)**
 - [arbitrum-sdk](https://github.com/OffchainLabs/arbitrum-sdk)
 - [arbitrum-tutorials](https://github.com/OffchainLabs/arbitrum-tutorials)
+- 3 community repos: arbitrum-api, orbit-bridging, cross-messaging
 - Official bridging and messaging documentation (6 pages)
+
+**Full dApp Builder (M3)** — 36 doc pages + 12 GitHub repos
+- Backend: NestJS (5 docs), Express (3 docs), nestjs/nest, arbitrum-token-bridge
+- Frontend: wagmi (5 docs), viem (4 docs), RainbowKit (4 docs), DaisyUI (5 docs) + 5 repos
+- Indexer: The Graph (5 docs), graph-tooling, messari/subgraphs
+- Oracle: Chainlink (5 docs), smart-contract-examples, chainlink
 
 **Orbit SDK (M4)**
 - [arbitrum-orbit-sdk](https://github.com/OffchainLabs/arbitrum-orbit-sdk)
@@ -939,6 +946,16 @@ If the vector database seems corrupted:
 # Reset and re-ingest
 python -m src.embeddings.vectordb --reset
 ```
+
+## CI/CD Workflows
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `qa.yml` | PRs to main, push to main | TypeScript type check, Python lint, Python tests |
+| `maintenance.yml` | Weekly (Mon 6AM UTC) + manual | SDK version monitoring, source health checks, community discovery |
+| `refresh-rag.yml` | Manual | Full RAG refresh: scrape, process, migrate to Vectorize |
+| `deploy-staging.yml` | Manual | Deploy to staging environment |
+| `release-chunks.yml` | GitHub release | Build and publish pre-processed chunks + embeddings |
 
 ## License
 

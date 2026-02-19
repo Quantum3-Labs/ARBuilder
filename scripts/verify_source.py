@@ -583,9 +583,10 @@ class SourceVerifier:
 
         test_result = self._run_tests()
         health_result = self._check_github_health()
+        audit_result = self._audit_dependencies()
 
         # Combine into one result
-        combined = {**test_result, **health_result}
+        combined = {**test_result, **health_result, "dependency_audit": audit_result}
         # Pass criteria: not archived and not deleted
         # "stale" and "abandoned" are warnings, not failures (repo may be complete)
         # Tests timed out = inconclusive, not failure
@@ -742,6 +743,145 @@ class SourceVerifier:
             console.print(f"  [yellow]GitHub API error: {e}[/yellow]")
 
         return result
+
+    def _audit_dependencies(self) -> dict:
+        """Run dependency vulnerability audit (cargo audit / npm audit)."""
+        if self.repo_type == "stylus":
+            return self._audit_cargo()
+        elif self.repo_type in ("sdk", "typescript"):
+            return self._audit_npm()
+        return {"audit_run": False, "reason": f"Unknown repo type: {self.repo_type}"}
+
+    def _audit_cargo(self) -> dict:
+        """Run cargo audit on Rust repos for known vulnerabilities."""
+        work_dir = self._find_stylus_root()
+        if not work_dir:
+            return {"audit_run": False, "reason": "No Stylus root found"}
+
+        cargo_lock = work_dir / "Cargo.lock"
+        if not cargo_lock.exists():
+            # Generate Cargo.lock if missing
+            try:
+                subprocess.run(
+                    ["cargo", "generate-lockfile"],
+                    capture_output=True, text=True, timeout=120, cwd=str(work_dir),
+                )
+            except Exception:
+                pass
+
+        if not cargo_lock.exists():
+            return {"audit_run": False, "reason": "No Cargo.lock and cannot generate"}
+
+        try:
+            result = subprocess.run(
+                ["cargo", "audit", "--json"],
+                capture_output=True, text=True, timeout=120, cwd=str(work_dir),
+            )
+
+            try:
+                audit_data = json.loads(result.stdout) if result.stdout else {}
+            except json.JSONDecodeError:
+                # Fallback to text parsing
+                vuln_count = result.stdout.count("vulnerability found")
+                console.print(f"  Dependency audit: {'CLEAN' if vuln_count == 0 else f'{vuln_count} issues'}")
+                return {
+                    "audit_run": True,
+                    "tool": "cargo audit",
+                    "has_vulnerabilities": result.returncode != 0,
+                    "raw_output": result.stdout[-500:] if result.stdout else "",
+                }
+
+            vulnerabilities = audit_data.get("vulnerabilities", {}).get("list", [])
+            vuln_count = len(vulnerabilities)
+            vuln_summary = [
+                {
+                    "id": v.get("advisory", {}).get("id", ""),
+                    "package": v.get("advisory", {}).get("package", ""),
+                    "title": v.get("advisory", {}).get("title", ""),
+                }
+                for v in vulnerabilities[:10]
+            ]
+
+            console.print(f"  Dependency audit: {'CLEAN' if vuln_count == 0 else f'{vuln_count} vulnerabilities'}")
+            return {
+                "audit_run": True,
+                "tool": "cargo audit",
+                "has_vulnerabilities": vuln_count > 0,
+                "count": vuln_count,
+                "vulnerabilities": vuln_summary,
+            }
+
+        except FileNotFoundError:
+            console.print("  [yellow]cargo-audit not installed (install with: cargo install cargo-audit)[/yellow]")
+            return {"audit_run": False, "reason": "cargo-audit not installed"}
+        except subprocess.TimeoutExpired:
+            return {"audit_run": False, "reason": "cargo audit timed out"}
+        except Exception as e:
+            return {"audit_run": False, "reason": str(e)}
+
+    def _audit_npm(self) -> dict:
+        """Run npm audit on TypeScript repos for known vulnerabilities."""
+        pkg_json = self.clone_dir / "package.json"
+        if not pkg_json.exists():
+            return {"audit_run": False, "reason": "No package.json found"}
+
+        # Ensure node_modules exist (npm audit needs package-lock.json)
+        pkg_lock = self.clone_dir / "package-lock.json"
+        if not pkg_lock.exists():
+            try:
+                subprocess.run(
+                    ["npm", "install", "--package-lock-only"],
+                    capture_output=True, text=True, timeout=120,
+                    cwd=str(self.clone_dir),
+                )
+            except Exception:
+                pass
+
+        if not pkg_lock.exists():
+            return {"audit_run": False, "reason": "No package-lock.json and cannot generate"}
+
+        try:
+            result = subprocess.run(
+                ["npm", "audit", "--json"],
+                capture_output=True, text=True, timeout=60,
+                cwd=str(self.clone_dir),
+            )
+
+            try:
+                audit_data = json.loads(result.stdout) if result.stdout else {}
+            except json.JSONDecodeError:
+                return {
+                    "audit_run": True,
+                    "tool": "npm audit",
+                    "has_vulnerabilities": result.returncode != 0,
+                    "raw_output": result.stdout[-500:] if result.stdout else "",
+                }
+
+            vuln_meta = audit_data.get("metadata", {}).get("vulnerabilities", {})
+            total = vuln_meta.get("total", 0)
+            severity = {
+                "critical": vuln_meta.get("critical", 0),
+                "high": vuln_meta.get("high", 0),
+                "moderate": vuln_meta.get("moderate", 0),
+                "low": vuln_meta.get("low", 0),
+            }
+
+            console.print(f"  Dependency audit: {'CLEAN' if total == 0 else f'{total} vulnerabilities (C:{severity[\"critical\"]} H:{severity[\"high\"]} M:{severity[\"moderate\"]} L:{severity[\"low\"]})'}")
+            return {
+                "audit_run": True,
+                "tool": "npm audit",
+                "has_vulnerabilities": total > 0,
+                "count": total,
+                "severity": severity,
+            }
+
+        except FileNotFoundError:
+            console.print("  [yellow]npm not found[/yellow]")
+            return {"audit_run": False, "reason": "npm not installed"}
+        except subprocess.TimeoutExpired:
+            return {"audit_run": False, "reason": "npm audit timed out"}
+        except Exception as e:
+            return {"audit_run": False, "reason": str(e)}
 
     # ──────────────────────────────────────────────────────────────
     # Step 5: AI Code Review

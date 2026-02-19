@@ -547,6 +547,10 @@ export default function AdminPage() {
                     <option value="arbitrum_sdk">Arbitrum SDK</option>
                     <option value="orbit_sdk">Orbit SDK</option>
                     <option value="arbitrum_docs">Arbitrum Docs</option>
+                    <option value="m3_backend">M3: Backend</option>
+                    <option value="m3_frontend">M3: Frontend</option>
+                    <option value="m3_indexer">M3: Indexer</option>
+                    <option value="m3_oracle">M3: Oracle</option>
                   </select>
                 </div>
                 <div>
@@ -599,6 +603,10 @@ export default function AdminPage() {
                 <option value="arbitrum_sdk">Arbitrum SDK</option>
                 <option value="orbit_sdk">Orbit SDK</option>
                 <option value="arbitrum_docs">Arbitrum Docs</option>
+                <option value="m3_backend">M3: Backend</option>
+                <option value="m3_frontend">M3: Frontend</option>
+                <option value="m3_indexer">M3: Indexer</option>
+                <option value="m3_oracle">M3: Oracle</option>
               </select>
             </div>
             <div>

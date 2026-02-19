@@ -123,9 +123,48 @@ All fail to compile due to OZ 0.3.0 incompatibility or linker errors:
 - hammertoe/ArbitrumOnchainAgent (v0.7.0), cygaar/inkmate (v0.4.3)
 - malik672/open-stylus (v0.4.2), code-423n4/2024-10-superposition (v0.6.0)
 
-### Irrelevant Code
+### Previously Excluded (Now M3 Sources)
+The following repos were originally excluded as "irrelevant" but are now included as M3 dApp Builder sources:
 - nestjs/nest, saadeghi/daisyui, rainbow-me/rainbowkit
 - smartcontractkit/chainlink, messari/subgraphs
+- wevm/wagmi, wevm/viem, scaffold-eth/scaffold-eth-2
+- graphprotocol/graph-tooling, smartcontractkit/smart-contract-examples
+- OffchainLabs/arbitrum-token-bridge
+
+### M3: Full dApp Builder
+
+**Documentation Sources (36 URLs):**
+| Category | Subcategory | Count | Source |
+|----------|-------------|-------|--------|
+| m3_backend | nestjs | 5 | docs.nestjs.com |
+| m3_backend | express | 3 | expressjs.com |
+| m3_frontend | wagmi | 5 | wagmi.sh |
+| m3_frontend | viem | 4 | viem.sh |
+| m3_frontend | rainbowkit | 4 | rainbowkit.com |
+| m3_frontend | daisyui | 5 | daisyui.com |
+| m3_indexer | the_graph | 5 | thegraph.com |
+| m3_oracle | chainlink | 5 | docs.chain.link |
+
+**GitHub Repos (12 repos):**
+| Source | Category | Notes |
+|--------|----------|-------|
+| wevm/wagmi | m3_frontend | React hooks for Ethereum |
+| wevm/viem | m3_frontend | TypeScript Interface for Ethereum |
+| rainbow-me/rainbowkit | m3_frontend | Wallet connection UI |
+| saadeghi/daisyui | m3_frontend | Tailwind CSS component library |
+| scaffold-eth/scaffold-eth-2 | m3_frontend | Full-stack Ethereum starter |
+| graphprotocol/graph-tooling | m3_indexer | The Graph CLI and codegen |
+| messari/subgraphs | m3_indexer | Production subgraph examples |
+| smartcontractkit/smart-contract-examples | m3_oracle | Chainlink integration examples |
+| smartcontractkit/chainlink | m3_oracle | Chainlink oracle framework |
+| nestjs/nest | m3_backend | NestJS framework |
+| OffchainLabs/arbitrum-token-bridge | m3_backend | Bridge UI patterns |
+
+**M3 Inclusion Criteria:**
+- Framework library repos are assessed for **teaching value**, not SDK version compliance
+- Documentation must be from stable/current versions
+- Large repos (wagmi, nestjs, chainlink) are ingested via CF Queue async pipeline
+- Content is filtered through the standard 3-layer system (SKIP_DIRS, hex filter, dedup)
 
 ## Data Quality Filters (3-Layer System)
 

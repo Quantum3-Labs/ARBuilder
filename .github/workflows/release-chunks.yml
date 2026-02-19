@@ -89,31 +89,19 @@ jobs:
             echo "No embeddings file found"
           fi
 
-      - name: Upload chunks to release
+      - name: Upload assets to release
         if: github.event_name == 'release'
-        uses: actions/upload-release-asset@v1
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ steps.find-chunks.outputs.file }}
+            ${{ steps.find-embeddings.outputs.exists == 'true' && steps.find-embeddings.outputs.file || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ${{ steps.find-chunks.outputs.file }}
-          asset_name: processed_chunks_${{ steps.get-tag.outputs.tag }}.json
-          asset_content_type: application/json
-
-      - name: Upload embeddings to release
-        if: github.event_name == 'release' && steps.find-embeddings.outputs.exists == 'true'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ${{ steps.find-embeddings.outputs.file }}
-          asset_name: embeddings_${{ steps.get-tag.outputs.tag }}.npz
-          asset_content_type: application/octet-stream
 
       - name: Create release (manual trigger)
         if: github.event_name == 'workflow_dispatch'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.get-tag.outputs.tag }}
           name: Release ${{ steps.get-tag.outputs.tag }}

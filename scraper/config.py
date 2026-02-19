@@ -253,13 +253,13 @@ M3_SOURCES = {
             "https://wagmi.sh/react/guides/connect-wallet",
             "https://wagmi.sh/react/guides/read-from-contract",
             "https://wagmi.sh/react/guides/write-to-contract",
-            "https://wagmi.sh/react/guides/transactions",
+            "https://wagmi.sh/react/guides/send-transaction",
         ],
         "viem": [
-            "https://viem.sh/docs/getting-started.html",
-            "https://viem.sh/docs/contract/readContract.html",
-            "https://viem.sh/docs/contract/writeContract.html",
-            "https://viem.sh/docs/actions/public/waitForTransactionReceipt.html",
+            "https://viem.sh/docs/getting-started",
+            "https://viem.sh/docs/contract/readContract",
+            "https://viem.sh/docs/contract/writeContract",
+            "https://viem.sh/docs/actions/public/waitForTransactionReceipt",
         ],
         "rainbowkit": [
             "https://www.rainbowkit.com/docs/introduction",
@@ -290,7 +290,7 @@ M3_SOURCES = {
             "https://docs.chain.link/vrf/v2-5/subscription/get-a-random-number",
             "https://docs.chain.link/chainlink-automation/overview/getting-started",
             "https://docs.chain.link/chainlink-functions/getting-started",
-            "https://docs.chain.link/data-feeds/price-feeds/addresses?network=arbitrum&page=1",
+            "https://docs.chain.link/data-feeds/using-data-feeds",
         ],
     },
 }

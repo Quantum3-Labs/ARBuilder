@@ -1,10 +1,6 @@
 name: Deploy to Staging
 
 on:
-  push:
-    branches:
-      - feature/m2-arbitrum-sdk
-      - feature/m3-full-dapp-builder
   workflow_dispatch:
     inputs:
       refresh_rag:
