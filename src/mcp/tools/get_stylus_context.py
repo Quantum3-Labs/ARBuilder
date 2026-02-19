@@ -5,6 +5,7 @@ Retrieves relevant documentation and code examples from the RAG database.
 """
 
 import sys
+import math
 from pathlib import Path
 from typing import Optional
 
@@ -13,7 +14,7 @@ project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.embeddings.vectordb import VectorDB
-from src.embeddings.reranker import HybridReranker, Reranker
+from src.embeddings.reranker import HybridReranker
 from src.mcp.tools.base import BaseTool
 
 
@@ -44,7 +45,12 @@ class GetStylusContextTool(BaseTool):
         self.use_reranking = use_reranking
 
         if use_reranking:
-            self.reranker = HybridReranker(use_llm=False)  # BM25 + vector fusion
+            # Cross-encoder + MMR for relevance and diversity
+            self.reranker = HybridReranker(
+                use_cross_encoder=True,
+                use_mmr=True,
+                use_llm=False
+            )
         else:
             self.reranker = None
 
@@ -54,6 +60,7 @@ class GetStylusContextTool(BaseTool):
         n_results: int = 5,
         content_type: str = "all",
         rerank: bool = True,
+        category_boosts: Optional[dict[str, float]] = None,
         **kwargs,
     ) -> dict:
         """
@@ -64,6 +71,9 @@ class GetStylusContextTool(BaseTool):
             n_results: Number of results to return (1-20).
             content_type: Filter by type: "all", "docs", or "code".
             rerank: Whether to rerank results.
+            category_boosts: Optional dict mapping category names to boost multipliers.
+                           If None, uses default Stylus boosts. Pass {} to disable boosting.
+                           Example: {"stylus": 1.3, "arbitrum_sdk": 1.5}
 
         Returns:
             Dict with contexts, total_results, and query.
@@ -110,17 +120,23 @@ class GetStylusContextTool(BaseTool):
         elif content_type == "code":
             where_filter = {"type": {"$eq": "code"}}
 
+        # Configure category boosts
+        category_boosts = self._get_category_boosts(category_boosts)
+
         try:
             # Fetch more results for reranking
             fetch_count = n_results * 3 if rerank and self.use_reranking else n_results
 
-            # Query vector database
+            # Query vector database with enhanced hybrid search
             if self.use_reranking and rerank:
-                # Use hybrid search
+                # Use hybrid search with BM25 + metadata boosting
                 raw_results = self.vectordb.hybrid_search(
                     query_text=query,
                     n_results=fetch_count,
                     where=where_filter,
+                    alpha=0.5,  # Balanced vector + BM25
+                    category_boosts=category_boosts,
+                    use_bm25=True,
                 )
             else:
                 # Use standard vector search
@@ -141,6 +157,33 @@ class GetStylusContextTool(BaseTool):
 
         except Exception as e:
             return {"error": f"Retrieval failed: {str(e)}"}
+
+    def _get_category_boosts(self, category_boosts: Optional[dict[str, float]]) -> dict[str, float]:
+        """
+        Get category boost configuration.
+
+        Args:
+            category_boosts: Optional dict of category boosts. If None, returns default
+                           Stylus-focused boosts. If empty dict, returns no boosts.
+
+        Returns:
+            Dict mapping category names to boost multipliers.
+        """
+        # If explicitly provided, use it (even if empty)
+        if category_boosts is not None:
+            return category_boosts
+        
+        # Default: Category boosts based on data distribution:
+        # - stylus: 7196 chunks (82.8%) - PRIMARY focus, gets highest boost
+        # - orbit_sdk: 1012 chunks (11.6%) - Related to Arbitrum chains
+        # - arbitrum_sdk: 451 chunks (5.2%) - SDK documentation
+        # - arbitrum_docs: 33 chunks (0.4%) - General docs
+        return {
+            "stylus": 1.3,        # 30% boost for Stylus content (primary focus)
+            "orbit_sdk": 1.1,     # 10% boost for Orbit SDK (related)
+            "arbitrum_sdk": 1.05, # 5% boost for Arbitrum SDK
+            "arbitrum_docs": 1.0, # No boost (neutral)
+        }
 
     def _process_results(
         self,
@@ -178,44 +221,60 @@ class GetStylusContextTool(BaseTool):
         documents = raw_results["documents"][0]
         metadatas = raw_results["metadatas"][0]
         distances = raw_results["distances"][0]
+        
+        # Check if hybrid search scores are available
+        hybrid_scores = raw_results.get("scores", [[]])[0] if "scores" in raw_results else None
 
-        # Apply reranking if enabled
+        # Apply reranking if enabled (cross-encoder + MMR)
         if rerank and self.reranker and len(documents) > 0:
             reranked = self.reranker.rerank(
                 query=query,
                 documents=documents,
-                vector_distances=distances,
+                embeddings=None,  # Computed once if needed, then reused in MMR
+                query_embedding=None,  # Computed once if needed, then reused in MMR
                 top_k=n_results,
             )
 
             # Build contexts from reranked results
             contexts = []
             for item in reranked:
-                idx = item["index"]
-                metadata = metadatas[idx] if idx < len(metadatas) else {}
+                # Get original index from reranked result
+                orig_idx = item.get("original_index", item.get("index", 0))
+                
+                # Ensure index is within bounds
+                if orig_idx >= len(documents):
+                    continue
+                    
+                metadata = metadatas[orig_idx] if orig_idx < len(metadatas) else {}
 
-                # Calculate relevance score (normalize RRF to 0-1)
-                rrf_score = item.get("rrf_score", 0)
-                relevance = min(1.0, rrf_score * 30)  # Normalize RRF scores
+                # Prefer the hybrid combined score (cross-encoder + MMR) when available.
+                ce_score = item.get("cross_encoder_score", item.get("relevance_score", 0.5))
+                # NVIDIA reranker returns unbounded logits; map to [0, 1] with sigmoid.
+                relevance = 1.0 / (1.0 + math.exp(-float(ce_score)))
 
                 contexts.append(self._build_context(
-                    content=documents[idx],
+                    content=documents[orig_idx],
                     metadata=metadata,
-                    distance=distances[idx],
+                    distance=distances[orig_idx] if orig_idx < len(distances) else 1.0,
                     relevance_score=relevance,
                 ))
 
             return contexts
 
-        # Without reranking, process in distance order
+        # Without reranking, process in score/distance order
         contexts = []
         for i in range(min(n_results, len(documents))):
             metadata = metadatas[i] if i < len(metadatas) else {}
 
-            # Convert distance to relevance score (cosine distance)
-            # Distance of 0 = perfect match = 1.0 relevance
-            # Distance of 2 = opposite = 0.0 relevance
-            relevance = max(0.0, 1.0 - (distances[i] / 2.0))
+            # Use hybrid scores if available, otherwise convert distance to relevance
+            if hybrid_scores and i < len(hybrid_scores):
+                # Hybrid scores are already normalized and higher is better
+                relevance = hybrid_scores[i]
+            else:
+                # Convert distance to relevance score (cosine distance)
+                # Distance of 0 = perfect match = 1.0 relevance
+                # Distance of 2 = opposite = 0.0 relevance
+                relevance = max(0.0, 1.0 - (distances[i] / 2.0))
 
             contexts.append(self._build_context(
                 content=documents[i],

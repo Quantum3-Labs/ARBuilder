@@ -15,8 +15,8 @@ BUILD_WORKFLOW = {
     "description": "Complete workflow for building a Stylus smart contract",
     "prerequisites": [
         {"check": "rustup --version", "install": "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"},
-        {"check": "rustup default", "install": "rustup default 1.81", "note": "Rust 1.81 recommended, 1.82+ may have issues"},
-        {"check": "rustup target list --installed | grep wasm32-unknown-unknown", "install": "rustup target add wasm32-unknown-unknown --toolchain 1.81"},
+        {"check": "rustup default", "install": "rustup default 1.88.0", "note": "Rust 1.88.0 recommended (use rust-toolchain.toml)"},
+        {"check": "rustup target list --installed | grep wasm32-unknown-unknown", "install": "rustup target add wasm32-unknown-unknown"},
         {"check": "cargo stylus --version", "install": "cargo install --force cargo-stylus"},
         {"check": "docker --version", "install": "Install Docker from docker.com", "note": "Required for reproducible builds"},
     ],
@@ -76,12 +76,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-stylus-sdk = "0.8.4"
-alloy-primitives = "0.8.14"
-alloy-sol-types = "0.8.14"
+stylus-sdk = "0.10.0"
+alloy-primitives = "1.0.1"
+alloy-sol-types = "1.0.1"
 
 [dev-dependencies]
-stylus-sdk = { version = "0.8.4", features = ["stylus-test"] }
+stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
 
 [features]
 export-abi = ["stylus-sdk/export-abi"]
@@ -223,6 +223,10 @@ DEPLOY_WORKFLOW = {
             "error": "activation failed",
             "solution": "Check for unsupported WASM features, verify imports",
         },
+        "gas_underestimation": {
+            "error": "max fee per gas less than block base fee",
+            "solution": "On Arbitrum Sepolia, MetaMask and default gas estimation may underestimate maxFeePerGas. For cargo stylus deploy, retry or add --estimate-gas first. For frontend interactions via wagmi/viem, add explicit gas overrides: { maxFeePerGas: parseGwei('0.5'), maxPriorityFeePerGas: parseGwei('0.01') }",
+        },
     },
 }
 
@@ -239,7 +243,7 @@ TEST_WORKFLOW = {
             "description": "Stylus SDK native testing framework (SDK 0.8.0+)",
             "location": "src/lib.rs with #[cfg(test)]",
             "framework": "stylus_sdk::testing",
-            "setup": 'stylus-sdk = { version = "0.8.4", features = ["stylus-test"] }',
+            "setup": 'stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }',
         },
         "integration_tests": {
             "description": "Test contract interactions end-to-end",

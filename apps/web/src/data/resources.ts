@@ -74,7 +74,7 @@ export const STYLUS_CLI = {
   installation: {
     command: "cargo install --force cargo-stylus",
     prerequisites: [
-      "Rust toolchain v1.81 (v1.82+ may have issues)",
+      "Rust toolchain v1.88.0 (via rust-toolchain.toml)",
       "WASM target: rustup target add wasm32-unknown-unknown",
       "Docker (for reproducible builds)",
     ],
@@ -140,7 +140,7 @@ export const BUILD_WORKFLOW = {
   description: "Complete workflow for building a Stylus smart contract",
   prerequisites: [
     { check: "rustup --version", install: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh" },
-    { check: "rustup default", install: "rustup default 1.81", note: "Rust 1.81 recommended" },
+    { check: "rustup default", install: "rustup default 1.88.0", note: "Rust 1.88.0 recommended (use rust-toolchain.toml)" },
     { check: "cargo stylus --version", install: "cargo install --force cargo-stylus" },
   ],
   steps: [
@@ -175,9 +175,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-stylus-sdk = "0.8.4"
-alloy-primitives = "0.8.14"
-alloy-sol-types = "0.8.14"
+stylus-sdk = "0.10.0"
+alloy-primitives = "1.0.1"
+alloy-sol-types = "1.0.1"
 
 [features]
 export-abi = ["stylus-sdk/export-abi"]
@@ -257,7 +257,7 @@ export const TEST_WORKFLOW = {
     },
     stylus_test: {
       description: "Stylus SDK native testing framework (SDK 0.8.0+)",
-      setup: 'stylus-sdk = { version = "0.8.4", features = ["stylus-test"] }',
+      setup: 'stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }',
     },
   },
   steps: [

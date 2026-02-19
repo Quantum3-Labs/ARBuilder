@@ -18,13 +18,13 @@ STYLUS_CLI_RESOURCE = {
     "installation": {
         "command": "cargo install --force cargo-stylus",
         "prerequisites": [
-            "Rust toolchain v1.81 or newer (v1.82+ may have issues)",
-            "WASM target: rustup target add wasm32-unknown-unknown --toolchain 1.81",
+            "Rust toolchain v1.88.0 (via rust-toolchain.toml)",
+            "WASM target: rustup target add wasm32-unknown-unknown",
             "Docker (required for reproducible builds and some commands)",
         ],
         "setup_commands": [
-            "rustup default 1.81",
-            "rustup target add wasm32-unknown-unknown --toolchain 1.81",
+            "rustup default 1.88.0",
+            "rustup target add wasm32-unknown-unknown",
             "cargo install --force cargo-stylus",
         ],
         "verify": "cargo stylus --version",
@@ -253,17 +253,17 @@ panic = "abort"
 opt-level = "s"
 """,
         "dependencies": {
-            "stylus-sdk": "0.8.4",
-            "alloy-primitives": "0.8.14",
-            "alloy-sol-types": "0.8.14",
+            "stylus-sdk": "0.10.0",
+            "alloy-primitives": "1.0.1",
+            "alloy-sol-types": "1.0.1",
         },
         "dev_dependencies": {
-            "stylus-sdk": '{ version = "0.8.4", features = ["stylus-test"] }',
+            "stylus-sdk": '{ version = "0.10.0", features = ["stylus-test"] }',
         },
     },
     "rust_requirements": {
-        "version": "1.81 or newer",
-        "unsupported": "1.82+ (may have compatibility issues)",
+        "version": "1.88.0 (via rust-toolchain.toml)",
+        "note": "SDK 0.10.0 requires rust-toolchain.toml with channel 1.88.0",
         "target": "wasm32-unknown-unknown",
     },
     "size_limits": {
@@ -303,9 +303,9 @@ opt-level = "s"
         "rust_version": {
             "symptoms": ["Compilation errors", "WASM build fails"],
             "solutions": [
-                "Use Rust 1.81: rustup default 1.81",
-                "Avoid Rust 1.82+ which may have issues",
-                "Ensure WASM target is installed for correct toolchain",
+                "Use Rust 1.88.0 via rust-toolchain.toml",
+                "Ensure WASM target is installed: rustup target add wasm32-unknown-unknown",
+                "Verify rust-toolchain.toml exists with channel = \"1.88.0\"",
             ],
         },
         "docker_required": {

@@ -8,11 +8,19 @@ Key improvement: Instead of generating from scratch, this tool customizes
 curated templates from official Stylus examples.
 """
 
+import logging
 import re
 from typing import Optional
 
 from .base import BaseTool
 from .get_stylus_context import GetStylusContextTool
+
+logger = logging.getLogger(__name__)
+
+TEMPLATE_DISCLAIMER = (
+    "This generated code is a starting entrypoint — a working foundation for you to build upon. "
+    "Review, customize, and extend it to match your specific requirements before deploying."
+)
 
 # Import templates
 try:
@@ -27,6 +35,17 @@ except ImportError:
     StylusTemplate = None
     select_template = None
     get_template = None
+
+# Import compiler verifier - handle gracefully if not available
+try:
+    from src.utils.compiler_verifier import (
+        CompilerVerifier,
+        format_errors_for_llm,
+    )
+    HAS_COMPILER = True
+except ImportError:
+    HAS_COMPILER = False
+    CompilerVerifier = None
 
 # Import version manager - handle gracefully if not available
 try:
@@ -44,16 +63,17 @@ try:
 except ImportError:
     HAS_VERSION_MANAGER = False
     # Fallback defaults
-    def get_main_version(): return "0.9.0"
+    def get_main_version(): return "0.10.0"
     def get_minimum_version(): return "0.8.0"
     def is_version_deprecated(v): return False
     def get_version_patterns(v): return {
         "attributes": ["#[public]"],
         "error_handling": "Result<T, Vec<u8>>",
-        "cfg_attr": '#![cfg_attr(not(feature = "export-abi"), no_main)]'
+        "cfg_attr": '#![cfg_attr(not(feature = "export-abi"), no_main)]',
+        "sender": "self.vm().msg_sender()",
     }
-    def get_alloy_primitives_version(v): return "=0.8.20"
-    def get_alloy_sol_types_version(v): return "=0.8.20"
+    def get_alloy_primitives_version(v): return "1.0.1"
+    def get_alloy_sol_types_version(v): return "1.0.1"
     def detect_version_from_cargo_toml(c): return None
     def get_deprecation_warning(v): return None
 
@@ -66,6 +86,8 @@ def get_system_prompt(target_version: str) -> str:
     error_handling = patterns.get("error_handling", "Result<T, Vec<u8>>")
     cfg_attr = patterns.get("cfg_attr", '#![cfg_attr(not(feature = "export-abi"), no_main)]')
 
+    sender_pattern = patterns.get("sender", "self.vm().msg_sender()")
+
     return f"""You are an expert Stylus smart contract developer. You write high-quality Rust code for Arbitrum Stylus contracts.
 
 Target SDK Version: stylus-sdk {target_version}
@@ -74,22 +96,46 @@ Key Stylus patterns for v{target_version}:
 1. Use `sol_storage!` macro for state storage
 2. Use `#[entrypoint]` attribute on the main contract struct
 3. Use `{main_attr}` for public functions
-4. Use Stylus SDK types: `StorageVec`, `StorageMap`, `StorageU256`, `StorageAddress`, etc.
-5. Use `msg::sender()` to get the caller address
-6. Handle errors with {error_handling}
-7. Include {cfg_attr}
-8. Follow Rust naming conventions (snake_case for functions, PascalCase for types)
+4. STORAGE ACCESS: ALWAYS use .get() to read: `self.field.get()` NOT `self.field`. ALWAYS use .set() to write. For mappings: `self.map.get(key)` and `self.map.setter(key).set(val)`.
+5. Use `{sender_pattern}` to get the caller address
+6. Use `self.vm().msg_value()` to get sent ETH value
+7. Use `self.vm().log(Event {{ ... }})` to emit events (NOT evm::log)
+8. Handle errors with {error_handling}
+9. Include {cfg_attr}
+10. Follow Rust naming conventions (snake_case for functions, PascalCase for types)
+11. TRANSFER ETH: `use stylus_sdk::call::transfer::transfer_eth;` then `transfer_eth(self.vm(), to, amount)?;` — NOT self.transfer_eth() or call::transfer_eth()
+12. For error types: define with sol! {{ error MyError(...); }}, wrap in enum with #[derive(SolidityError)]
+13. For .abi_encode() on errors: import SolError via use alloy_sol_types::SolError;
+14. Avoid chained .setter() borrows — get value with .get() first, then .setter().set() separately
+15. Do NOT use `use stylus_sdk::evm` — the evm module was removed in 0.10.0
+16. Do NOT use `use stylus_sdk::msg` — use self.vm().msg_sender(), self.vm().msg_value()
+17. ALWAYS include `use alloc::vec;` (the module) alongside `use alloc::vec::Vec;` — sol_storage! needs it
+18. For ETH transfers via RawCall: `unsafe {{ let _ = RawCall::new_with_value(self.vm(), amount).call(to, &[]); }}` — requires self.vm() as first arg and unsafe block
+19. uint8 in sol_storage! maps to Uint<8,1> not native u8 — prefer uint256 unless uint8 is specifically needed
+20. Package name in Cargo.toml MUST use underscores (e.g., "my_contract") — hyphens prevent cargo-stylus from finding the WASM file
+21. A src/main.rs is REQUIRED — cargo stylus deploy uses `cargo run` to check for constructors
+22. The correct ABI export function in 0.10.0 is `print_from_args()` (NOT `print_abi()`)
+23. crate-type in [lib] must be ["lib", "cdylib"] — "lib" is needed for bin target linking
+24. EXTERNAL INTERFACES: use `sol_interface!` (NOT `sol!`) for external contract interfaces. CALL PATTERN: `ifoo.method(self.vm(), Call::new(), arg1, arg2)?` — first arg is ALWAYS self.vm(), second is a Call context (`Call::new()` for non-reentrant, `Call::new_in(self)` for reentrant contracts).
+25. Stylus exports snake_case Rust fn names as camelCase in the ABI (create_market → createMarket). Frontend must use camelCase in functionName.
+26. Stylus &self view functions CANNOT make external contract calls (they revert). Use &mut self for cross-contract calls.
 
 Dependencies for v{target_version}:
 - stylus-sdk = "{target_version}"
 - alloy-primitives = "{alloy_version}"
 
+Required project files (SDK 0.10.0+):
+- Stylus.toml with [workspace], [workspace.networks], and [contract] sections
+- rust-toolchain.toml with channel = "1.88.0"
+- src/main.rs with print_from_args() for ABI export
+
 When generating code:
 - Generate complete, compilable Rust code
-- Include all necessary imports
+- Include all necessary imports including `use alloc::vec;`
 - Add helpful comments for complex logic
 - Use proper error handling
 - Follow security best practices (check for overflows, validate inputs)
+- Do NOT use deprecated msg::sender(), msg::value(), or evm::log() — use self.vm() methods
 """
 
 
@@ -119,22 +165,67 @@ ABSOLUTE RULES - NEVER VIOLATE THESE:
 3. There must be EXACTLY ONE sol_storage! block - NEVER create empty sol_storage! blocks
 4. KEEP the #[entrypoint] attribute inside sol_storage!
 5. KEEP the #[public] attribute on the impl block
-6. NEVER add "use alloy_sol_types::sol;" - it's already available via stylus_sdk::prelude::*
+6. The sol! macro is available via prelude — do NOT add standalone "use alloy_sol_types::sol;". BUT if using .abi_encode() on errors, MUST import SolError: use alloy_sol_types::SolError; (or combined: alloy_sol_types::{{sol, SolError}})
 7. If adding events/errors with sol! macro, they must be BEFORE sol_storage!
 8. KEEP the Cargo.toml [profile.release] section exactly as provided
 
+COMPILATION-CRITICAL — these mistakes WILL break the build:
+- STORAGE ACCESS: ALWAYS use .get() to read storage: `self.field.get()` NOT `self.field`. ALWAYS use .set(val) to write: `self.field.set(val)`. For mappings: read with `self.map.get(key)`, write with `self.map.setter(key).set(val)`.
+- TRANSFER ETH: `use stylus_sdk::call::transfer::transfer_eth;` then `transfer_eth(self.vm(), to, amount)?;`. Do NOT use `self.transfer_eth()`, `call::transfer_eth()`, or any other path.
+- EXTERNAL INTERFACES: use `sol_interface!` macro (NOT `sol!`). `sol!` is ONLY for events and errors.
+- CROSS-CONTRACT CALLS: pattern is `ifoo.method(self.vm(), Call::new(), arg1, arg2)?`. The first arg is ALWAYS `self.vm()`, second is a Call context (`Call::new()` for non-reentrant, `Call::new_in(self)` for reentrant contracts). Do NOT use `ifoo.method(self, arg1, arg2)` or `ifoo.method(arg1, arg2)`.
+- External calls require `&mut self` (NOT `&self` — view functions revert on external calls)
+
 WHAT YOU MAY DO:
+- Rename the contract struct in sol_storage! to match the user's request (e.g., PredictionMarket, Lottery, etc.)
 - Add/modify storage fields inside sol_storage!
 - Add/modify functions inside the #[public] impl block
 - Add events using sol! {{ event EventName(...); }} BEFORE sol_storage!
 - Add error types using sol! {{ error ErrorName(...); }} BEFORE sol_storage!
 - Add internal helper functions (without #[public])
+- Define external contract interfaces with sol_interface! (NOT sol!) for cross-contract calls
 
 IMPORTS - USE THESE PATTERNS:
 - Types from stylus_sdk::alloy_primitives::{{Address, U256, U8, ...}}
 - sol! macro is available from stylus_sdk::prelude::*
-- For events: evm::log(EventName {{ field1, field2 }})
-- For errors: return Err(ErrorName {{ ... }}.abi_encode())
+- For events: self.vm().log(EventName {{ field1, field2 }}) (NOT evm::log)
+- For caller: self.vm().msg_sender() (NOT msg::sender())
+- For ETH transfers: `use stylus_sdk::call::transfer::transfer_eth;` then `transfer_eth(self.vm(), to, amount)?;`
+- For errors: return Err(ErrorName {{ ... }}.abi_encode()) — requires use alloy_sol_types::SolError;
+- For cross-contract calls: define with sol_interface! {{ interface IFoo {{ function bar(address) external returns (uint256); }} }}
+- Call pattern: `ifoo.bar(self.vm(), Call::new(), addr)?` — self.vm() is ALWAYS first arg
+- For reentrant contracts use `Call::new_in(self)` instead of `Call::new()`
+- External calls require &mut self (NOT &self — view functions revert on external calls)
+- Do NOT use stylus_sdk::evm (removed in 0.10.0) or stylus_sdk::msg
+
+REFERENCE CODE — copy these EXACTLY when the user's request needs them:
+
+ETH transfer (withdraw/deposit/send ETH):
+```rust
+use stylus_sdk::call::transfer::transfer_eth;
+
+pub fn withdraw(&mut self, to: Address, amount: U256) -> Result<(), Vec<u8>> {{
+    transfer_eth(self.vm(), to, amount)?;
+    Ok(())
+}}
+```
+
+Cross-contract call (interact with another deployed contract):
+```rust
+sol_interface! {{
+    interface IToken {{
+        function balanceOf(address account) external view returns (uint256);
+        function transfer(address to, uint256 amount) external returns (bool);
+    }}
+}}
+
+// In a #[public] &mut self method:
+pub fn get_token_balance(&mut self, token: Address, account: Address) -> Result<U256, Vec<u8>> {{
+    let token = IToken::new(token);
+    let balance = token.balance_of(self.vm(), Call::new(), account)?;
+    Ok(balance)
+}}
+```
 
 Output format:
 1. Brief explanation of changes (1-2 sentences)
@@ -147,7 +238,7 @@ IMPORTANT: Do NOT output Cargo.toml - the template's Cargo.toml will be used as-
 CONTRACT_TEMPLATES = {
     "erc20": """use stylus_sdk::prelude::*;
 use stylus_sdk::alloy_primitives::{Address, U256};
-use stylus_sdk::msg;
+
 
 sol_storage! {
     #[entrypoint]
@@ -165,7 +256,7 @@ impl Token {
 """,
     "erc721": """use stylus_sdk::prelude::*;
 use stylus_sdk::alloy_primitives::{Address, U256};
-use stylus_sdk::msg;
+
 
 sol_storage! {
     #[entrypoint]
@@ -193,9 +284,12 @@ class GenerateStylusCodeTool(BaseTool):
     Uses RAG context to inform code generation with relevant examples.
     """
 
+    MAX_COMPILE_ATTEMPTS = 2
+
     def __init__(
         self,
         context_tool: Optional[GetStylusContextTool] = None,
+        compiler_verifier: Optional["CompilerVerifier"] = None,
         **kwargs,
     ):
         """
@@ -203,9 +297,16 @@ class GenerateStylusCodeTool(BaseTool):
 
         Args:
             context_tool: GetStylusContextTool for retrieving examples.
+            compiler_verifier: Optional CompilerVerifier for Docker-based cargo check.
         """
         super().__init__(**kwargs)
         self.context_tool = context_tool or GetStylusContextTool(**kwargs)
+        if compiler_verifier is not None:
+            self.compiler = compiler_verifier
+        elif HAS_COMPILER and CompilerVerifier is not None:
+            self.compiler = CompilerVerifier()
+        else:
+            self.compiler = None
 
     def execute(
         self,
@@ -273,6 +374,7 @@ class GenerateStylusCodeTool(BaseTool):
                 n_results=3,  # Reduced since we have a template as base
                 content_type="code",
                 rerank=True,
+                category_boosts=None,  # Use default Stylus-focused boosts
             )
 
             if "contexts" in context_result:
@@ -319,6 +421,58 @@ class GenerateStylusCodeTool(BaseTool):
                 response, template
             )
 
+            # Compile-verify-fix loop (if Docker available)
+            compile_verified = False
+            compile_attempts = 0
+
+            if self.compiler and self.compiler.is_available() and cargo_toml_output:
+                for attempt in range(self.MAX_COMPILE_ATTEMPTS):
+                    compile_attempts = attempt + 1
+                    logger.info(f"Compile check attempt {compile_attempts}")
+
+                    result = self.compiler.verify(code, cargo_toml_output)
+
+                    if result.skipped:
+                        logger.info(f"Compile check skipped: {result.skip_reason}")
+                        break
+
+                    if result.success:
+                        compile_verified = True
+                        logger.info("Compile check passed")
+                        break
+
+                    # Build fix prompt with structured errors
+                    actual_errors = [e for e in result.errors if e.level == "error"]
+                    if not actual_errors:
+                        compile_verified = True
+                        break
+
+                    error_text = format_errors_for_llm(actual_errors, code)
+                    fix_prompt = self._build_fix_prompt(code, error_text)
+
+                    fix_messages = [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": fix_prompt},
+                    ]
+
+                    fix_response = self._call_llm(
+                        messages=fix_messages,
+                        temperature=0.1,
+                        max_tokens=8192,
+                    )
+
+                    # Parse fixed code
+                    fixed_code, _, _ = self._parse_template_response(
+                        fix_response, template
+                    )
+                    if fixed_code and fixed_code != code:
+                        code = fixed_code
+                    else:
+                        warnings.append(
+                            f"Compile fix attempt {compile_attempts} did not produce different code"
+                        )
+                        break
+
             # Extract dependencies with correct versions
             dependencies = self._extract_dependencies(code, target_version)
 
@@ -326,15 +480,42 @@ class GenerateStylusCodeTool(BaseTool):
             validation_warnings = self._validate_code(code)
             warnings.extend(validation_warnings)
 
+            # Derive project name from prompt and fix Cargo.toml/main.rs references
+            main_rs_output = template.main_rs if template else ""
+            stylus_toml_output = template.stylus_toml if template else ""
+            rust_toolchain_toml_output = template.rust_toolchain_toml if template else ""
+
+            if cargo_toml_output:
+                project_name = self._derive_project_name(prompt)
+                # Fix package name (use underscores for cargo-stylus compatibility)
+                cargo_toml_output = re.sub(
+                    r'name\s*=\s*"[^"]+"',
+                    f'name = "{project_name}"',
+                    cargo_toml_output,
+                )
+                # Fix main.rs crate reference (print_from_args uses crate name)
+                if main_rs_output:
+                    main_rs_output = re.sub(
+                        r'(\w+)::print_from_args\b',
+                        f'{project_name}::print_from_args',
+                        main_rs_output,
+                    )
+
             return {
                 "code": code,
                 "cargo_toml": cargo_toml_output,
+                "main_rs": main_rs_output,
+                "stylus_toml": stylus_toml_output,
+                "rust_toolchain_toml": rust_toolchain_toml_output,
                 "explanation": explanation,
                 "dependencies": dependencies,
                 "warnings": warnings if warnings else [],
                 "context_used": context_used,
                 "target_version": target_version,
                 "template_used": template_name,
+                "compile_verified": compile_verified,
+                "compile_attempts": compile_attempts,
+                "disclaimer": TEMPLATE_DISCLAIMER,
             }
 
         except Exception as e:
@@ -545,12 +726,25 @@ class GenerateStylusCodeTool(BaseTool):
         # Fix 1: Remove empty sol_storage! blocks
         fixed = re.sub(r'sol_storage!\s*\{\s*\}', '', fixed)
 
-        # Fix 2: Ensure proper cfg_attr if missing
+        # Fix 2: Ensure proper cfg_attr — must use (not(any(test, feature = "export-abi")))
+        # Fix wrong patterns like (not(any(feature = "export-abi", test)))
         if "#![cfg_attr(not(any(test" not in fixed:
             if template:
                 template_start = template.lib_rs.split("extern crate alloc")[0]
                 if not fixed.startswith("#![cfg_attr"):
                     fixed = template_start + fixed
+                else:
+                    # Replace wrong cfg_attr patterns with correct ones
+                    fixed = re.sub(
+                        r'#!\[cfg_attr\(not\(any\(feature\s*=\s*"export-abi",\s*test\)\),\s*no_std\)\]',
+                        '#![cfg_attr(not(any(test, feature = "export-abi")), no_std)]',
+                        fixed,
+                    )
+                    fixed = re.sub(
+                        r'#!\[cfg_attr\(not\(test\),\s*no_main\)\]',
+                        '#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]',
+                        fixed,
+                    )
 
         # Fix 3: Ensure extern crate alloc if missing
         if "extern crate alloc" not in fixed:
@@ -561,9 +755,10 @@ class GenerateStylusCodeTool(BaseTool):
                 flags=re.MULTILINE
             )
 
-        # Fix 4: Remove incorrect imports (sol! is in prelude)
-        fixed = re.sub(r'use alloy_sol_types::sol;\n?', '', fixed)
-        fixed = re.sub(r'use stylus_sdk::alloy_sol_types::sol;\n?', '', fixed)
+        # Fix 4: Remove standalone sol! imports (sol! is in prelude)
+        # Only remove the standalone import — preserve combined imports like {sol, SolError}
+        fixed = re.sub(r'^use alloy_sol_types::sol;\s*$', '', fixed, flags=re.MULTILINE)
+        fixed = re.sub(r'^use stylus_sdk::alloy_sol_types::sol;\s*$', '', fixed, flags=re.MULTILINE)
 
         # Fix 5: Handle Vec imports - avoid duplicates
         # If we have both "use alloc::vec::Vec" and "use alloc::{...vec::Vec...}", remove the standalone
@@ -577,13 +772,103 @@ class GenerateStylusCodeTool(BaseTool):
                 fixed
             )
 
-        # Fix 6: Ensure there's exactly one sol_storage! block with #[entrypoint]
+        # Fix 6: Ensure use alloc::vec; is present (sol_storage! needs vec module)
+        if "use alloc::vec;" not in fixed and "use alloc::{" not in fixed:
+            # Add use alloc::vec; after extern crate alloc
+            fixed = re.sub(
+                r'(extern crate alloc;\s*\n)',
+                r'\1\nuse alloc::{vec, vec::Vec};\n',
+                fixed,
+            )
+        elif "use alloc::vec::Vec;" in fixed and "use alloc::vec;" not in fixed and "alloc::{" not in fixed:
+            # Has Vec but not vec module — replace with combined import
+            fixed = fixed.replace(
+                "use alloc::vec::Vec;",
+                "use alloc::{vec, vec::Vec};"
+            )
+
+        # Fix 7: Ensure there's exactly one sol_storage! block with #[entrypoint]
         sol_storage_count = len(re.findall(r'sol_storage!\s*\{', fixed))
         if sol_storage_count == 0 and template:
             # If no sol_storage! block, the code is likely broken - use template
             return template.lib_rs
 
-        # Fix 7: Ensure #[entrypoint] is inside sol_storage! if missing
+        # Fix 9: Convert sol! { interface ... } to sol_interface! { interface ... }
+        # LLMs often use sol! for interfaces, but Stylus requires sol_interface!
+        fixed = re.sub(
+            r'sol!\s*\{\s*(interface\b)',
+            r'sol_interface! { \1',
+            fixed,
+        )
+
+        # Fix 10: Fix wrong transfer_eth import paths
+        # Common LLM mistakes: use stylus_sdk::call::transfer_eth;
+        #                       use stylus_sdk::call::{transfer_eth, Call};
+        fixed = re.sub(
+            r'use stylus_sdk::call::transfer_eth;',
+            'use stylus_sdk::call::transfer::transfer_eth;',
+            fixed,
+        )
+        fixed = re.sub(
+            r'use stylus_sdk::call::\{([^}]*)\btransfer_eth\b([^}]*)\};',
+            lambda m: 'use stylus_sdk::call::transfer::transfer_eth;\n'
+            + (f'use stylus_sdk::call::{{{m.group(1).replace("transfer_eth", "").strip(", ")}{m.group(2).strip(", ")}}};'
+               if (m.group(1).replace("transfer_eth", "").strip(", ") + m.group(2).strip(", ")).strip(", ")
+               else ''),
+            fixed,
+        )
+        # Fix: self.transfer_eth(to, amount) → transfer_eth(self.vm(), to, amount)
+        fixed = re.sub(
+            r'self\.transfer_eth\(([^)]+)\)',
+            r'transfer_eth(self.vm(), \1)',
+            fixed,
+        )
+        # Fix: transfer_eth(self, ...) → transfer_eth(self.vm(), ...)
+        # LLMs write self instead of self.vm() — must be the vm Host context
+        fixed = re.sub(
+            r'transfer_eth\(self,\s*',
+            'transfer_eth(self.vm(), ',
+            fixed,
+        )
+
+        # Fix 13: Remove deprecated stylus_sdk::evm and stylus_sdk::msg imports
+        fixed = re.sub(r'^use stylus_sdk::evm.*;\s*$', '', fixed, flags=re.MULTILINE)
+        fixed = re.sub(r'^use stylus_sdk::msg.*;\s*$', '', fixed, flags=re.MULTILINE)
+
+        # Fix 14: Fix deprecated msg::sender() → self.vm().msg_sender()
+        fixed = re.sub(r'msg::sender\(\)', 'self.vm().msg_sender()', fixed)
+        fixed = re.sub(r'msg::value\(\)', 'self.vm().msg_value()', fixed)
+
+        # Fix 15: Fix deprecated evm::log(...) → self.vm().log(...)
+        fixed = re.sub(r'evm::log\(', 'self.vm().log(', fixed)
+
+        # Fix 16: Enforce .get() on bare storage field reads
+        # Extract field names from sol_storage! block, then fix self.<field> missing .get()
+        storage_fields = set()
+        # Match Solidity-type field declarations: type field_name;
+        for field_match in re.finditer(
+            r'\b(?:uint\d*|int\d*|address|bool|string|bytes\d*)\s+(\w+)\s*;',
+            fixed,
+        ):
+            storage_fields.add(field_match.group(1))
+        # Also match mapping fields: mapping(...) field_name;
+        for field_match in re.finditer(
+            r'mapping\([^)]*\)\s+(\w+)\s*;',
+            fixed,
+        ):
+            storage_fields.add(field_match.group(1))
+        # For each storage field, fix bare <var>.<field> reads (not followed by . or ()
+        # This catches both self.<field> AND nested struct fields like market.<field>
+        # where market = self.markets.get(id) returns a storage accessor
+        for field in storage_fields:
+            # <word>.<field> NOT followed by . or ( → add .get()
+            fixed = re.sub(
+                rf'(\w+)\.{field}(?!\s*[.(])',
+                rf'\1.{field}.get()',
+                fixed,
+            )
+
+        # Fix 8: Ensure #[entrypoint] is inside sol_storage! if missing
         if "#[entrypoint]" not in fixed:
             fixed = re.sub(
                 r'sol_storage!\s*\{\s*(\n?\s*pub struct)',
@@ -592,6 +877,37 @@ class GenerateStylusCodeTool(BaseTool):
             )
 
         return fixed
+
+    @staticmethod
+    def _derive_project_name(prompt: str) -> str:
+        """Derive a snake_case project name from the user prompt."""
+        stop_words = {"a", "an", "the", "for", "with", "and", "or", "that", "this", "create", "build", "make", "generate", "implement"}
+        words = [w.lower() for w in re.findall(r'[a-zA-Z]+', prompt) if w.lower() not in stop_words]
+        name_words = words[:3] if words else ["stylus", "contract"]
+        return "_".join(name_words)
+
+    def _build_fix_prompt(self, code: str, error_text: str) -> str:
+        """Build a prompt asking the LLM to fix compilation errors.
+
+        Args:
+            code: Current lib.rs code that failed to compile.
+            error_text: Formatted error details from format_errors_for_llm().
+
+        Returns:
+            Prompt string for the LLM.
+        """
+        return f"""The following Stylus contract code has compilation errors. Fix ONLY the errors — do not change the contract's functionality or structure.
+
+CURRENT CODE:
+```rust
+{code}
+```
+
+COMPILATION ERRORS:
+{error_text}
+
+Fix the code and return the complete, corrected lib.rs in a ```rust code block.
+Keep the exact same structure and functionality. Only fix the compilation errors."""
 
     def _fix_cargo_toml(self, cargo: str, template: Optional["StylusTemplate"], target_version: str) -> str:
         """Fix common LLM mistakes in generated Cargo.toml."""

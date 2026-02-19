@@ -87,7 +87,7 @@ export default async function DashboardPage() {
   "mcpServers": {
     "arbbuilder": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "https://arbbuilder.whymelabs.com/mcp",
+      "args": ["-y", "mcp-remote", "https://arbuilder.app/mcp",
                "--header", "Authorization: Bearer YOUR_API_KEY"]
     }
   }

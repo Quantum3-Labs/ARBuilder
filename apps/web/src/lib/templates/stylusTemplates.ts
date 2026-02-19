@@ -2,10 +2,10 @@
  * Curated working templates from official Stylus examples.
  * These templates are verified to compile and deploy correctly.
  *
- * Sources:
- * - Counter: https://github.com/OffchainLabs/stylus-hello-world (v0.9.0)
- * - VendingMachine: https://github.com/OffchainLabs/stylus-quickstart-vending-machine (v0.8.4)
- * - ERC20: https://github.com/OpenZeppelin/rust-contracts-stylus (v0.9.0)
+ * Sources (migrated to SDK 0.10.0):
+ * - Counter: https://github.com/OffchainLabs/stylus-hello-world
+ * - VendingMachine: https://github.com/OffchainLabs/stylus-quickstart-vending-machine
+ * - ERC20: Simplified version based on Stylus patterns
  */
 
 export interface StylusTemplate {
@@ -17,25 +17,27 @@ export interface StylusTemplate {
   cargoToml: string;
   mainRs: string; // For ABI export: cargo run --features export-abi
   features: string[];
+  stylusToml: string; // Required since SDK 0.10.0
+  rustToolchainToml: string; // Required since SDK 0.10.0
 }
 
 
 /**
  * Counter template - Simple storage pattern
- * From: stylus-hello-world (v0.9.0)
+ * From: stylus-hello-world (migrated to SDK 0.10.0)
  */
 export const COUNTER_TEMPLATE: StylusTemplate = {
   name: "Counter",
   description: "Simple counter with increment, add, multiply operations",
   contractType: "utility",
-  sdkVersion: "0.9.2",
+  sdkVersion: "0.10.0",
   features: ["storage", "public functions", "payable", "tests"],
   libRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
 #[macro_use]
 extern crate alloc;
 
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use stylus_sdk::{alloy_primitives::U256, prelude::*};
 
 sol_storage! {
@@ -100,19 +102,17 @@ mod test {
     }
 }`,
   cargoToml: `[package]
-name = "stylus-counter"
+name = "stylus_counter"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-stylus-sdk = "0.9.2"
-alloy-primitives = "=0.8.20"
-alloy-sol-types = "=0.8.20"
-ruint = "=1.12.3"
+stylus-sdk = "0.10.0"
+alloy-primitives = "1.0.1"
+alloy-sol-types = "1.0.1"
 [dev-dependencies]
-tokio = { version = "1.21.0", features = ["full"] }
-ethers = "2.0"
+stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
 
 [features]
 default = ["mini-alloc"]
@@ -124,7 +124,7 @@ mini-alloc = ["stylus-sdk/mini-alloc"]
 crate-type = ["lib", "cdylib"]
 
 [[bin]]
-name = "stylus-counter"
+name = "stylus_counter"
 path = "src/main.rs"
 
 [profile.release]
@@ -133,30 +133,36 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"`,
-  mainRs: `#![cfg_attr(not(feature = "export-abi"), no_main)]
+  mainRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+
+#[cfg(not(any(test, feature = "export-abi")))]
+#[unsafe(no_mangle)]
+pub extern "C" fn main() {}
 
 #[cfg(feature = "export-abi")]
 fn main() {
-    stylus_counter::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
+    stylus_counter::print_from_args();
 }`,
+  stylusToml: `[workspace]\n\n[workspace.networks]\n\n[contract]\n`,
+  rustToolchainToml: `[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
 };
 
 /**
  * Vending Machine template - Mappings and time-based logic
- * From: stylus-quickstart-vending-machine (v0.8.4)
+ * From: stylus-quickstart-vending-machine (migrated to SDK 0.10.0)
  */
 export const VENDING_MACHINE_TEMPLATE: StylusTemplate = {
   name: "VendingMachine",
   description: "Mapping storage with time-based distribution logic",
   contractType: "defi",
-  sdkVersion: "0.9.2", // Updated to 0.9.0 patterns
+  sdkVersion: "0.10.0",
   features: ["mappings", "timestamps", "rate limiting", "tests"],
   libRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
 #[macro_use]
 extern crate alloc;
 
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use stylus_sdk::alloy_primitives::{Address, U256};
 use stylus_sdk::prelude::*;
 
@@ -242,19 +248,17 @@ mod test {
     }
 }`,
   cargoToml: `[package]
-name = "stylus-vending-machine"
+name = "stylus_vending_machine"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-stylus-sdk = "0.9.2"
-alloy-primitives = "=0.8.20"
-alloy-sol-types = "=0.8.20"
-ruint = "=1.12.3"
+stylus-sdk = "0.10.0"
+alloy-primitives = "1.0.1"
+alloy-sol-types = "1.0.1"
 [dev-dependencies]
-tokio = { version = "1.21.0", features = ["full"] }
-ethers = "2.0"
+stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
 
 [features]
 default = ["mini-alloc"]
@@ -266,7 +270,7 @@ mini-alloc = ["stylus-sdk/mini-alloc"]
 crate-type = ["lib", "cdylib"]
 
 [[bin]]
-name = "stylus-vending-machine"
+name = "stylus_vending_machine"
 path = "src/main.rs"
 
 [profile.release]
@@ -275,12 +279,18 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"`,
-  mainRs: `#![cfg_attr(not(feature = "export-abi"), no_main)]
+  mainRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+
+#[cfg(not(any(test, feature = "export-abi")))]
+#[unsafe(no_mangle)]
+pub extern "C" fn main() {}
 
 #[cfg(feature = "export-abi")]
 fn main() {
-    stylus_vending_machine::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
+    stylus_vending_machine::print_from_args();
 }`,
+  stylusToml: `[workspace]\n\n[workspace.networks]\n\n[contract]\n`,
+  rustToolchainToml: `[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
 };
 
 /**
@@ -291,19 +301,17 @@ export const SIMPLE_ERC20_TEMPLATE: StylusTemplate = {
   name: "SimpleERC20",
   description: "Basic ERC20 token with transfer, approve, transferFrom",
   contractType: "token",
-  sdkVersion: "0.9.2",
+  sdkVersion: "0.10.0",
   features: ["ERC20", "mappings", "events", "error handling"],
   libRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
-#![allow(deprecated)] // msg::sender() and evm::log() are deprecated but still work
 #[macro_use]
 extern crate alloc;
 
-use alloc::{string::String, vec::Vec};
+use alloc::{string::String, vec, vec::Vec};
 use stylus_sdk::{
     alloy_primitives::{Address, U8, U256},
     alloy_sol_types::{sol, SolError},
-    evm, msg,
     prelude::*,
 };
 
@@ -345,7 +353,7 @@ impl Erc20 {
         self.symbol.set_str(&symbol);
         self.decimals.set(U8::from(decimals));
         self.total_supply.set(initial_supply);
-        self.balances.setter(msg::sender()).set(initial_supply);
+        self.balances.setter(self.vm().msg_sender()).set(initial_supply);
     }
 
     /// Get token name
@@ -375,7 +383,7 @@ impl Erc20 {
 
     /// Transfer tokens to another address
     pub fn transfer(&mut self, to: Address, value: U256) -> Result<bool, Vec<u8>> {
-        let from = msg::sender();
+        let from = self.vm().msg_sender();
         self._transfer(from, to, value)?;
         Ok(true)
     }
@@ -387,9 +395,9 @@ impl Erc20 {
 
     /// Approve spender to spend tokens
     pub fn approve(&mut self, spender: Address, value: U256) -> bool {
-        let owner = msg::sender();
+        let owner = self.vm().msg_sender();
         self.allowances.setter(owner).setter(spender).set(value);
-        evm::log(Approval { owner, spender, value });
+        self.vm().log(Approval { owner, spender, value });
         true
     }
 
@@ -400,7 +408,7 @@ impl Erc20 {
         to: Address,
         value: U256,
     ) -> Result<bool, Vec<u8>> {
-        let spender = msg::sender();
+        let spender = self.vm().msg_sender();
         let current_allowance = self.allowances.get(from).get(spender);
 
         if current_allowance < value {
@@ -437,7 +445,7 @@ impl Erc20 {
         let to_balance = self.balances.get(to);
         self.balances.setter(to).set(to_balance + value);
 
-        evm::log(Transfer { from, to, value });
+        self.vm().log(Transfer { from, to, value });
         Ok(())
     }
 }
@@ -471,19 +479,17 @@ mod test {
     }
 }`,
   cargoToml: `[package]
-name = "stylus-erc20"
+name = "stylus_erc20"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-stylus-sdk = "0.9.2"
-alloy-primitives = "=0.8.20"
-alloy-sol-types = "=0.8.20"
-ruint = "=1.12.3"
+stylus-sdk = "0.10.0"
+alloy-primitives = "1.0.1"
+alloy-sol-types = "1.0.1"
 [dev-dependencies]
-tokio = { version = "1.21.0", features = ["full"] }
-ethers = "2.0"
+stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
 
 [features]
 default = ["mini-alloc"]
@@ -495,7 +501,7 @@ mini-alloc = ["stylus-sdk/mini-alloc"]
 crate-type = ["lib", "cdylib"]
 
 [[bin]]
-name = "stylus-erc20"
+name = "stylus_erc20"
 path = "src/main.rs"
 
 [profile.release]
@@ -504,12 +510,18 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"`,
-  mainRs: `#![cfg_attr(not(feature = "export-abi"), no_main)]
+  mainRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+
+#[cfg(not(any(test, feature = "export-abi")))]
+#[unsafe(no_mangle)]
+pub extern "C" fn main() {}
 
 #[cfg(feature = "export-abi")]
 fn main() {
-    stylus_erc20::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
+    stylus_erc20::print_from_args();
 }`,
+  stylusToml: `[workspace]\n\n[workspace.networks]\n\n[contract]\n`,
+  rustToolchainToml: `[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
 };
 
 /**
@@ -519,19 +531,17 @@ export const ACCESS_CONTROL_TEMPLATE: StylusTemplate = {
   name: "AccessControl",
   description: "Contract with owner-only functions and ownership transfer",
   contractType: "utility",
-  sdkVersion: "0.9.2",
+  sdkVersion: "0.10.0",
   features: ["access control", "ownership", "modifiers"],
   libRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
-#![allow(deprecated)] // msg::sender() and evm::log() are deprecated but still work
 #[macro_use]
 extern crate alloc;
 
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use stylus_sdk::{
     alloy_primitives::{Address, U8, U256},
     alloy_sol_types::{sol, SolError},
-    evm, msg,
     prelude::*,
 };
 
@@ -555,9 +565,9 @@ sol_storage! {
 impl Ownable {
     /// Initialize with deployer as owner
     pub fn initialize(&mut self) {
-        let caller = msg::sender();
+        let caller = self.vm().msg_sender();
         self.owner.set(caller);
-        evm::log(OwnershipTransferred {
+        self.vm().log(OwnershipTransferred {
             previous_owner: Address::ZERO,
             new_owner: caller,
         });
@@ -578,7 +588,7 @@ impl Ownable {
         self.only_owner()?;
         let old_value = self.value.get();
         self.value.set(new_value);
-        evm::log(ValueUpdated { old_value, new_value });
+        self.vm().log(ValueUpdated { old_value, new_value });
         Ok(())
     }
 
@@ -592,7 +602,7 @@ impl Ownable {
 
         let previous_owner = self.owner.get();
         self.owner.set(new_owner);
-        evm::log(OwnershipTransferred {
+        self.vm().log(OwnershipTransferred {
             previous_owner,
             new_owner,
         });
@@ -604,7 +614,7 @@ impl Ownable {
         self.only_owner()?;
         let previous_owner = self.owner.get();
         self.owner.set(Address::ZERO);
-        evm::log(OwnershipTransferred {
+        self.vm().log(OwnershipTransferred {
             previous_owner,
             new_owner: Address::ZERO,
         });
@@ -613,7 +623,7 @@ impl Ownable {
 
     /// Internal: Check if caller is owner
     fn only_owner(&self) -> Result<(), Vec<u8>> {
-        let caller = msg::sender();
+        let caller = self.vm().msg_sender();
         let owner = self.owner.get();
         if caller != owner {
             return Err(NotOwner { caller, owner }.abi_encode());
@@ -655,19 +665,17 @@ mod test {
     }
 }`,
   cargoToml: `[package]
-name = "stylus-ownable"
+name = "stylus_ownable"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-stylus-sdk = "0.9.2"
-alloy-primitives = "=0.8.20"
-alloy-sol-types = "=0.8.20"
-ruint = "=1.12.3"
+stylus-sdk = "0.10.0"
+alloy-primitives = "1.0.1"
+alloy-sol-types = "1.0.1"
 [dev-dependencies]
-tokio = { version = "1.21.0", features = ["full"] }
-ethers = "2.0"
+stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
 
 [features]
 default = ["mini-alloc"]
@@ -679,7 +687,7 @@ mini-alloc = ["stylus-sdk/mini-alloc"]
 crate-type = ["lib", "cdylib"]
 
 [[bin]]
-name = "stylus-ownable"
+name = "stylus_ownable"
 path = "src/main.rs"
 
 [profile.release]
@@ -688,12 +696,240 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"`,
-  mainRs: `#![cfg_attr(not(feature = "export-abi"), no_main)]
+  mainRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+
+#[cfg(not(any(test, feature = "export-abi")))]
+#[unsafe(no_mangle)]
+pub extern "C" fn main() {}
 
 #[cfg(feature = "export-abi")]
 fn main() {
-    stylus_ownable::print_abi("MIT-OR-APACHE-2.0", "pragma solidity ^0.8.23;");
+    stylus_ownable::print_from_args();
 }`,
+  stylusToml: `[workspace]\n\n[workspace.networks]\n\n[contract]\n`,
+  rustToolchainToml: `[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
+};
+
+/**
+ * DeFi Vault template - ETH deposits, withdrawals, cross-contract calls
+ * Demonstrates ALL advanced SDK 0.10.0 patterns:
+ * - transfer_eth for ETH withdrawals
+ * - sol_interface! for cross-contract calls
+ * - (self.vm(), Call::new(), args) call pattern
+ * - Events and errors with sol!
+ * - .get() on all storage reads
+ */
+export const DEFI_VAULT_TEMPLATE: StylusTemplate = {
+  name: "DeFiVault",
+  description: "ETH vault with deposits, withdrawals, oracle price feeds, and access control",
+  contractType: "defi",
+  sdkVersion: "0.10.0",
+  features: ["ETH transfer", "cross-contract calls", "events", "errors", "access control", "mappings"],
+  libRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+#![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
+#[macro_use]
+extern crate alloc;
+
+use alloc::{vec, vec::Vec};
+use stylus_sdk::{
+    alloy_primitives::{Address, U256},
+    alloy_sol_types::{sol, SolError},
+    call::transfer::transfer_eth,
+    prelude::*,
+};
+
+// Events
+sol! {
+    event Deposit(address indexed user, uint256 amount);
+    event Withdrawal(address indexed user, uint256 amount, address indexed to);
+}
+
+// Errors
+sol! {
+    error InsufficientBalance(address user, uint256 have, uint256 want);
+    error Unauthorized(address caller, address owner);
+}
+
+#[derive(SolidityError)]
+pub enum VaultError {
+    InsufficientBalance(InsufficientBalance),
+    Unauthorized(Unauthorized),
+}
+
+// Cross-contract interface — use sol_interface! (NOT sol!) for external calls
+sol_interface! {
+    interface IPriceFeed {
+        function latestPrice() external view returns (uint256);
+    }
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct Vault {
+        address owner;
+        mapping(address => uint256) balances;
+        uint256 total_deposits;
+        address price_feed;
+    }
+}
+
+#[public]
+impl Vault {
+    /// Initialize the vault with an owner and price feed address
+    pub fn initialize(&mut self, price_feed: Address) {
+        self.owner.set(self.vm().msg_sender());
+        self.price_feed.set(price_feed);
+    }
+
+    /// Deposit ETH into the vault
+    #[payable]
+    pub fn deposit(&mut self) -> Result<(), Vec<u8>> {
+        let sender = self.vm().msg_sender();
+        let amount = self.vm().msg_value();
+
+        // Read current balance with .get(), then write with .setter().set()
+        let current = self.balances.get(sender);
+        self.balances.setter(sender).set(current + amount);
+
+        let total = self.total_deposits.get();
+        self.total_deposits.set(total + amount);
+
+        self.vm().log(Deposit {
+            user: sender,
+            amount,
+        });
+        Ok(())
+    }
+
+    /// Withdraw ETH from the vault — uses transfer_eth(self.vm(), to, amount)
+    pub fn withdraw(&mut self, amount: U256, to: Address) -> Result<(), Vec<u8>> {
+        let sender = self.vm().msg_sender();
+        let balance = self.balances.get(sender);
+
+        if balance < amount {
+            return Err(InsufficientBalance {
+                user: sender,
+                have: balance,
+                want: amount,
+            }
+            .abi_encode());
+        }
+
+        self.balances.setter(sender).set(balance - amount);
+        let total = self.total_deposits.get();
+        self.total_deposits.set(total - amount);
+
+        // transfer_eth requires self.vm() as first arg (Host context)
+        transfer_eth(self.vm(), to, amount)?;
+
+        self.vm().log(Withdrawal {
+            user: sender,
+            amount,
+            to,
+        });
+        Ok(())
+    }
+
+    /// Read price from external oracle — sol_interface! call pattern
+    pub fn get_price(&mut self) -> Result<U256, Vec<u8>> {
+        let feed_addr = self.price_feed.get();
+        let feed = IPriceFeed::new(feed_addr);
+        // Cross-contract call: (self.vm(), Call::new(), ...args)
+        let price = feed.latest_price(self.vm(), Call::new())?;
+        Ok(price)
+    }
+
+    /// Get balance for a user
+    pub fn balance_of(&self, user: Address) -> U256 {
+        self.balances.get(user)
+    }
+
+    /// Get total deposits
+    pub fn total_deposits(&self) -> U256 {
+        self.total_deposits.get()
+    }
+
+    /// Get vault owner
+    pub fn owner(&self) -> Address {
+        self.owner.get()
+    }
+
+    /// Owner-only withdrawal
+    pub fn owner_withdraw(&mut self, amount: U256, to: Address) -> Result<(), Vec<u8>> {
+        let caller = self.vm().msg_sender();
+        let owner = self.owner.get();
+        if caller != owner {
+            return Err(Unauthorized { caller, owner }.abi_encode());
+        }
+        transfer_eth(self.vm(), to, amount)?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use stylus_sdk::testing::*;
+    use stylus_sdk::alloy_primitives::address;
+
+    #[test]
+    fn test_deposit_and_balance() {
+        let vm = TestVM::default();
+        let mut contract = Vault::from(&vm);
+
+        let user = address!("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266");
+
+        vm.set_sender(user);
+        vm.set_value(U256::from(1000));
+        assert!(contract.deposit().is_ok());
+        assert_eq!(contract.balance_of(user), U256::from(1000));
+        assert_eq!(contract.total_deposits(), U256::from(1000));
+    }
+}`,
+  cargoToml: `[package]
+name = "stylus_vault"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+stylus-sdk = "0.10.0"
+alloy-primitives = "1.0.1"
+alloy-sol-types = "1.0.1"
+[dev-dependencies]
+stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
+
+[features]
+default = ["mini-alloc"]
+export-abi = ["stylus-sdk/export-abi"]
+debug = ["stylus-sdk/debug"]
+mini-alloc = ["stylus-sdk/mini-alloc"]
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[[bin]]
+name = "stylus_vault"
+path = "src/main.rs"
+
+[profile.release]
+codegen-units = 1
+strip = true
+lto = true
+panic = "abort"
+opt-level = "s"`,
+  mainRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+
+#[cfg(not(any(test, feature = "export-abi")))]
+#[unsafe(no_mangle)]
+pub extern "C" fn main() {}
+
+#[cfg(feature = "export-abi")]
+fn main() {
+    stylus_vault::print_from_args();
+}`,
+  stylusToml: `[workspace]\n\n[workspace.networks]\n\n[contract]\n`,
+  rustToolchainToml: `[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
 };
 
 /**
@@ -703,7 +939,8 @@ export const TEMPLATES: Record<string, StylusTemplate> = {
   counter: COUNTER_TEMPLATE,
   utility: COUNTER_TEMPLATE,
   vending_machine: VENDING_MACHINE_TEMPLATE,
-  defi: VENDING_MACHINE_TEMPLATE,
+  vault: DEFI_VAULT_TEMPLATE,
+  defi: DEFI_VAULT_TEMPLATE,
   token: SIMPLE_ERC20_TEMPLATE,
   erc20: SIMPLE_ERC20_TEMPLATE,
   access_control: ACCESS_CONTROL_TEMPLATE,
@@ -747,6 +984,17 @@ export function selectTemplate(
     return VENDING_MACHINE_TEMPLATE;
   }
 
+  // DeFi patterns that need transfer_eth, sol_interface!, cross-contract calls
+  const defiKeywords = [
+    "vault", "deposit", "withdraw", "stake", "staking", "swap",
+    "pool", "liquidity", "oracle", "price", "feed",
+    "prediction", "market", "bet", "wager", "auction",
+    "lending", "borrow", "collateral", "bridge",
+  ];
+  if (defiKeywords.some((kw) => lowerPrompt.includes(kw))) {
+    return DEFI_VAULT_TEMPLATE;
+  }
+
   // Fall back to contract type
   return TEMPLATES[contractType] || COUNTER_TEMPLATE;
 }
@@ -765,6 +1013,7 @@ export function listTemplates(): StylusTemplate[] {
   return [
     COUNTER_TEMPLATE,
     VENDING_MACHINE_TEMPLATE,
+    DEFI_VAULT_TEMPLATE,
     SIMPLE_ERC20_TEMPLATE,
     ACCESS_CONTROL_TEMPLATE,
   ];

@@ -113,7 +113,7 @@ function generateRustTestInstructions(): string {
 1. Ensure your Cargo.toml has test dependencies:
 \`\`\`toml
 [dev-dependencies]
-stylus-sdk = { version = "0.8.4", features = ["stylus-test"] }
+stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
 \`\`\`
 
 2. Run tests:

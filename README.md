@@ -9,22 +9,71 @@ AI-powered development assistant for the Arbitrum ecosystem. ARBuilder transform
 
 ## Architecture
 
-ARBuilder uses a **Retrieval-Augmented Generation (RAG)** pipeline to provide context-aware code generation and assistance. It integrates with Cursor/VS Code via an MCP server.
+ARBuilder uses a **Retrieval-Augmented Generation (RAG)** pipeline with hybrid search (vector + BM25 + cross-encoder reranking) to provide context-aware code generation. Available as a hosted service at [arbuilder.app](https://arbuilder.app) or self-hosted via MCP server.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      ARBuilder                               │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────────┐  │
-│  │   Scraper   │───▶│  Embeddings │───▶│  Vector DB      │  │
-│  │  (crawl4ai) │    │  (Gemini)   │    │  (ChromaDB)     │  │
-│  └─────────────┘    └─────────────┘    └────────┬────────┘  │
-│                                                  │           │
-│  ┌─────────────┐    ┌─────────────┐    ┌────────▼────────┐  │
-│  │  MCP Server │◀───│  RAG Engine │◀───│    Retrieval    │  │
-│  │ (Cursor/VS) │    │ (DeepSeek)  │    │                 │  │
-│  └─────────────┘    └─────────────┘    └─────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                            ARBuilder                                    │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  DATA PIPELINE                                                          │
+│  ┌──────────┐    ┌──────────┐    ┌───────────┐    ┌──────────────────┐ │
+│  │ Scraper  │───▶│Processor │───▶│ Embedder  │───▶│    ChromaDB      │ │
+│  │ crawl4ai │    │ 3-layer  │    │ BGE-M3    │    │ (local vectors)  │ │
+│  │ + GitHub │    │ filters  │    │ 1024-dim  │    │                  │ │
+│  └──────────┘    └──────────┘    └───────────┘    └────────┬─────────┘ │
+│                                                             │           │
+│  RETRIEVAL                                                  │           │
+│  ┌──────────────────────────────────────────────────────────▼─────────┐ │
+│  │                    Hybrid Search Engine                             │ │
+│  │  ┌──────────┐    ┌──────────┐    ┌───────────┐                    │ │
+│  │  │  Vector  │    │   BM25   │    │CrossEncoder│   RRF Fusion      │ │
+│  │  │  Search  │───▶│ Keywords │───▶│ Reranker  │──▶ + MMR           │ │
+│  │  └──────────┘    └──────────┘    └───────────┘                    │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
+│                                         │                               │
+│  GENERATION                             ▼                               │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │                      MCP Server (13 tools)                        │  │
+│  │                                                                   │  │
+│  │  M1: Stylus        M2: SDK           M3: dApp Builder            │  │
+│  │  ┌─────────────┐   ┌─────────────┐   ┌──────────────────────┐   │  │
+│  │  │ generate_    │   │ generate_   │   │ generate_backend     │   │  │
+│  │  │ stylus_code  │   │ bridge_code │   │ generate_frontend    │   │  │
+│  │  │ ask_stylus   │   │ generate_   │   │ generate_indexer     │   │  │
+│  │  │ get_context  │   │ messaging   │   │ generate_oracle      │   │  │
+│  │  │ gen_tests    │   │ ask_bridging│   │ orchestrate_dapp     │   │  │
+│  │  │ get_workflow │   │             │   │                      │   │  │
+│  │  └─────────────┘   └─────────────┘   └──────────────────────┘   │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                           │                                             │
+│  IDE INTEGRATION          ▼                                             │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │  Cursor / VS Code / Claude Desktop / Any MCP Client              │  │
+│  │  <- via local stdio or remote mcp-remote proxy ->                │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                                                                         │
+│  HOSTED SERVICE (Cloudflare Workers)                                    │
+│  ┌──────────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────────┐  │
+│  │  Workers AI  │  │ Vectorize│  │    D1    │  │      KV         │  │
+│  │  BGE-M3 +    │  │ 1024-dim │  │  Users   │  │   Source registry│  │
+│  │  Reranker    │  │  index   │  │  API keys│  │   + Ingest state │  │
+│  └──────────────┘  └──────────┘  └──────────┘  └──────────────────┘  │
+│                                                                       │
+│  INGESTION PIPELINE (Worker-native, cron every 6h)                    │
+│  ┌──────────┐    ┌──────────┐    ┌───────────┐    ┌──────────────┐  │
+│  │ scraper  │───▶│ chunker  │───▶│ Workers AI│───▶│  Vectorize   │  │
+│  │ HTML/    │    │ doc+code │    │  BGE-M3   │    │   upsert     │  │
+│  │ GitHub   │    │ splitter │    │ embedding │    │              │  │
+│  └──────────┘    └──────────┘    └───────────┘    └──────────────┘  │
+│                       │                ▲                             │
+│                       │ >30 files      │ embed messages              │
+│                       ▼                │                             │
+│              ┌─────────────────────────┴──┐                         │
+│              │    CF Queue (async path)    │                         │
+│              │  embed │ continue │finalize │                         │
+│              └────────────────────────────┘                         │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## TL;DR - Quick Start
@@ -37,13 +86,13 @@ ARBuilder uses a **Retrieval-Augmented Generation (RAG)** pipeline to provide co
   "mcpServers": {
     "arbbuilder": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "https://arbbuilder.whymelabs.com/mcp",
+      "args": ["-y", "mcp-remote", "https://arbuilder.app/mcp",
                "--header", "Authorization: Bearer YOUR_API_KEY"]
     }
   }
 }
 ```
-Get your API key at [arbbuilder.whymelabs.com](https://arbbuilder.whymelabs.com)
+Get your API key at [arbuilder.app](https://arbuilder.app)
 
 **Option 2: Self-Hosted**
 ```bash
@@ -55,14 +104,14 @@ conda activate arbbuilder
 
 # 2. Configure API key
 cp .env.example .env
-# Edit .env and add your OPENROUTER_API_KEY
+# Edit .env and add your OPENROUTER_API_KEY and NVIDIA_API_KEY
 
 # 3. Generate vector database (required)
 python -m src.embeddings.vectordb
 
 # 4. Test MCP server
 python -m src.mcp.server
-# Should show: "Capabilities: 8 tools, 5 resources, 5 prompts"
+# Should show: "Capabilities: 13 tools, 11 resources, 5 prompts"
 
 # 5. Configure Cursor IDE (~/.cursor/mcp.json) - see Setup section below
 ```
@@ -78,7 +127,7 @@ Watch the tutorial to see ARBuilder in action:
 ```
 ArbBuilder/
 ├── scraper/              # Data collection module
-│   ├── config.py         # URLs and source configuration
+│   ├── config.py         # URLs and source configuration (M1-M3 sources)
 │   ├── scraper.py        # Web scraping with crawl4ai
 │   ├── github_scraper.py # GitHub repository cloning
 │   └── run.py            # Pipeline entry point
@@ -89,12 +138,45 @@ ArbBuilder/
 │   │   └── processor.py  # Main preprocessing pipeline
 │   ├── embeddings/       # Embedding and vector storage
 │   │   ├── embedder.py   # OpenRouter embedding client
-│   │   ├── vectordb.py   # ChromaDB wrapper with hybrid search
-│   │   └── reranker.py   # BM25, LLM, and hybrid reranking
+│   │   ├── vectordb.py   # ChromaDB wrapper with hybrid search (BM25 + vector)
+│   │   └── reranker.py   # CrossEncoder, MMR, LLM reranking
+│   ├── templates/        # Code generation templates
+│   │   ├── stylus_templates.py   # M1: Stylus contract templates
+│   │   ├── backend_templates.py  # M3: NestJS/Express templates
+│   │   ├── frontend_templates.py # M3: Next.js + wagmi templates
+│   │   ├── indexer_templates.py  # M3: Subgraph templates
+│   │   └── oracle_templates.py   # M3: Chainlink templates
+│   ├── utils/            # Shared utilities
+│   │   ├── version_manager.py   # SDK version management
+│   │   ├── env_config.py        # Centralized env var configuration
+│   │   ├── abi_extractor.py     # Stylus ABI extraction from Rust code
+│   │   └── compiler_verifier.py # Docker-based cargo check verification
 │   ├── mcp/              # MCP server for IDE integration
 │   │   ├── server.py     # MCP server (tools, resources, prompts)
-│   │   ├── tools/        # MCP tool implementations (8 tools)
-│   │   ├── resources/    # Static knowledge (CLI, workflows, networks)
+│   │   ├── tools/        # MCP tool implementations (13 tools)
+│   │   │   ├── get_stylus_context.py   # M1
+│   │   │   ├── generate_stylus_code.py # M1
+│   │   │   ├── ask_stylus.py           # M1
+│   │   │   ├── generate_tests.py       # M1
+│   │   │   ├── get_workflow.py         # M1
+│   │   │   ├── generate_bridge_code.py # M2
+│   │   │   ├── generate_messaging_code.py # M2
+│   │   │   ├── ask_bridging.py         # M2
+│   │   │   ├── generate_backend.py     # M3
+│   │   │   ├── generate_frontend.py    # M3
+│   │   │   ├── generate_indexer.py     # M3
+│   │   │   ├── generate_oracle.py      # M3
+│   │   │   └── orchestrate_dapp.py     # M3
+│   │   ├── resources/    # Static knowledge (11 resources)
+│   │   │   ├── stylus_cli.py      # M1
+│   │   │   ├── workflows.py       # M1
+│   │   │   ├── networks.py        # M1
+│   │   │   ├── coding_rules.py    # M1
+│   │   │   ├── sdk_rules.py       # M2
+│   │   │   ├── backend_rules.py   # M3
+│   │   │   ├── frontend_rules.py  # M3
+│   │   │   ├── indexer_rules.py   # M3
+│   │   │   └── oracle_rules.py    # M3
 │   │   └── prompts/      # Workflow templates
 │   └── rag/              # RAG pipeline (TBD)
 ├── tests/
@@ -103,12 +185,26 @@ ArbBuilder/
 │   │   ├── test_generate_stylus_code.py
 │   │   ├── test_ask_stylus.py
 │   │   ├── test_generate_tests.py
-│   │   └── benchmark.py  # Evaluation framework
+│   │   ├── test_m2_e2e.py    # M2 end-to-end tests
+│   │   ├── test_m3_tools.py  # M3 full dApp tests
+│   │   └── benchmark.py      # Evaluation framework
 │   └── test_retrieval.py # Retrieval quality tests
 ├── docs/
 │   └── mcp_tools_spec.md # MCP tools specification
+├── apps/web/               # Hosted service (Cloudflare Workers + Next.js)
+│   ├── src/lib/
+│   │   ├── scraper.ts      # Web doc scraping (HTMLRewriter)
+│   │   ├── github.ts       # GitHub repo scraping (Trees/Contents API)
+│   │   ├── chunker.ts      # Document + code chunking
+│   │   ├── ingestPipeline.ts # Ingestion orchestrator (sync + async queue paths)
+│   │   └── vectorize.ts    # Search + embedding utilities
+│   ├── src/app/api/admin/  # Admin APIs (sources, ingest, migrate)
+│   ├── worker.ts           # Worker entry + cron + queue consumer handler
+│   └── wrangler.prod.jsonc # Production config (D1, KV, Vectorize, Queue)
 ├── scripts/
-│   └── run_benchmarks.py # Benchmark runner
+│   ├── run_benchmarks.py     # Benchmark runner
+│   ├── diff-migrate.ts       # Push chunks to CF Vectorize
+│   └── ingest_m3_sources.py  # M3 source ingestion
 ├── data/
 │   ├── raw/              # Raw scraped data (docs + curated repos)
 │   ├── processed/        # Pre-processed chunks
@@ -145,8 +241,10 @@ Edit `.env` with your credentials:
 
 ```env
 OPENROUTER_API_KEY=your-api-key
+NVIDIA_API_KEY=your-nvidia-api-key
 DEFAULT_MODEL=deepseek/deepseek-v3.2
-DEFAULT_EMBEDDING=google/gemini-embedding-001
+DEFAULT_EMBEDDING=baai/bge-m3
+DEFAULT_CROSS_ENCODER=nvidia/llama-3.2-nv-rerankqa-1b-v2
 ```
 
 ### 3. Setup Data
@@ -174,7 +272,7 @@ python -m src.mcp.server
 You should see:
 ```
 ARBuilder MCP Server started
-Capabilities: 8 tools, 5 resources, 5 prompts
+Capabilities: 13 tools, 11 resources, 5 prompts
 ```
 
 #### Optional: Refresh Data
@@ -191,6 +289,8 @@ python -m src.preprocessing.processor
 # And re-ingest into ChromaDB
 python -m src.embeddings.vectordb --reset
 ```
+
+**Data Quality Filters:** The pipeline applies a 3-layer filtering system to remove junk data (vendored crates, auto-generated TypeChain files, hex bytecode, lock files, and cross-repo duplicates). See [docs/DATA_CURATION_POLICY.md](docs/DATA_CURATION_POLICY.md) for details.
 
 #### Data Maintenance
 
@@ -213,6 +313,26 @@ python scripts/audit_data.py --chromadb
 python -m scraper.github_scraper --audit
 python -m scraper.github_scraper --prune --dry-run
 ```
+
+#### Fork & Migrate (SDK 0.10.0)
+
+Fork community Stylus repos and migrate them to SDK 0.10.0:
+
+```bash
+# Dry run: show what would change without modifying anything
+python scripts/fork_and_migrate.py --all --dry-run
+
+# Migrate all 13 Stylus repos
+python scripts/fork_and_migrate.py --all
+
+# Migrate a specific repo
+python scripts/fork_and_migrate.py --repo OffchainLabs/stylus-hello-world
+
+# Re-verify already-forked repos after manual fixes
+python scripts/fork_and_migrate.py --all --verify-only
+```
+
+Reports are saved to `reports/fork_migration_*.json`.
 
 ## Quick Start (IDE Integration)
 
@@ -269,9 +389,9 @@ Ask your AI assistant:
 
 ### Option B: Hosted Service (Zero Setup)
 
-Use our hosted API - no local setup required. Available at [arbbuilder.whymelabs.com](https://arbbuilder.whymelabs.com).
+Use our hosted API - no local setup required. Available at [arbuilder.app](https://arbuilder.app).
 
-1. Sign up at https://arbbuilder.whymelabs.com and get your API key
+1. Sign up at https://arbuilder.app and get your API key
 2. Add to your MCP configuration:
 
 ```json
@@ -279,7 +399,7 @@ Use our hosted API - no local setup required. Available at [arbbuilder.whymelabs
   "mcpServers": {
     "arbbuilder": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "https://arbbuilder.whymelabs.com/mcp",
+      "args": ["-y", "mcp-remote", "https://arbuilder.app/mcp",
                "--header", "Authorization: Bearer YOUR_API_KEY"]
     }
   }
@@ -293,25 +413,25 @@ The hosted service includes:
 
 ## Usage
 
-### Data Scraping (Optional)
+### Data Ingestion
 
-Run the full data collection pipeline to refresh raw data:
+**Hosted (Worker-native)**: The hosted service at [arbuilder.app](https://arbuilder.app) has a built-in ingestion pipeline that runs automatically via cron (every 6 hours). Sources can also be manually ingested via the admin UI at `/admin`.
+
+The pipeline uses two paths based on source size:
+- **Sync path** (docs and repos ≤30 files): scrape → chunk → embed → upsert in a single Worker invocation (~40 subrequests)
+- **Async path** (repos >30 files): scrape → chunk → save to KV → enqueue to CF Queue. The queue consumer processes embed/upsert in batches of 10 chunks (~4 subrequests each), with `continue` messages for additional file batches and a `finalize` message to update source status. This stays within the 50 subrequest/invocation limit on the Free plan.
+
+**Local (Python pipeline)**: For self-hosted setups, run the full data collection pipeline:
 
 ```bash
-# Activate environment
 conda activate arbbuilder
 
 # Run full pipeline (web scraping + GitHub cloning)
 python -m scraper.run
 
-# Scrape only Stylus sources
-python -m scraper.run --categories stylus
-
-# Skip web scraping, only clone GitHub repos
-python -m scraper.run --skip-web
-
-# Skip GitHub cloning, only scrape web
-python -m scraper.run --skip-github
+# Preprocess and push to CF Vectorize
+python -m src.preprocessing.processor
+AUTH_SECRET=xxx npx tsx scripts/diff-migrate.ts --full
 ```
 
 ### Data Sources
@@ -322,11 +442,10 @@ The scraper collects data from 40+ curated sources:
 
 **Stylus (M1)**
 - Official documentation: [docs.arbitrum.io](https://docs.arbitrum.io/stylus/stylus-overview) (7 pages + gas-metering)
-- Official examples: stylus-hello-world (v0.9.0), stylus-quickstart-vending-machine (v0.8.4), stylus-workshop-gol (v0.9.0)
-- Production codebases: OpenZeppelin rust-contracts-stylus (v0.9.0), stylus-test-helpers (v0.9.0), stylusport (v0.9.0)
-- Community projects (5 verified repos, SDK >= 0.8.0)
-- Scaffold-stylus projects (8 repos, all SDK 0.9.0)
-- Challenge submissions (11 repos, all SDK 0.9.0)
+- **All 13 Stylus repos are sourced from [ARBuilder-Forks](https://github.com/ARBuilder-Forks)** for resilience against upstream deletions
+- 6 forks fully migrated to SDK 0.10.0: hello-world, vending-machine, erc6909, fortune-generator, ethbuc2025-gyges, WalletNaming
+- 7 forks retain original code (SDK 0.8.4–0.9.0) with dual-chunk strategy for 0.10.0 coverage
+- Production codebases: OpenZeppelin rust-contracts-stylus, stylus-test-helpers, stylusport, stylus-provider
 - Blog articles
 
 **Curation Policy:**
@@ -334,15 +453,23 @@ The scraper collects data from 40+ curated sources:
 - No unverified community submissions
 - All code repos must compile with stylus-sdk >= 0.8.0
 - SDK version tracked per-repo in config (not extracted at runtime)
+- All Stylus repos forked to ARBuilder-Forks org with `forked_from` provenance tracking
 
 **Stylus SDK Version Support:**
 
 | Version | Status | Notes |
 |---------|--------|-------|
-| 0.9.2 | **Main** (default) | Latest stable, recommended for new projects |
-| 0.9.0 | Supported | Alloy 0.8.x compatible |
-| 0.8.x | Supported | Minimum supported version |
+| 0.10.0 | **Main** (default) | Latest stable, recommended for new projects |
+| 0.9.x | Supported | Original + modernized copies in knowledge base |
+| 0.8.x | Supported | Minimum supported version, dual-chunk strategy |
 | < 0.8.0 | Deprecated | Excluded from knowledge base |
+
+**Multi-Version Strategy:**
+- **Dual-chunk ingestion**: Original 0.9.x code is preserved as-is alongside a modernized 0.10.0 copy
+- **Forked repos**: Community repos are forked to [ARBuilder-Forks](https://github.com/ARBuilder-Forks) and migrated to SDK 0.10.0 for high-quality training data
+- **Version-aware generation**: `generate_stylus_code` and `ask_stylus` accept `target_version` to produce code for any supported SDK version
+- **Version-aware retrieval**: Vector search boosts chunks matching the requested SDK version
+- Config: `shared/stylus-versions.json` is the single source of truth for version patterns
 
 **Arbitrum SDK (M2)**
 - [arbitrum-sdk](https://github.com/OffchainLabs/arbitrum-sdk)
@@ -359,7 +486,7 @@ The scraper collects data from 40+ curated sources:
 The MCP endpoint at `/mcp` is free to use and designed for IDE integration:
 
 ```
-https://arbbuilder.whymelabs.com/mcp
+https://arbuilder.app/mcp
 ```
 
 - Requires `arb_` API key from dashboard
@@ -368,7 +495,7 @@ https://arbbuilder.whymelabs.com/mcp
 
 ### Transparency Page
 
-View all ingested sources and code templates at [arbbuilder.whymelabs.com/transparency](https://arbbuilder.whymelabs.com/transparency).
+View all ingested sources and code templates at [arbuilder.app/transparency](https://arbuilder.app/transparency).
 
 This public page provides:
 - **Ingested Sources**: All documentation and GitHub repos in the knowledge base
@@ -390,7 +517,7 @@ Direct API routes at `/api/v1/tools/*` are for **internal testing only**:
 
 ## MCP Capabilities
 
-ARBuilder exposes a full MCP server with **8 tools**, **5 resources**, and **5 prompts** for Cursor/VS Code integration.
+ARBuilder exposes a full MCP server with **13 tools**, **11 resources**, and **5 prompts** for Cursor/VS Code integration.
 
 ### Tools
 
@@ -411,6 +538,16 @@ ARBuilder exposes a full MCP server with **8 tools**, **5 resources**, and **5 p
 | `generate_bridge_code` | Generate ETH/ERC20 bridging code (L1<->L2, L1->L3) |
 | `generate_messaging_code` | Generate cross-chain messaging code |
 | `ask_bridging` | Q&A about bridging patterns and SDK usage |
+
+**M3: Full dApp Builder (5 tools)**
+
+| Tool | Description |
+|------|-------------|
+| `generate_backend` | Generate NestJS/Express backends with Web3 integration |
+| `generate_frontend` | Generate Next.js + wagmi + RainbowKit frontends |
+| `generate_indexer` | Generate The Graph subgraphs for indexing |
+| `generate_oracle` | Generate Chainlink oracle integrations |
+| `orchestrate_dapp` | Scaffold complete dApps with multiple components |
 
 #### Example: Get Build/Deploy Workflow
 
@@ -435,6 +572,8 @@ cargo stylus deploy --private-key-path=./key.txt --endpoint=https://sepolia-roll
 
 MCP Resources provide static knowledge that AI IDEs can load automatically:
 
+**M1: Stylus Resources**
+
 | Resource URI | Description |
 |--------------|-------------|
 | `stylus://cli/commands` | Complete cargo-stylus CLI reference |
@@ -442,6 +581,22 @@ MCP Resources provide static knowledge that AI IDEs can load automatically:
 | `stylus://workflows/deploy` | Deployment workflow with network configs |
 | `stylus://workflows/test` | Testing workflow (unit, integration, fuzz) |
 | `stylus://config/networks` | Arbitrum network configurations |
+| `stylus://rules/coding` | Stylus coding guidelines and patterns |
+
+**M2: Arbitrum SDK Resources**
+
+| Resource URI | Description |
+|--------------|-------------|
+| `arbitrum://rules/sdk` | Arbitrum SDK bridging and messaging guidelines |
+
+**M3: Full dApp Builder Resources**
+
+| Resource URI | Description |
+|--------------|-------------|
+| `dapp://rules/backend` | NestJS/Express Web3 backend patterns |
+| `dapp://rules/frontend` | Next.js + wagmi + RainbowKit patterns |
+| `dapp://rules/indexer` | The Graph subgraph development patterns |
+| `dapp://rules/oracle` | Chainlink oracle integration patterns |
 
 ### Prompts (Workflow Templates)
 
@@ -493,9 +648,17 @@ ARBuilder uses **template-based code generation** to ensure generated code compi
 
 | Version | Status | Notes |
 |---------|--------|-------|
-| 0.9.0 | **Main** (default) | Recommended for new projects |
+| 0.10.0 | **Main** (default) | Recommended for new projects |
+| 0.9.x | Supported | Use `target_version: "0.9.0"` for 0.9.x output |
 | 0.8.x | Supported | Minimum supported version |
 | < 0.8.0 | Deprecated | Warning shown, may not compile |
+
+Pass `target_version` to tools for version-specific output:
+```
+User: "Generate a counter contract for SDK 0.9.0"
+AI uses: generate_stylus_code(prompt="...", target_version="0.9.0")
+Returns: Code using msg::sender(), .getter(), print_abi() patterns
+```
 
 Ask your AI assistant to generate contracts:
 
@@ -556,7 +719,7 @@ Returns: Commands for checking balance, deploying, and verifying
 |-----------|-------------|--------|
 | M1 | Stylus Smart Contract Builder | ✅ Complete |
 | M2 | Arbitrum SDK Integration (Bridging & Messaging) | ✅ Complete |
-| M3 | Full dApp Builder | In Progress |
+| M3 | Full dApp Builder (Backend + Frontend + Indexer + Oracle + Orchestration) | ✅ Complete |
 | M4 | Orbit Chain Integration | Planned |
 | M5 | Unified AI Assistant | Planned |
 
@@ -573,6 +736,57 @@ Cross-chain bridging and messaging support:
 ```bash
 # Example: Generate ETH deposit code
 echo '{"method": "tools/call", "id": 1, "params": {"name": "generate_bridge_code", "arguments": {"bridge_type": "eth_deposit", "amount": "0.5"}}}' | python -m src.mcp.server
+```
+
+### M3: Full dApp Builder
+
+Complete dApp scaffolding with all components:
+
+- **Backend Generation**: NestJS or Express with viem/wagmi integration
+- **Frontend Generation**: Next.js 14 + wagmi v2 + RainbowKit v2 + DaisyUI
+- **Indexer Generation**: The Graph subgraphs (ERC20, ERC721, DeFi, custom events)
+- **Oracle Integration**: Chainlink Price Feeds, VRF, Automation, Functions
+- **Full Orchestration**: Scaffold complete dApps with monorepo structure
+- **ABI Auto-Extraction**: Contract ABI is parsed from Stylus Rust code and injected into backend/frontend
+- **ABI-Aware Generation**: Indexer schema/mappings, frontend hooks, and backend routes are generated from contract ABI
+- **Compiler Verification**: Docker-based `cargo check` loop catches and auto-fixes compilation errors
+- **Executable Scripts**: Generated `setup.sh`, `deploy.sh`, and `start.sh` for one-command workflows
+- **CLI Scaffolding**: `setup.sh` uses a scaffold-first, backfill pattern with official CLI tools (`cargo stylus new`, `create-next-app`, `@nestjs/cli`) to fill in config files our templates don't generate, with graceful fallback if tools aren't installed
+- **Env Standardization**: Centralized env var config (PORT 3001, CORS, BACKEND_URL) across all components
+
+**Backend Templates:**
+- NestJS + Stylus contract integration
+- Express + Stylus (lightweight)
+- NestJS + GraphQL (for subgraph querying)
+- API Gateway (cross-chain proxy)
+
+**Frontend Templates:**
+- Next.js + wagmi + RainbowKit base
+- DaisyUI component library
+- Contract Dashboard (admin panel)
+- Token Interface (ERC20/721 UI)
+
+**Indexer Templates:**
+- ERC20 Subgraph (transfers, balances)
+- ERC721 Subgraph (ownership, metadata)
+- DeFi Subgraph (swaps, liquidity)
+- Custom Events Subgraph
+
+**Oracle Templates:**
+- Chainlink Price Feed
+- Chainlink VRF (randomness)
+- Chainlink Automation (keepers)
+- Chainlink Functions
+
+```bash
+# Example: Generate full dApp scaffold
+echo '{"method": "tools/call", "params": {"name": "orchestrate_dapp", "arguments": {"prompt": "Create a token staking dApp", "components": ["contract", "backend", "frontend", "indexer"]}}}' | python -m src.mcp.server
+
+# Example: Generate backend only
+echo '{"method": "tools/call", "params": {"name": "generate_backend", "arguments": {"prompt": "Create a staking API", "framework": "nestjs"}}}' | python -m src.mcp.server
+
+# Example: Generate frontend with contract ABI
+echo '{"method": "tools/call", "params": {"name": "generate_frontend", "arguments": {"prompt": "Create token dashboard", "contract_abi": "[...]"}}}' | python -m src.mcp.server
 ```
 
 ## Development
@@ -638,7 +852,7 @@ cat .env | grep OPENROUTER_API_KEY
 Ensure:
 - The API key is correctly set (no extra spaces or quotes)
 - Your OpenRouter account has credits
-- The embedding model `google/gemini-embedding-001` is available
+- The embedding model `baai/bge-m3` is available on OpenRouter
 
 **2. Rate Limiting Issues**
 

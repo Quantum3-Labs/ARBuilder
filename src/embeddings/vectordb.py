@@ -1,5 +1,7 @@
 """
 ChromaDB vector database management for ARBuilder.
+
+Supports true hybrid search with BM25 + vector retrieval and RRF fusion.
 """
 
 import json
@@ -12,6 +14,7 @@ from typing import Optional
 import chromadb
 from chromadb.config import Settings
 from dotenv import load_dotenv
+from rank_bm25 import BM25Okapi
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 
@@ -71,6 +74,12 @@ class VectorDB:
             name=collection_name,
             metadata={"hnsw:space": "cosine"},
         )
+
+        # BM25 index for hybrid search (lazy-loaded)
+        self._bm25_index: Optional[BM25Okapi] = None
+        self._bm25_doc_ids: list[str] = []
+        self._bm25_documents: list[str] = []
+        self._bm25_metadatas: list[dict] = []
 
     def ingest_chunks(
         self,
@@ -287,55 +296,119 @@ class VectorDB:
         query_text: str,
         n_results: int = 10,
         where: Optional[dict] = None,
+        alpha: float = 0.5,
+        category_boosts: Optional[dict[str, float]] = None,
+        use_bm25: bool = True,
     ) -> dict:
         """
-        Perform hybrid search (vector + keyword).
-
-        ChromaDB supports basic keyword filtering via where_document.
-        For more advanced hybrid search, we combine vector results
-        with keyword matching.
+        Perform hybrid search using vector similarity + BM25 + metadata boosting.
 
         Args:
             query_text: Query text.
             n_results: Number of results to return.
             where: Metadata filter.
+            alpha: Weight between BM25 (1.0) and vector (0.0). Default 0.5 for balanced.
+            category_boosts: Dict mapping category names to boost multipliers (e.g., {"stylus": 1.3}).
+            use_bm25: Whether to use BM25 scoring (if False, falls back to simple keyword matching).
 
         Returns:
-            Query results.
+            Query results with combined scoring.
         """
-        # Get more results from vector search
+        # Get larger candidate set from vector search for reranking
+        candidate_multiplier = 3 if use_bm25 else 2
         vector_results = self.query(
             query_text=query_text,
-            n_results=n_results * 2,
+            n_results=n_results * candidate_multiplier,
             where=where,
         )
 
-        # Extract keywords from query (simple approach)
-        keywords = [w.lower() for w in query_text.split() if len(w) > 3]
+        # Check if we have any results
+        if not vector_results["ids"] or len(vector_results["ids"][0]) == 0:
+            return {
+                "ids": [[]],
+                "documents": [[]],
+                "metadatas": [[]],
+                "distances": [[]],
+            }
 
-        # Score results based on keyword presence
-        scored_results = []
-        for i in range(len(vector_results["ids"][0])):
-            doc = vector_results["documents"][0][i].lower()
-            distance = vector_results["distances"][0][i]
+        documents = vector_results["documents"][0]
+        metadatas = vector_results["metadatas"][0]
+        distances = vector_results["distances"][0]
 
-            # Count keyword matches
-            keyword_score = sum(1 for kw in keywords if kw in doc)
+        # Convert vector distances to similarity scores (0-1, higher is better)
+        # Cosine distance: 0 = identical, 2 = opposite
+        vector_scores = [max(0.0, 1.0 - (d / 2.0)) for d in distances]
 
-            # Combined score (lower distance is better, higher keyword score is better)
-            combined_score = distance - (keyword_score * 0.1)
+        # Compute BM25 scores if enabled
+        if use_bm25:
+            try:
+                from rank_bm25 import BM25Okapi
+                
+                # Tokenize documents
+                tokenized_docs = [doc.lower().split() for doc in documents]
+                query_tokens = query_text.lower().split()
+                
+                # Compute BM25 scores
+                bm25 = BM25Okapi(tokenized_docs)
+                bm25_scores = bm25.get_scores(query_tokens)
+                
+                # Normalize BM25 scores to 0-1 range
+                if len(bm25_scores) > 0:
+                    max_bm25 = max(bm25_scores) if max(bm25_scores) > 0 else 1.0
+                    bm25_normalized = [score / max_bm25 for score in bm25_scores]
+                else:
+                    bm25_normalized = [0.0] * len(documents)
+            except ImportError:
+                logger.warning("rank_bm25 not installed. Falling back to simple keyword matching.")
+                use_bm25 = False
 
-            scored_results.append({
+        # Fallback to simple keyword matching if BM25 unavailable
+        if not use_bm25:
+            keywords = [w.lower() for w in query_text.split() if len(w) > 3]
+            keyword_scores = []
+            for doc in documents:
+                doc_lower = doc.lower()
+                keyword_score = sum(1 for kw in keywords if kw in doc_lower)
+                keyword_scores.append(keyword_score)
+            
+            # Normalize keyword scores
+            max_kw = max(keyword_scores) if max(keyword_scores) > 0 else 1.0
+            bm25_normalized = [score / max_kw for score in keyword_scores]
+
+        # Combine vector and BM25 scores with alpha weighting
+        combined_scores = [
+            alpha * bm25_normalized[i] + (1 - alpha) * vector_scores[i]
+            for i in range(len(documents))
+        ]
+
+        # Apply metadata boosting
+        if category_boosts:
+            boosted_scores = []
+            for i, score in enumerate(combined_scores):
+                boost = self._calculate_metadata_boost(
+                    metadatas[i],
+                    query_text,
+                    category_boosts,
+                )
+                boosted_scores.append(score * boost)
+            combined_scores = boosted_scores
+
+        # Create scored results
+        scored_results = [
+            {
                 "id": vector_results["ids"][0][i],
-                "document": vector_results["documents"][0][i],
-                "metadata": vector_results["metadatas"][0][i],
-                "distance": distance,
-                "keyword_score": keyword_score,
-                "combined_score": combined_score,
-            })
+                "document": documents[i],
+                "metadata": metadatas[i],
+                "distance": distances[i],
+                "vector_score": vector_scores[i],
+                "bm25_score": bm25_normalized[i],
+                "combined_score": combined_scores[i],
+            }
+            for i in range(len(documents))
+        ]
 
-        # Sort by combined score and take top n
-        scored_results.sort(key=lambda x: x["combined_score"])
+        # Sort by combined score (descending - higher is better)
+        scored_results.sort(key=lambda x: x["combined_score"], reverse=True)
         top_results = scored_results[:n_results]
 
         # Format as ChromaDB-style results
@@ -344,7 +417,51 @@ class VectorDB:
             "documents": [[r["document"] for r in top_results]],
             "metadatas": [[r["metadata"] for r in top_results]],
             "distances": [[r["distance"] for r in top_results]],
+            "scores": [[r["combined_score"] for r in top_results]],  # Include combined scores
         }
+
+    def _calculate_metadata_boost(
+        self,
+        metadata: dict,
+        query: str,
+        category_boosts: dict[str, float],
+    ) -> float:
+        """
+        Calculate boost factor based on metadata.
+
+        Args:
+            metadata: Chunk metadata.
+            query: Search query.
+            category_boosts: Dict mapping category names to boost multipliers.
+
+        Returns:
+            Boost multiplier (1.0 = no boost, >1.0 = boost, <1.0 = penalty).
+        """
+        boost = 1.0
+        query_lower = query.lower()
+
+        # Category boost - primary factor
+        category = metadata.get("category", "")
+        if category and category in category_boosts:
+            boost *= category_boosts[category]
+            logger.debug(f"Applied category boost for '{category}': {category_boosts[category]}")
+
+        # Source type boost - prefer documentation for conceptual queries
+        if any(kw in query_lower for kw in ["what", "how", "why", "explain", "understand"]):
+            source = metadata.get("source", "")
+            if source == "documentation":
+                boost *= 1.15
+                logger.debug("Applied documentation boost for conceptual query")
+
+        # Code-specific boosts
+        if any(kw in query_lower for kw in ["function", "impl", "example", "code", "fn", "method"]):
+            source = metadata.get("source", "")
+            language = metadata.get("language", "")
+            if source == "github" or language in ["rs", "sol", "ts", "js"]:
+                boost *= 1.15
+                logger.debug("Applied code source boost")
+
+        return boost
 
     def get_stats(self) -> dict:
         """Get collection statistics."""

@@ -17,6 +17,12 @@ import { getWorkflow } from "@/lib/tools/getWorkflow";
 import { generateBridgeCode } from "@/lib/tools/generateBridgeCode";
 import { generateMessagingCode } from "@/lib/tools/generateMessagingCode";
 import { askBridging } from "@/lib/tools/askBridging";
+// M3: Full dApp Builder Tools
+import { generateBackend } from "@/lib/tools/generateBackend";
+import { generateFrontend } from "@/lib/tools/generateFrontend";
+import { generateIndexer } from "@/lib/tools/generateIndexer";
+import { generateOracle } from "@/lib/tools/generateOracle";
+import { orchestrateDapp } from "@/lib/tools/orchestrateDapp";
 
 // MCP Protocol Types
 interface JsonRpcRequest {
@@ -249,12 +255,174 @@ const TOOLS = [
       required: ["question"],
     },
   },
+  // M3: Full dApp Builder Tools
+  {
+    name: "generate_backend",
+    description:
+      "Generate a Web3 backend using NestJS or Express with viem integration for Arbitrum. Includes contract interaction services, API endpoints, and TypeScript configuration.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        prompt: {
+          type: "string",
+          description: "Description of the backend to generate",
+        },
+        framework: {
+          type: "string",
+          enum: ["nestjs", "express"],
+          description: "Backend framework to use",
+          default: "nestjs",
+        },
+        contractAbi: {
+          type: "string",
+          description: "Contract ABI JSON for generating typed services",
+        },
+        features: {
+          type: "array",
+          items: { type: "string" },
+          description: "Additional features (websocket, caching)",
+        },
+      },
+      required: ["prompt"],
+    },
+  },
+  {
+    name: "generate_frontend",
+    description:
+      "Generate a Next.js frontend with wagmi, RainbowKit, and DaisyUI for Arbitrum dApps. Includes wallet connection, contract hooks, and responsive UI components.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        prompt: {
+          type: "string",
+          description: "Description of the frontend to generate",
+        },
+        contractAbi: {
+          type: "string",
+          description: "Contract ABI JSON for generating typed hooks",
+        },
+        uiFramework: {
+          type: "string",
+          enum: ["daisyui", "shadcn", "none"],
+          description: "UI component library to use",
+          default: "daisyui",
+        },
+        template: {
+          type: "string",
+          enum: ["base", "dashboard", "token"],
+          description: "Template to start from",
+          default: "base",
+        },
+      },
+      required: ["prompt"],
+    },
+  },
+  {
+    name: "generate_indexer",
+    description:
+      "Generate a The Graph subgraph for indexing Arbitrum smart contract events. Supports ERC20, ERC721, DeFi, and custom event patterns.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        contractAddress: {
+          type: "string",
+          description: "Contract address to index",
+        },
+        subgraphType: {
+          type: "string",
+          enum: ["erc20", "erc721", "defi", "custom"],
+          description: "Type of subgraph template",
+          default: "erc20",
+        },
+        abi: {
+          type: "string",
+          description: "Contract ABI JSON for custom event handling",
+        },
+        events: {
+          type: "array",
+          items: { type: "string" },
+          description: "Event signatures to index (for custom type)",
+        },
+        network: {
+          type: "string",
+          description: "Target network",
+          default: "arbitrum-sepolia",
+        },
+      },
+      required: ["contractAddress"],
+    },
+  },
+  {
+    name: "generate_oracle",
+    description:
+      "Generate Chainlink oracle integration code for Arbitrum. Supports Price Feeds, VRF (randomness), Automation (keepers), and Functions.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        oracleType: {
+          type: "string",
+          enum: ["price_feed", "vrf", "automation", "functions"],
+          description: "Type of Chainlink oracle to integrate",
+        },
+        network: {
+          type: "string",
+          enum: ["arbitrum-one", "arbitrum-sepolia"],
+          description: "Target network",
+          default: "arbitrum-sepolia",
+        },
+        feeds: {
+          type: "array",
+          items: { type: "string" },
+          description: "Price feed pairs (e.g., ETH/USD, BTC/USD)",
+        },
+      },
+      required: ["oracleType"],
+    },
+  },
+  {
+    name: "orchestrate_dapp",
+    description:
+      "Scaffold a template-based dApp monorepo with starter components: Stylus contract, backend, frontend, indexer, and oracle. Creates a project structure with generic templates to customize.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        prompt: {
+          type: "string",
+          description: "Description of the dApp to build",
+        },
+        components: {
+          type: "array",
+          items: {
+            type: "string",
+            enum: ["contract", "backend", "frontend", "indexer", "oracle"],
+          },
+          description: "Components to include in the dApp",
+          default: ["contract", "frontend"],
+        },
+        network: {
+          type: "string",
+          enum: ["arbitrum-sepolia", "arbitrum-one"],
+          description: "Target network for deployment",
+          default: "arbitrum-sepolia",
+        },
+        contractAddress: {
+          type: "string",
+          description: "Existing contract address (if not generating new)",
+        },
+        contractAbi: {
+          type: "string",
+          description: "Contract ABI for integration",
+        },
+      },
+      required: ["prompt"],
+    },
+  },
 ];
 
 // Server info for MCP
 const SERVER_INFO = {
   name: "arbbuilder",
-  version: "1.1.0", // M2: Added Arbitrum SDK tools
+  version: "1.2.0", // M3: Added Full dApp Builder tools
   protocolVersion: "2024-11-05",
 };
 
@@ -459,6 +627,58 @@ async function handleToolCall(
           "general",
       });
       return { data: result, tokensUsed: result.tokensUsed || 0 };
+    }
+
+    // M3: Full dApp Builder Tools
+    case "generate_backend": {
+      const result = generateBackend({
+        prompt: args.prompt as string,
+        framework: (args.framework as "nestjs" | "express") ?? "nestjs",
+        contractAbi: args.contractAbi as string | undefined,
+        features: args.features as string[] | undefined,
+      });
+      return { data: result, tokensUsed: 0 };
+    }
+
+    case "generate_frontend": {
+      const result = generateFrontend({
+        prompt: args.prompt as string,
+        contractAbi: args.contractAbi as string | undefined,
+        uiFramework: (args.uiFramework as "daisyui" | "shadcn" | "none") ?? "daisyui",
+        template: (args.template as "base" | "dashboard" | "token") ?? "base",
+      });
+      return { data: result, tokensUsed: 0 };
+    }
+
+    case "generate_indexer": {
+      const result = generateIndexer({
+        contractAddress: args.contractAddress as string,
+        subgraphType: (args.subgraphType as "erc20" | "erc721" | "defi" | "custom") ?? "erc20",
+        abi: args.abi as string | undefined,
+        events: args.events as string[] | undefined,
+        network: args.network as string | undefined,
+      });
+      return { data: result, tokensUsed: 0 };
+    }
+
+    case "generate_oracle": {
+      const result = generateOracle({
+        oracleType: args.oracleType as "price_feed" | "vrf" | "automation" | "functions",
+        network: (args.network as "arbitrum-one" | "arbitrum-sepolia") ?? "arbitrum-sepolia",
+        feeds: args.feeds as string[] | undefined,
+      });
+      return { data: result, tokensUsed: 0 };
+    }
+
+    case "orchestrate_dapp": {
+      const result = orchestrateDapp({
+        prompt: args.prompt as string,
+        components: args.components as ("contract" | "backend" | "frontend" | "indexer" | "oracle")[] | undefined,
+        network: (args.network as "arbitrum-sepolia" | "arbitrum-one") ?? "arbitrum-sepolia",
+        contractAddress: args.contractAddress as string | undefined,
+        contractAbi: args.contractAbi as string | undefined,
+      });
+      return { data: result, tokensUsed: 0 };
     }
 
     default:

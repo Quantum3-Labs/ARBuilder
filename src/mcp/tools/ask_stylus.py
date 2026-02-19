@@ -13,20 +13,114 @@ from .get_stylus_context import GetStylusContextTool
 
 SYSTEM_PROMPT = """You are an expert Stylus smart contract developer and educator. You help developers understand and build Arbitrum Stylus contracts.
 
-## CRITICAL VERSION INFORMATION (January 2025)
+## CRITICAL VERSION INFORMATION (January 2026)
 ALWAYS use these versions - ignore any outdated version info in retrieved context:
-- stylus-sdk: 0.9.2 (stable, recommended for new projects)
-- alloy-primitives: =0.8.20
-- alloy-sol-types: =0.8.20
-- Rust version: 1.81 (1.82+ may have compatibility issues)
+- stylus-sdk: 0.10.0 (latest stable, recommended for new projects)
+- alloy-primitives: 1.0.1
+- alloy-sol-types: 1.0.1
+- Rust version: 1.88.0 (via rust-toolchain.toml)
 - cargo-stylus CLI: 0.5.x
 
 Standard Cargo.toml dependencies:
 ```toml
 [dependencies]
-stylus-sdk = "0.9.2"
-alloy-primitives = "=0.8.20"
-alloy-sol-types = "=0.8.20"
+stylus-sdk = "0.10.0"
+alloy-primitives = "1.0.1"
+alloy-sol-types = "1.0.1"
+```
+
+IMPORTANT SDK 0.10.0 changes:
+- msg::sender() is replaced by self.vm().msg_sender()
+- msg::value() is replaced by self.vm().msg_value()
+- evm::log() is replaced by self.vm().log()
+- `use stylus_sdk::evm` is removed entirely — all evm:: functions now accessed via self.vm()
+- transfer_eth: use stylus_sdk::call::transfer::transfer_eth; then call transfer_eth(self.vm(), to, amount)?
+- Error types: define with sol! { error MyError(...); }, wrap enum with #[derive(SolidityError)]
+- For .abi_encode() on errors: import use alloy_sol_types::SolError;
+- Nested mapping writes: chain in one expression: self.map.setter(k1).setter(k2).set(v). Do NOT split into separate variables (causes multiple active borrows)
+- Projects MUST include Stylus.toml with [workspace], [workspace.networks], and [contract] sections
+- Projects MUST include rust-toolchain.toml with channel = "1.88.0"
+- Projects MUST include src/main.rs — cargo stylus deploy runs `cargo run` to check for constructors
+- The ABI export function in 0.10.0 is print_from_args() (NOT print_abi()) — main.rs calls crate_name::print_from_args()
+- Package name in Cargo.toml MUST use underscores (e.g., "my_contract") — hyphens prevent cargo-stylus from finding the WASM file
+- crate-type in [lib] must be ["lib", "cdylib"] — "lib" is needed for bin target linking
+- ALWAYS include `use alloc::vec;` (the module) — sol_storage! macro needs it in scope
+- RawCall::new_with_value(self.vm(), amount) — needs self.vm() as first arg and requires unsafe block
+- uint8 in sol_storage! maps to Uint<8,1> not native u8 — comparisons with native u8 won't compile, prefer uint256
+- For sol_interface! cross-contract calls: generated methods take (self.vm(), CallContext, ...args). Use Call::new() for non-reentrant contracts, Call::new_in(self) for reentrant contracts
+- Stylus exports snake_case Rust function names as camelCase in the ABI (create_market → createMarket). Frontend must use camelCase in functionName.
+- Stylus &self view functions CANNOT make external contract calls (they revert). Use &mut self or read from frontend instead.
+- On Arbitrum Sepolia, MetaMask may underestimate maxFeePerGas — add explicit gas overrides in frontend if you see "max fee per gas less than block base fee"
+
+## REFERENCE CODE — use these EXACT patterns in your code examples
+
+ETH transfer (withdraw/deposit/send ETH):
+```rust
+use stylus_sdk::call::transfer::transfer_eth;
+
+pub fn withdraw(&mut self, to: Address, amount: U256) -> Result<(), Vec<u8>> {
+    transfer_eth(self.vm(), to, amount)?;
+    Ok(())
+}
+```
+
+Cross-contract call (interact with another deployed contract):
+```rust
+sol_interface! {
+    interface IToken {
+        function balanceOf(address account) external view returns (uint256);
+        function transfer(address to, uint256 amount) external returns (bool);
+    }
+}
+
+// In a #[public] &mut self method:
+pub fn get_balance(&mut self, token: Address, account: Address) -> Result<U256, Vec<u8>> {
+    let token_contract = IToken::new(token);
+    let balance = token_contract.balance_of(self.vm(), Call::new(), account)?;
+    Ok(balance)
+}
+```
+
+Storage access:
+```rust
+// Read: ALWAYS use .get()
+let val = self.my_field.get();
+let balance = self.balances.get(user);
+
+// Write: use .set() or .setter().set()
+self.my_field.set(new_val);
+self.balances.setter(user).set(new_balance);
+```
+
+Nested mapping (e.g. mapping(address => mapping(address => uint256))):
+```rust
+// In sol_storage! — use Solidity syntax, NOT Rust types:
+//   mapping(address => mapping(address => uint256)) allowances;
+
+// Read nested: chain .get() calls
+let allowance = self.allowances.get(owner).get(spender);
+
+// Write nested: chain .setter() calls in ONE expression
+self.allowances.setter(owner).setter(spender).set(value);
+```
+
+Dynamic arrays (sol_storage! uses Solidity syntax: uint256[], address[]):
+```rust
+// In sol_storage! — use Solidity syntax, NOT StorageVec<T>:
+//   uint256[] values;
+//   address[] participants;
+
+// Read length (returns usize) and element:
+let count = self.values.len();
+let val = self.values.get(index).unwrap_or_default();
+
+// Append primitive value — use push():
+self.values.push(new_val);
+
+// For struct arrays — use grow() then set fields:
+let mut item = self.items.grow();
+item.field_a.set(val_a);
+item.field_b.set(val_b);
 ```
 
 Your expertise includes:
@@ -127,6 +221,7 @@ class AskStylusTool(BaseTool):
                 n_results=5,
                 content_type="all",
                 rerank=True,
+                category_boosts=None,  # Use default Stylus-focused boosts
             )
 
             references = []
@@ -217,8 +312,105 @@ class AskStylusTool(BaseTool):
 
         return "\n".join(parts)
 
+    def _fix_code_in_response(self, response: str) -> str:
+        """Fix common wrong patterns in code blocks within LLM responses.
+
+        The RAG context often contains outdated SDK 0.9.x patterns that override
+        the system prompt's correct 0.10.0 patterns. This post-processes code
+        blocks to fix the most critical compilation-breaking mistakes.
+        """
+        def fix_code_block(match: re.Match) -> str:
+            lang = match.group(1) or ""
+            code = match.group(2)
+
+            # Only fix rust/toml code blocks (or unspecified)
+            if lang and lang not in ("rust", "toml", ""):
+                return match.group(0)
+
+            # Fix sol! { interface → sol_interface! { interface
+            code = re.sub(r'sol!\s*\{\s*(interface\b)', r'sol_interface! { \1', code)
+
+            # Fix wrong transfer_eth import paths
+            code = code.replace(
+                "use stylus_sdk::call::transfer_eth;",
+                "use stylus_sdk::call::transfer::transfer_eth;",
+            )
+            code = re.sub(
+                r'use stylus_sdk::call::\{([^}]*)\btransfer_eth\b([^}]*)\};',
+                lambda m: self._split_transfer_eth_import(m),
+                code,
+            )
+
+            # Fix self.transfer_eth(args) → transfer_eth(self.vm(), args)
+            code = re.sub(
+                r'self\.transfer_eth\(([^)]+)\)',
+                r'transfer_eth(self.vm(), \1)',
+                code,
+            )
+
+            # Fix transfer_eth(self, ...) → transfer_eth(self.vm(), ...)
+            code = re.sub(
+                r'transfer_eth\(self,\s*',
+                'transfer_eth(self.vm(), ',
+                code,
+            )
+
+            # Fix deprecated msg::sender() → self.vm().msg_sender()
+            code = code.replace("msg::sender()", "self.vm().msg_sender()")
+            code = code.replace("msg::value()", "self.vm().msg_value()")
+
+            # Fix deprecated evm::log( → self.vm().log(
+            code = code.replace("evm::log(", "self.vm().log(")
+
+            # Remove deprecated imports
+            code = re.sub(r'^use stylus_sdk::evm.*;\s*$', '', code, flags=re.MULTILINE)
+            code = re.sub(r'^use stylus_sdk::msg.*;\s*$', '', code, flags=re.MULTILINE)
+
+            # Fix .getter(key) → .get(key) — .getter() does not exist in SDK 0.10.0
+            code = re.sub(r'\.getter\(', '.get(', code)
+
+            # Fix Rust types inside sol_storage! — must use Solidity syntax
+            # StorageMap<StorageX, StorageY> → mapping(x => y)
+            code = re.sub(
+                r'StorageMap<Storage(\w+),\s*Storage(\w+)>',
+                lambda m: f'mapping({m.group(1).lower()} => {m.group(2).lower()})',
+                code,
+            )
+            # StorageVec<StorageX> → x[]
+            code = re.sub(
+                r'StorageVec<Storage(\w+)>',
+                lambda m: f'{m.group(1).lower()}[]',
+                code,
+            )
+            # StorageAddress → address, StorageU256 → uint256, etc.
+            # (only inside sol_storage! blocks — but as a safe heuristic, fix standalone uses too)
+            code = code.replace('StorageAddress', 'address')
+            code = code.replace('StorageU256', 'uint256')
+            code = code.replace('StorageBool', 'bool')
+            code = code.replace('StorageU8', 'uint8')
+            code = code.replace('StorageU64', 'uint64')
+            code = code.replace('StorageU128', 'uint128')
+
+            return f"```{lang}\n{code}```"
+
+        # Fix all code blocks in the response
+        return re.sub(r'```(\w*)\n([\s\S]*?)```', fix_code_block, response)
+
+    def _split_transfer_eth_import(self, match: re.Match) -> str:
+        """Split combined import that includes transfer_eth into separate imports."""
+        before = match.group(1).replace("transfer_eth", "").strip().strip(",").strip()
+        after = match.group(2).strip().strip(",").strip()
+        others = ", ".join(filter(None, [before, after]))
+        transfer_line = "use stylus_sdk::call::transfer::transfer_eth;"
+        if others:
+            return f"{transfer_line}\nuse stylus_sdk::call::{{{others}}};"
+        return transfer_line
+
     def _parse_response(self, response: str) -> tuple[str, list[dict]]:
         """Parse answer and code examples from response."""
+        # Fix wrong patterns in code blocks before parsing
+        response = self._fix_code_in_response(response)
+
         code_examples = []
 
         # Extract code blocks

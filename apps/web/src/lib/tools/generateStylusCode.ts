@@ -24,6 +24,7 @@ import { selectTemplate, StylusTemplate } from "../templates/stylusTemplates";
 
 /**
  * Validate and fix common LLM mistakes in generated code.
+ * Mirrors the Python _fix_code() safety nets in generate_stylus_code.py.
  */
 function validateAndFixCode(code: string, template: StylusTemplate): string {
   let fixed = code;
@@ -32,10 +33,20 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
   fixed = fixed.replace(/sol_storage!\s*\{\s*\}/g, "");
 
   // Fix 2: Ensure proper cfg_attr if missing
-  if (!fixed.includes("#![cfg_attr(not(any(test")) {
+  if (!fixed.includes('#![cfg_attr(not(any(test')) {
     const templateStart = template.libRs.split("extern crate alloc")[0];
     if (!fixed.startsWith("#![cfg_attr")) {
       fixed = templateStart + fixed;
+    } else {
+      // Replace wrong cfg_attr patterns with correct ones
+      fixed = fixed.replace(
+        /#!\[cfg_attr\(not\(any\(feature\s*=\s*"export-abi",\s*test\)\),\s*no_std\)\]/g,
+        '#![cfg_attr(not(any(test, feature = "export-abi")), no_std)]'
+      );
+      fixed = fixed.replace(
+        /#!\[cfg_attr\(not\(test\),\s*no_main\)\]/g,
+        '#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]'
+      );
     }
   }
 
@@ -47,31 +58,43 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     );
   }
 
-  // Fix 4: Remove incorrect imports (sol! is in prelude)
-  fixed = fixed.replace(/use alloy_sol_types::sol;\n?/g, "");
-  fixed = fixed.replace(/use stylus_sdk::alloy_sol_types::sol;\n?/g, "");
+  // Fix 4: Remove standalone sol! imports (sol! is in prelude)
+  // Only remove standalone import — preserve combined imports like {sol, SolError}
+  fixed = fixed.replace(/^use alloy_sol_types::sol;\s*$/gm, "");
+  fixed = fixed.replace(/^use stylus_sdk::alloy_sol_types::sol;\s*$/gm, "");
 
   // Fix 5: Handle Vec imports - avoid duplicates
-  // If we have both "use alloc::vec::Vec" and "use alloc::{...vec::Vec...}", remove the standalone
   if (fixed.includes("use alloc::vec::Vec;") && fixed.includes("use alloc::{") && fixed.includes("vec::Vec")) {
     fixed = fixed.replace(/use alloc::vec::Vec;\n?/g, "");
   }
-  // If Vec<u8> is used but no import, add it
-  if (fixed.includes("Vec<u8>") && !fixed.includes("alloc::vec::Vec") && !fixed.includes("alloc::{") ) {
+  if (fixed.includes("Vec<u8>") && !fixed.includes("alloc::vec::Vec") && !fixed.includes("alloc::{")) {
     fixed = fixed.replace(
       /(extern crate alloc;)/,
       "$1\n\nuse alloc::vec::Vec;"
     );
   }
 
-  // Fix 6: Ensure there's exactly one sol_storage! block with #[entrypoint]
+  // Fix 6: Ensure use alloc::vec; is present (sol_storage! needs vec module)
+  if (!fixed.includes("use alloc::vec;") && !fixed.includes("use alloc::{")) {
+    fixed = fixed.replace(
+      /(extern crate alloc;\s*\n)/,
+      "$1\nuse alloc::{vec, vec::Vec};\n"
+    );
+  } else if (fixed.includes("use alloc::vec::Vec;") && !fixed.includes("use alloc::vec;") && !fixed.includes("alloc::{")) {
+    // Has Vec but not vec module — replace with combined import
+    fixed = fixed.replace(
+      "use alloc::vec::Vec;",
+      "use alloc::{vec, vec::Vec};"
+    );
+  }
+
+  // Fix 7: Ensure there's exactly one sol_storage! block with #[entrypoint]
   const solStorageCount = (fixed.match(/sol_storage!\s*\{/g) || []).length;
   if (solStorageCount === 0) {
-    // If no sol_storage! block, the code is likely broken - use template
     return template.libRs;
   }
 
-  // Fix 7: Ensure #[entrypoint] is inside sol_storage! if missing
+  // Fix 8: Ensure #[entrypoint] is inside sol_storage! if missing
   if (!fixed.includes("#[entrypoint]")) {
     fixed = fixed.replace(
       /sol_storage!\s*\{\s*(\n?\s*pub struct)/,
@@ -79,7 +102,98 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     );
   }
 
+  // Fix 9: Convert sol! { interface ... } to sol_interface! { interface ... }
+  // LLMs often use sol! for interfaces, but Stylus requires sol_interface!
+  fixed = fixed.replace(
+    /sol!\s*\{\s*(interface\b)/g,
+    "sol_interface! { $1"
+  );
+
+  // Fix 10: Fix wrong transfer_eth import paths
+  // Wrong: use stylus_sdk::call::transfer_eth;
+  // Correct: use stylus_sdk::call::transfer::transfer_eth;
+  fixed = fixed.replace(
+    /use stylus_sdk::call::transfer_eth;/g,
+    "use stylus_sdk::call::transfer::transfer_eth;"
+  );
+  // Wrong: use stylus_sdk::call::{transfer_eth, ...};
+  // Split into separate imports
+  fixed = fixed.replace(
+    /use stylus_sdk::call::\{([^}]*)\btransfer_eth\b([^}]*)\};/g,
+    (_match, before: string, after: string) => {
+      const others = (before.replace("transfer_eth", "").trim().replace(/^,|,$/g, "").trim()
+        + ", " + after.trim().replace(/^,|,$/g, "").trim()).replace(/^,\s*|,\s*$/g, "").trim();
+      const transferLine = "use stylus_sdk::call::transfer::transfer_eth;";
+      if (others) {
+        return `${transferLine}\nuse stylus_sdk::call::{${others}};`;
+      }
+      return transferLine;
+    }
+  );
+
+  // Fix 11: self.transfer_eth(to, amount) → transfer_eth(self.vm(), to, amount)
+  fixed = fixed.replace(
+    /self\.transfer_eth\(([^)]+)\)/g,
+    "transfer_eth(self.vm(), $1)"
+  );
+
+  // Fix 12: transfer_eth(self, ...) → transfer_eth(self.vm(), ...)
+  // LLMs write self instead of self.vm() — must be the vm Host context
+  fixed = fixed.replace(
+    /transfer_eth\(self,\s*/g,
+    "transfer_eth(self.vm(), "
+  );
+
+  // Fix 16: Enforce .get() on bare storage field reads
+  // Extract field names from sol_storage! block
+  const storageFields = new Set<string>();
+  // Match Solidity-type field declarations: type field_name;
+  const typeFieldPattern = /\b(?:uint\d*|int\d*|address|bool|string|bytes\d*)\s+(\w+)\s*;/g;
+  let fieldMatch;
+  while ((fieldMatch = typeFieldPattern.exec(fixed)) !== null) {
+    storageFields.add(fieldMatch[1]);
+  }
+  // Match mapping fields: mapping(...) field_name;
+  const mappingFieldPattern = /mapping\([^)]*\)\s+(\w+)\s*;/g;
+  while ((fieldMatch = mappingFieldPattern.exec(fixed)) !== null) {
+    storageFields.add(fieldMatch[1]);
+  }
+  // For each storage field, fix bare <var>.<field> reads (not followed by . or ()
+  // This catches both self.<field> AND nested struct fields like market.<field>
+  // where market = self.markets.get(id) returns a storage accessor
+  for (const field of storageFields) {
+    const bareFieldPattern = new RegExp(`(\\w+)\\.${field}(?!\\s*[.(])`, "g");
+    fixed = fixed.replace(bareFieldPattern, `$1.${field}.get()`);
+  }
+
+  // Fix 13: Remove deprecated stylus_sdk::evm and stylus_sdk::msg imports
+  fixed = fixed.replace(/^use stylus_sdk::evm.*;\s*$/gm, "");
+  fixed = fixed.replace(/^use stylus_sdk::msg.*;\s*$/gm, "");
+
+  // Fix 14: Fix deprecated msg::sender() → self.vm().msg_sender()
+  fixed = fixed.replace(/msg::sender\(\)/g, "self.vm().msg_sender()");
+  fixed = fixed.replace(/msg::value\(\)/g, "self.vm().msg_value()");
+
+  // Fix 15: Fix deprecated evm::log(...) → self.vm().log(...)
+  fixed = fixed.replace(/evm::log\(/g, "self.vm().log(");
+
   return fixed;
+}
+
+/**
+ * Derive a snake_case project name from the user prompt.
+ * Mirrors Python _derive_project_name() in generate_stylus_code.py.
+ */
+function deriveProjectName(prompt: string): string {
+  const stopWords = new Set([
+    "a", "an", "the", "for", "with", "and", "or", "that", "this",
+    "create", "build", "make", "generate", "implement",
+  ]);
+  const words = (prompt.match(/[a-zA-Z]+/g) || [])
+    .map((w) => w.toLowerCase())
+    .filter((w) => !stopWords.has(w));
+  const nameWords = words.length > 0 ? words.slice(0, 3) : ["stylus", "contract"];
+  return nameWords.join("_");
 }
 
 export interface GenerateStylusCodeInput {
@@ -94,6 +208,10 @@ export interface GenerateStylusCodeInput {
   cargoToml?: string;
 }
 
+export const TEMPLATE_DISCLAIMER =
+  "This generated code is a starting entrypoint — a working foundation for you to build upon. " +
+  "Review, customize, and extend it to match your specific requirements before deploying.";
+
 export interface GenerateStylusCodeOutput {
   code: string;
   cargoToml: string;
@@ -107,6 +225,7 @@ export interface GenerateStylusCodeOutput {
   targetVersion: string;
   /** The base template that was used. */
   templateUsed: string;
+  disclaimer: string;
 }
 
 export async function generateStylusCode(
@@ -188,9 +307,27 @@ export async function generateStylusCode(
   const codeMatch = response.content.match(/```rust\n([\s\S]*?)```/);
   let code = codeMatch ? codeMatch[1].trim() : response.content;
 
+  // Safety net: if LLM returned empty content, fall back to template
+  if (!code || code.trim().length === 0) {
+    code = template.libRs;
+    warnings.push("LLM returned empty content — using template code as fallback");
+  }
+
   // ALWAYS use template's Cargo.toml - don't trust LLM-generated Cargo.toml
   // LLM often makes typos (alloy-sol_types) or misses deps (ruint)
-  const generatedCargo = template.cargoToml;
+  let generatedCargo = template.cargoToml;
+  let mainRs = template.mainRs;
+
+  // Derive project name from prompt and fix Cargo.toml/main.rs references
+  const projectName = deriveProjectName(prompt);
+  generatedCargo = generatedCargo.replace(
+    /name\s*=\s*"[^"]+"/g,
+    `name = "${projectName}"`
+  );
+  mainRs = mainRs.replace(
+    /(\w+)::print_from_args\b/,
+    `${projectName}::print_from_args`
+  );
 
   // Validate and fix common LLM mistakes in code
   code = validateAndFixCode(code, template);
@@ -224,7 +361,7 @@ export async function generateStylusCode(
   return {
     code,
     cargoToml: generatedCargo,
-    mainRs: template.mainRs,
+    mainRs,
     explanation: explanation || "Contract generated based on your requirements.",
     dependencies,
     warnings,
@@ -232,5 +369,6 @@ export async function generateStylusCode(
     tokensUsed: response.usage.totalTokens,
     targetVersion,
     templateUsed: template.name,
+    disclaimer: TEMPLATE_DISCLAIMER,
   };
 }

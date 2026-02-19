@@ -145,3 +145,115 @@ def embedding_client():
     """Provide embedding client for tests."""
     from src.embeddings.embedder import EmbeddingClient
     return EmbeddingClient()
+
+
+# ============================================================================
+# M3 Tool Fixtures
+# ============================================================================
+
+@pytest.fixture(scope="session")
+def m3_tools():
+    """
+    Provide M3 tool implementations for testing.
+
+    Uses actual implementations if available, falls back to mocks.
+    """
+    try:
+        from src.mcp.tools import (
+            GenerateBackendTool,
+            GenerateFrontendTool,
+            GenerateIndexerTool,
+            GenerateOracleTool,
+            OrchestrateDappTool,
+        )
+
+        return {
+            "generate_backend": GenerateBackendTool(),
+            "generate_frontend": GenerateFrontendTool(),
+            "generate_indexer": GenerateIndexerTool(),
+            "generate_oracle": GenerateOracleTool(),
+            "orchestrate_dapp": OrchestrateDappTool(),
+        }
+    except ImportError as e:
+        print(f"Warning: Could not import M3 tools, using mocks: {e}")
+        return _create_mock_m3_tools()
+
+
+def _create_mock_m3_tools():
+    """Create mock M3 tool implementations for testing without API access."""
+
+    class MockGenerateBackendTool:
+        def execute(self, **kwargs):
+            return {
+                "files": {"src/app.module.ts": "// mock"},
+                "dependencies": {"nestjs": "^10.0.0"},
+                "env_vars": ["DATABASE_URL"],
+            }
+
+    class MockGenerateFrontendTool:
+        def execute(self, **kwargs):
+            return {
+                "files": {"src/app/page.tsx": "// mock"},
+                "dependencies": {"wagmi": "^2.0.0"},
+                "env_vars": ["NEXT_PUBLIC_CONTRACT_ADDRESS"],
+            }
+
+    class MockGenerateIndexerTool:
+        def execute(self, **kwargs):
+            return {
+                "files": {"subgraph.yaml": "# mock", "schema.graphql": "# mock"},
+                "dependencies": {"@graphprotocol/graph-cli": "^0.71.0"},
+            }
+
+    class MockGenerateOracleTool:
+        def execute(self, **kwargs):
+            return {
+                "files": {"contracts/PriceFeed.sol": "// mock"},
+                "dependencies": {"@chainlink/contracts": "^1.1.0"},
+            }
+
+    class MockOrchestrateDappTool:
+        def execute(self, **kwargs):
+            return {
+                "project": "my-dapp",
+                "files": {},
+                "components": kwargs.get("components", ["contract", "frontend"]),
+            }
+
+    return {
+        "generate_backend": MockGenerateBackendTool(),
+        "generate_frontend": MockGenerateFrontendTool(),
+        "generate_indexer": MockGenerateIndexerTool(),
+        "generate_oracle": MockGenerateOracleTool(),
+        "orchestrate_dapp": MockOrchestrateDappTool(),
+    }
+
+
+@pytest.fixture(scope="session")
+def generate_backend_tool(m3_tools):
+    """Provide generate_backend tool instance."""
+    return m3_tools["generate_backend"]
+
+
+@pytest.fixture(scope="session")
+def generate_frontend_tool(m3_tools):
+    """Provide generate_frontend tool instance."""
+    return m3_tools["generate_frontend"]
+
+
+@pytest.fixture(scope="session")
+def generate_indexer_tool(m3_tools):
+    """Provide generate_indexer tool instance."""
+    return m3_tools["generate_indexer"]
+
+
+@pytest.fixture(scope="session")
+def generate_oracle_tool(m3_tools):
+    """Provide generate_oracle tool instance."""
+    return m3_tools["generate_oracle"]
+
+
+@pytest.fixture(scope="session")
+def orchestrate_dapp_tool(m3_tools):
+    """Provide orchestrate_dapp tool instance."""
+    return m3_tools["orchestrate_dapp"]

@@ -11,6 +11,7 @@ import json
 from typing import Any
 
 from .base import BaseTool
+from .generate_stylus_code import TEMPLATE_DISCLAIMER
 
 # Template for L1 -> L2 message via retryable ticket
 L1_TO_L2_MESSAGE_TEMPLATE = '''import { providers, Wallet, utils, BigNumber, Contract } from 'ethers';
@@ -388,6 +389,7 @@ The generated code uses ethers.js v5 and @arbitrum/sdk."""
             ],
             "notes": self._get_notes(message_type),
             "related_types": self._get_related_types(message_type),
+            "disclaimer": TEMPLATE_DISCLAIMER,
         }
 
         return result

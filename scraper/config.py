@@ -20,7 +20,7 @@ INCLUSION CRITERIA:
 """
 
 # SDK version requirements (from shared/stylus-versions.json)
-MAIN_STYLUS_SDK_VERSION = "0.9.2"
+MAIN_STYLUS_SDK_VERSION = "0.10.0"
 MIN_STYLUS_SDK_VERSION = "0.8.0"  # Minimum supported
 DEPRECATED_BELOW = "0.8.0"  # Anything below this is deprecated
 
@@ -187,10 +187,111 @@ ARBITRUM_SDK_SOURCES = {**_flatten_docs("arbitrum_sdk"), **_flatten_projects("ar
 ORBIT_SDK_SOURCES = {**_flatten_docs("orbit_sdk"), **_flatten_projects("orbit_sdk")}
 ARBITRUM_DOCS = _flatten_docs("arbitrum_general")
 
+# M3: Full dApp Builder Sources
+# Documentation and examples for backend, frontend, indexer, and oracle components
+M3_SOURCES = {
+    "backend": {
+        "nestjs": [
+            "https://docs.nestjs.com/first-steps",
+            "https://docs.nestjs.com/modules",
+            "https://docs.nestjs.com/providers",
+            "https://docs.nestjs.com/controllers",
+            "https://docs.nestjs.com/techniques/configuration",
+        ],
+        "express": [
+            "https://expressjs.com/en/starter/basic-routing.html",
+            "https://expressjs.com/en/guide/routing.html",
+            "https://expressjs.com/en/guide/error-handling.html",
+        ],
+    },
+    "frontend": {
+        "wagmi": [
+            "https://wagmi.sh/react/getting-started",
+            "https://wagmi.sh/react/guides/connect-wallet",
+            "https://wagmi.sh/react/guides/read-from-contract",
+            "https://wagmi.sh/react/guides/write-to-contract",
+            "https://wagmi.sh/react/guides/transactions",
+        ],
+        "viem": [
+            "https://viem.sh/docs/getting-started.html",
+            "https://viem.sh/docs/contract/readContract.html",
+            "https://viem.sh/docs/contract/writeContract.html",
+            "https://viem.sh/docs/actions/public/waitForTransactionReceipt.html",
+        ],
+        "rainbowkit": [
+            "https://www.rainbowkit.com/docs/introduction",
+            "https://www.rainbowkit.com/docs/installation",
+            "https://www.rainbowkit.com/docs/connect-button",
+            "https://www.rainbowkit.com/docs/custom-chains",
+        ],
+        "daisyui": [
+            "https://daisyui.com/docs/install/",
+            "https://daisyui.com/components/button/",
+            "https://daisyui.com/components/card/",
+            "https://daisyui.com/components/modal/",
+            "https://daisyui.com/components/input/",
+        ],
+    },
+    "indexer": {
+        "the_graph": [
+            "https://thegraph.com/docs/en/developing/creating-a-subgraph/",
+            "https://thegraph.com/docs/en/developing/assemblyscript-api/",
+            "https://thegraph.com/docs/en/developing/graph-ts/api/",
+            "https://thegraph.com/docs/en/cookbook/arweave/",
+            "https://thegraph.com/docs/en/developing/unit-testing-framework/",
+        ],
+    },
+    "oracle": {
+        "chainlink": [
+            "https://docs.chain.link/data-feeds/price-feeds",
+            "https://docs.chain.link/vrf/v2-5/subscription/get-a-random-number",
+            "https://docs.chain.link/chainlink-automation/overview/getting-started",
+            "https://docs.chain.link/chainlink-functions/getting-started",
+            "https://docs.chain.link/data-feeds/price-feeds/addresses?network=arbitrum&page=1",
+        ],
+    },
+}
+
+# M3: GitHub repositories for code examples
+M3_GITHUB_REPOS = {
+    "frontend": [
+        # wagmi examples and patterns
+        "https://github.com/wevm/wagmi",
+        "https://github.com/wevm/viem",
+        # RainbowKit
+        "https://github.com/rainbow-me/rainbowkit",
+        # DaisyUI
+        "https://github.com/saadeghi/daisyui",
+        # Scaffold-ETH 2 (full-stack template)
+        "https://github.com/scaffold-eth/scaffold-eth-2",
+    ],
+    "indexer": [
+        # The Graph tooling
+        "https://github.com/graphprotocol/graph-tooling",
+        # Subgraph examples
+        "https://github.com/messari/subgraphs",
+        # Arbitrum subgraphs
+        "https://github.com/OffchainLabs/arbitrum-subgraphs",
+    ],
+    "oracle": [
+        # Chainlink examples
+        "https://github.com/smartcontractkit/smart-contract-examples",
+        "https://github.com/smartcontractkit/chainlink",
+    ],
+    "backend": [
+        # NestJS
+        "https://github.com/nestjs/nest",
+        # Arbitrum token bridge (for integration patterns)
+        "https://github.com/OffchainLabs/arbitrum-token-bridge",
+    ],
+}
+
 # All sources combined for easy iteration
 ALL_SOURCES = {
     "stylus": STYLUS_SOURCES,
     "arbitrum_sdk": ARBITRUM_SDK_SOURCES,
     "orbit_sdk": ORBIT_SDK_SOURCES,
     "arbitrum_docs": ARBITRUM_DOCS,
+    "m3_docs": M3_SOURCES,
+    "m3_repos": M3_GITHUB_REPOS,
 }

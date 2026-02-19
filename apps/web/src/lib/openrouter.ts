@@ -121,8 +121,24 @@ Key patterns for v${targetVersion}:
 - Include ${cfgAttr}
 - Use sol_storage! macro for storage
 - Use ${mainAttr} for external functions
+- STORAGE ACCESS: ALWAYS use .get() to read: \`self.field.get()\` NOT \`self.field\`. Use .set() to write. For mappings: \`self.map.get(key)\` and \`self.map.setter(key).set(val)\`.
 - Handle errors with ${errorHandling}
 - Follow Rust naming conventions (snake_case for functions, PascalCase for types)
+- TRANSFER ETH: \`use stylus_sdk::call::transfer::transfer_eth;\` then \`transfer_eth(self.vm(), to, amount)?;\` — NOT self.transfer_eth() or call::transfer_eth()
+- For error types: define with sol! { error MyError(...); }, wrap in enum with #[derive(SolidityError)]
+- For .abi_encode() on errors: import SolError via use alloy_sol_types::SolError
+- Nested mapping writes: chain in one expression: self.map.setter(k1).setter(k2).set(v). Do NOT split into separate variables (causes multiple active borrows)
+- Do NOT use stylus_sdk::evm (removed in 0.10.0) or stylus_sdk::msg
+- ALWAYS include \`use alloc::{vec, vec::Vec};\` — sol_storage! needs vec module in scope
+- RawCall::new_with_value(self.vm(), amount) — requires self.vm() as first arg and unsafe block
+- uint8 in sol_storage! maps to Uint<8,1> not native u8 — prefer uint256
+- Package name in Cargo.toml MUST use underscores (e.g., "my_contract") — hyphens break cargo-stylus
+- src/main.rs is REQUIRED — use print_from_args() (NOT print_abi()) for ABI export
+- crate-type in [lib] must be ["lib", "cdylib"]
+- EXTERNAL INTERFACES: use \`sol_interface!\` (NOT \`sol!\`) for external contract interfaces. CALL PATTERN: \`ifoo.method(self.vm(), Call::new(), arg1, arg2)?\` — first arg is ALWAYS self.vm(), second is a Call context (\`Call::new()\` for non-reentrant, \`Call::new_in(self)\` for reentrant contracts).
+- Stylus exports snake_case Rust fn names as camelCase in the ABI (create_market → createMarket). Frontend must use camelCase in functionName.
+- Stylus &self view functions CANNOT make external contract calls (they revert). Use &mut self or read from frontend.
+- On Arbitrum Sepolia, MetaMask may underestimate maxFeePerGas — add explicit gas overrides if "max fee per gas less than block base fee"
 
 Security best practices:
 - Check for overflows using checked_add/checked_sub
@@ -205,22 +221,67 @@ ABSOLUTE RULES - NEVER VIOLATE THESE:
 3. There must be EXACTLY ONE sol_storage! block - NEVER create empty sol_storage! blocks
 4. KEEP the #[entrypoint] attribute inside sol_storage!
 5. KEEP the #[public] attribute on the impl block
-6. NEVER add "use alloy_sol_types::sol;" - it's already available via stylus_sdk::prelude::*
+6. The sol! macro is available via prelude — do NOT add standalone "use alloy_sol_types::sol;". BUT if using .abi_encode() on errors, MUST import SolError: use alloy_sol_types::SolError;
 7. If adding events/errors with sol! macro, they must be BEFORE sol_storage!
 8. KEEP the Cargo.toml [profile.release] section exactly as provided
 
+COMPILATION-CRITICAL — these mistakes WILL break the build:
+- STORAGE ACCESS: ALWAYS use .get() to read storage: \`self.field.get()\` NOT \`self.field\`. ALWAYS use .set(val) to write: \`self.field.set(val)\`. For mappings: read with \`self.map.get(key)\`, write with \`self.map.setter(key).set(val)\`.
+- TRANSFER ETH: \`use stylus_sdk::call::transfer::transfer_eth;\` then \`transfer_eth(self.vm(), to, amount)?;\`. Do NOT use \`self.transfer_eth()\`, \`call::transfer_eth()\`, or any other path.
+- EXTERNAL INTERFACES: use \`sol_interface!\` macro (NOT \`sol!\`). \`sol!\` is ONLY for events and errors.
+- CROSS-CONTRACT CALLS: pattern is \`ifoo.method(self.vm(), Call::new(), arg1, arg2)?\`. The first arg is ALWAYS \`self.vm()\`, second is a Call context (\`Call::new()\` for non-reentrant, \`Call::new_in(self)\` for reentrant contracts). Do NOT use \`ifoo.method(self, arg1, arg2)\` or \`ifoo.method(arg1, arg2)\`.
+- External calls require \`&mut self\` (NOT \`&self\` — view functions revert on external calls)
+
 WHAT YOU MAY DO:
+- Rename the contract struct in sol_storage! to match the user's request (e.g., PredictionMarket, Lottery, etc.)
 - Add/modify storage fields inside sol_storage!
 - Add/modify functions inside the #[public] impl block
 - Add events using sol! { event EventName(...); } BEFORE sol_storage!
 - Add error types using sol! { error ErrorName(...); } BEFORE sol_storage!
 - Add internal helper functions (without #[public])
+- Define external contract interfaces with sol_interface! (NOT sol!) for cross-contract calls
 
 IMPORTS - USE THESE PATTERNS:
 - Types from stylus_sdk::alloy_primitives::{Address, U256, U8, ...}
 - sol! macro is available from stylus_sdk::prelude::*
-- For events: evm::log(EventName { field1, field2 })
-- For errors: return Err(ErrorName { ... }.abi_encode())
+- For events: self.vm().log(EventName { field1, field2 }) (NOT evm::log)
+- For caller: self.vm().msg_sender() (NOT msg::sender())
+- For ETH transfers: \`use stylus_sdk::call::transfer::transfer_eth;\` then \`transfer_eth(self.vm(), to, amount)?;\`
+- For errors: return Err(ErrorName { ... }.abi_encode()) — requires use alloy_sol_types::SolError;
+- For cross-contract calls: define with sol_interface! { interface IFoo { function bar(address) external returns (uint256); } }
+- Call pattern: \`ifoo.bar(self.vm(), Call::new(), addr)?\` — self.vm() is ALWAYS first arg
+- For reentrant contracts use \`Call::new_in(self)\` instead of \`Call::new()\`
+- External calls require &mut self (NOT &self — view functions revert on external calls)
+- Do NOT use stylus_sdk::evm (removed in 0.10.0) or stylus_sdk::msg
+
+REFERENCE CODE — copy these EXACTLY when the user's request needs them:
+
+ETH transfer (withdraw/deposit/send ETH):
+\`\`\`rust
+use stylus_sdk::call::transfer::transfer_eth;
+
+pub fn withdraw(&mut self, to: Address, amount: U256) -> Result<(), Vec<u8>> {
+    transfer_eth(self.vm(), to, amount)?;
+    Ok(())
+}
+\`\`\`
+
+Cross-contract call (interact with another deployed contract):
+\`\`\`rust
+sol_interface! {
+    interface IToken {
+        function balanceOf(address account) external view returns (uint256);
+        function transfer(address to, uint256 amount) external returns (bool);
+    }
+}
+
+// In a #[public] &mut self method:
+pub fn get_token_balance(&mut self, token: Address, account: Address) -> Result<U256, Vec<u8>> {
+    let token = IToken::new(token);
+    let balance = token.balance_of(self.vm(), Call::new(), account)?;
+    Ok(balance)
+}
+\`\`\`
 
 Output format:
 1. Brief explanation of changes (1-2 sentences)
@@ -275,14 +336,99 @@ Use the provided context to give accurate, up-to-date answers.
 Include code examples when relevant.
 Be concise but thorough.
 
-CRITICAL VERSION INFORMATION (January 2025):
+CRITICAL VERSION INFORMATION (January 2026):
 ALWAYS use these versions - ignore any outdated version info in retrieved context:
-- stylus-sdk: ${mainVersion} (stable, recommended for new projects)
+- stylus-sdk: ${mainVersion} (latest stable, recommended for new projects)
 - alloy-primitives: ${alloyVersion}
 - alloy-sol-types: ${alloyVersion}
-- Rust version: 1.81 (1.82+ may have compatibility issues)
+- Rust version: 1.88.0 (via rust-toolchain.toml)
 
-When asked about versions, ALWAYS use the version info above, NOT from retrieved context which may be outdated.`,
+IMPORTANT SDK 0.10.0 changes:
+- msg::sender() is replaced by self.vm().msg_sender()
+- msg::value() is replaced by self.vm().msg_value()
+- evm::log() is replaced by self.vm().log()
+- use stylus_sdk::evm is removed entirely — use self.vm() methods
+- transfer_eth: use stylus_sdk::call::transfer::transfer_eth; then call transfer_eth(self.vm(), to, amount)?
+- Error types: define with sol! { error MyError(...); }, wrap enum with #[derive(SolidityError)]
+- For .abi_encode() on errors: import use alloy_sol_types::SolError;
+- Nested mapping writes: chain in one expression: self.map.setter(k1).setter(k2).set(v). Do NOT split into separate variables (causes multiple active borrows)
+- Projects MUST include Stylus.toml with [workspace], [workspace.networks], and [contract] sections
+- Projects MUST include rust-toolchain.toml with channel = "1.88.0"
+- Projects MUST include src/main.rs — cargo stylus deploy uses cargo run to check constructors
+- ABI export function in 0.10.0 is print_from_args() (NOT print_abi())
+- Package name MUST use underscores (e.g., "my_contract") — hyphens break cargo-stylus WASM lookup
+- crate-type must be ["lib", "cdylib"] — "lib" needed for bin target linking
+- ALWAYS include use alloc::{vec, vec::Vec}; — sol_storage! needs vec module
+- RawCall::new_with_value(self.vm(), amount) — needs self.vm() as first arg and unsafe block
+- uint8 in sol_storage! maps to Uint<8,1>, not u8 — comparisons with u8 won't compile
+
+When asked about versions, ALWAYS use the version info above, NOT from retrieved context which may be outdated.
+
+REFERENCE CODE — use these EXACT patterns in your code examples:
+
+ETH transfer (withdraw/deposit/send ETH):
+\`\`\`rust
+use stylus_sdk::call::transfer::transfer_eth;
+
+pub fn withdraw(&mut self, to: Address, amount: U256) -> Result<(), Vec<u8>> {
+    transfer_eth(self.vm(), to, amount)?;
+    Ok(())
+}
+\`\`\`
+
+Cross-contract call (interact with another deployed contract):
+\`\`\`rust
+sol_interface! {
+    interface IToken {
+        function balanceOf(address account) external view returns (uint256);
+        function transfer(address to, uint256 amount) external returns (bool);
+    }
+}
+
+// In a #[public] &mut self method:
+pub fn get_balance(&mut self, token: Address, account: Address) -> Result<U256, Vec<u8>> {
+    let token_contract = IToken::new(token);
+    let balance = token_contract.balance_of(self.vm(), Call::new(), account)?;
+    Ok(balance)
+}
+\`\`\`
+
+Storage access:
+\`\`\`rust
+// Read: ALWAYS use .get()
+let val = self.my_field.get();
+let balance = self.balances.get(user);
+
+// Write: use .set() or .setter().set()
+self.my_field.set(new_val);
+self.balances.setter(user).set(new_balance);
+\`\`\`
+
+Nested mapping (e.g. mapping(address => mapping(address => uint256))):
+\`\`\`rust
+// In sol_storage! — use Solidity syntax, NOT Rust types:
+//   mapping(address => mapping(address => uint256)) allowances;
+
+// Read nested: chain .get() calls
+let allowance = self.allowances.get(owner).get(spender);
+
+// Write nested: chain .setter() calls in ONE expression
+self.allowances.setter(owner).setter(spender).set(value);
+\`\`\`
+
+Dynamic arrays (sol_storage! uses Solidity syntax: uint256[], address[]):
+\`\`\`rust
+// In sol_storage! — use Solidity syntax, NOT StorageVec<T>:
+//   uint256[] values;
+
+// Read: .get(index), .len() (returns usize)
+// Append primitive value — use push():
+self.values.push(new_val);
+
+// For struct arrays — use grow() then set fields:
+let mut item = self.items.grow();
+item.field_a.set(val_a);
+\`\`\``,
     },
     {
       role: "user",

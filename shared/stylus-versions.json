@@ -1,18 +1,25 @@
 {
-  "main_version": "0.9.2",
+  "main_version": "0.10.0",
   "minimum_version": "0.8.0",
   "deprecated_below": "0.8.0",
   "versions": {
     "0.10.0": {
-      "status": "pending_research",
-      "alloy_primitives": "",
-      "alloy_sol_types": "",
-      "breaking_changes": [],
-      "released": "",
-      "notes": "Placeholder — requires research to fill in details"
+      "status": "main",
+      "alloy_primitives": "1.0.1",
+      "alloy_sol_types": "1.0.1",
+      "breaking_changes": [
+        "msg::sender() replaced with self.vm().msg_sender()",
+        "msg::value() replaced with self.vm().msg_value()",
+        "evm::log() replaced with self.vm().log()",
+        "Requires Stylus.toml with [workspace], [workspace.networks], and [contract] sections",
+        "Requires rust-toolchain.toml with channel 1.88.0",
+        "alloy-primitives upgraded to 1.0.1 (no longer pinned)",
+        "ruint pin no longer needed"
+      ],
+      "released": "2026-01"
     },
     "0.9.2": {
-      "status": "main",
+      "status": "supported",
       "alloy_primitives": "=0.8.20",
       "alloy_sol_types": "=0.8.20",
       "breaking_changes": [
@@ -57,6 +64,29 @@
     }
   },
   "version_patterns": {
+    "0.10": {
+      "attributes": ["#[public]", "#[entrypoint]"],
+      "imports": ["stylus_sdk::prelude::*"],
+      "storage_macro": "sol_storage!",
+      "error_handling": "Result<T, Vec<u8>>",
+      "cfg_attr": "#![cfg_attr(not(feature = \"export-abi\"), no_main)]",
+      "sender": "self.vm().msg_sender()",
+      "value": "self.vm().msg_value()",
+      "log": "self.vm().log(Event)",
+      "transfer_eth": "transfer_eth(self, to, amount) from stylus_sdk::call::transfer",
+      "error_import": "use alloy_sol_types::SolError;",
+      "error_derive": "#[derive(SolidityError)]",
+      "forbidden_modules": ["stylus_sdk::evm", "stylus_sdk::msg"],
+      "required_files": ["Stylus.toml", "rust-toolchain.toml", "src/main.rs"],
+      "abi_export_fn": "print_from_args()",
+      "package_naming": "underscores_only",
+      "crate_type": ["lib", "cdylib"],
+      "required_imports": ["use alloc::{vec, vec::Vec};"],
+      "raw_call_api": "RawCall::new_with_value(self.vm(), amount) — requires unsafe block",
+      "uint8_note": "uint8 in sol_storage! maps to Uint<8,1>, not native u8",
+      "cross_contract_calls": "sol_interface! methods: method(self.vm(), Call::new(), ...args). Call::new_in() removed.",
+      "sol_interface_host_arg": "First arg is always self.vm() (host), second is Call context"
+    },
     "0.9": {
       "attributes": ["#[public]", "#[entrypoint]"],
       "imports": ["stylus_sdk::prelude::*"],
@@ -84,6 +114,7 @@
   },
   "deprecation_warnings": {
     "below_minimum": "Your project uses stylus-sdk {version} which is below the minimum supported version ({minimum}). Please upgrade to at least v{minimum} for full support.",
-    "deprecated_attribute": "The #[external] attribute is deprecated since v0.8.0. Use #[public] instead."
+    "deprecated_attribute": "The #[external] attribute is deprecated since v0.8.0. Use #[public] instead.",
+    "deprecated_api": "msg::sender(), msg::value(), and evm::log() are deprecated since v0.10.0. Use self.vm().msg_sender(), self.vm().msg_value(), and self.vm().log() instead."
   }
 }

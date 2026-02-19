@@ -69,8 +69,8 @@ export default async function Home() {
           </h1>
           <p className="text-lg sm:text-xl text-gray-600 mb-10 max-w-2xl mx-auto leading-relaxed">
             ARBuilder provides AI-powered tools for Stylus smart contracts,
-            cross-chain bridging, and L1/L2/L3 messaging. Connect your IDE and
-            start building in minutes.
+            cross-chain bridging, full-stack dApp generation, and L1/L2/L3
+            messaging. Connect your IDE and start building in minutes.
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
             <Link
@@ -270,6 +270,94 @@ export default async function Home() {
               </div>
             ))}
           </div>
+
+          {/* Full dApp Builder Tools */}
+          <div className="text-center mb-12 mt-16">
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-50 rounded-full text-emerald-700 text-sm font-medium mb-4">
+              Full dApp Builder
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
+              Complete dApp Scaffolding
+            </h2>
+            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+              Generate entire dApp stacks from a single prompt — contracts, APIs, frontends, indexers, and oracles
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[
+              {
+                icon: (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+                ),
+                iconBg: "bg-emerald-100",
+                iconColor: "text-emerald-600",
+                title: "Backend Generation",
+                description: "Generate NestJS or Express backends with Web3 integration, viem, and contract interaction.",
+              },
+              {
+                icon: (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                ),
+                iconBg: "bg-green-100",
+                iconColor: "text-green-600",
+                title: "Frontend Generation",
+                description: "Build Next.js + wagmi + RainbowKit frontends with DaisyUI components.",
+              },
+              {
+                icon: (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+                ),
+                iconBg: "bg-teal-100",
+                iconColor: "text-teal-600",
+                title: "Indexer Generation",
+                description: "Create The Graph subgraphs for indexing ERC20, ERC721, DeFi, and custom events.",
+              },
+              {
+                icon: (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                ),
+                iconBg: "bg-lime-100",
+                iconColor: "text-lime-600",
+                title: "Oracle Integration",
+                description: "Integrate Chainlink Price Feeds, VRF, Automation, and Functions.",
+              },
+              {
+                icon: (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                ),
+                iconBg: "bg-emerald-100",
+                iconColor: "text-emerald-600",
+                title: "Full Orchestration",
+                description: "Scaffold complete dApps with monorepo structure, all components wired together.",
+              },
+              {
+                icon: (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                ),
+                iconBg: "bg-green-100",
+                iconColor: "text-green-600",
+                title: "ABI Auto-Extraction",
+                description: "Contract ABI parsed from Stylus Rust code and injected into all components.",
+              },
+            ].map((feature, index) => (
+              <div
+                key={feature.title}
+                className={`bg-white p-6 rounded-2xl border border-gray-100 shadow-sm card-hover opacity-0 animate-fade-in stagger-${index + 1}`}
+              >
+                <div className={`w-12 h-12 ${feature.iconBg} rounded-xl flex items-center justify-center mb-4`}>
+                  <svg className={`w-6 h-6 ${feature.iconColor}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    {feature.icon}
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  {feature.title}
+                </h3>
+                <p className="text-gray-600 leading-relaxed">
+                  {feature.description}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -300,7 +388,7 @@ export default async function Home() {
     "arbbuilder": {
       "command": "npx",
       "args": ["-y", "mcp-remote",
-               "https://arbbuilder.whymelabs.com/mcp",
+               "https://arbuilder.app/mcp",
                "--header", "Authorization: Bearer YOUR_API_KEY"]
     }
   }
@@ -381,7 +469,7 @@ export default async function Home() {
                 <span className="text-white font-bold text-sm">AR</span>
               </div>
               <span className="text-gray-600">
-                ARBuilder - AI-powered Stylus development tools
+                ARBuilder - AI-powered Arbitrum development tools
               </span>
             </div>
             <div className="flex gap-8">
