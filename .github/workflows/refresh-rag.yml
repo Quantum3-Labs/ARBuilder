@@ -124,7 +124,7 @@ jobs:
       - name: Run diff-based migration
         env:
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
-          MIGRATE_URL: https://arbbuilder.whymelabs.com
+          MIGRATE_URL: https://arbuilder.app
         run: |
           if [ "${{ github.event.inputs.force_full_refresh }}" == "true" ]; then
             npx tsx scripts/diff-migrate.ts --full
@@ -168,7 +168,7 @@ jobs:
       - name: Run quality validation
         env:
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
-          API_URL: https://arbbuilder.whymelabs.com
+          API_URL: https://arbuilder.app
         run: npx tsx scripts/validate-rag-quality.ts
 
   summary:

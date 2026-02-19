@@ -127,6 +127,53 @@ All fail to compile due to OZ 0.3.0 incompatibility or linker errors:
 - nestjs/nest, saadeghi/daisyui, rainbow-me/rainbowkit
 - smartcontractkit/chainlink, messari/subgraphs
 
+## Data Quality Filters (3-Layer System)
+
+The preprocessing pipeline applies a 3-layer filtering system to remove junk data before it reaches the vector database. Without these filters, ~62% of chunks would be low-quality vendored code, auto-generated files, or bytecode.
+
+### Layer 1: Scraper (`scraper/github_scraper.py`)
+
+Skips junk files at clone time, before reading content from disk.
+
+| Filter | What it catches | Example |
+|--------|----------------|---------|
+| `SKIP_DIRS` | Vendored crates, build artifacts | `vendor/`, `third_party/`, `artifacts/` |
+| `SKIP_FILE_NAMES` | Lock files | `package-lock.json`, `Cargo.lock` |
+| `SKIP_FILE_SUBSTRINGS` | TypeChain factories | `*__factory.ts`, `*__factory.js` |
+| `SKIP_TS_JS_IN_DIRS` | TS/JS in ABI dirs | `abi/*.ts` (keeps `.rs`, `.json`) |
+| `SKIP_DIR_PREFIXES` | ABI variant dirs | `abi-bold/`, `abi-nitro/` |
+
+### Layer 2: Processor (`src/preprocessing/processor.py`)
+
+Defense-in-depth for files already in `github_repos_*.json`, plus content-based filters.
+
+| Filter | What it catches |
+|--------|----------------|
+| `_should_skip_file()` | Same patterns as Layer 1 (catches pre-existing raw data) |
+| `_is_hex_heavy()` | Bytecode mocks, ABI hex dumps (>40% hex chars) |
+| `_cross_repo_dedup()` | Exact-content duplicates across different repos (keeps highest-priority source) |
+
+**Cross-repo dedup priority** (lower number = kept):
+1. `official_examples` / `official_repos`
+2. `verified_production` / `forked_0_10_0`
+3. `community_projects` / `community_examples`
+4. `scaffold_projects`
+
+### Layer 3: Stats & Reporting
+
+Filter results are tracked in `processing_stats_*.json` under `filter_stats` and printed to console after processing.
+
+## Embedding Model
+
+Both the local Python pipeline and Cloudflare hosted service use **BGE-M3** (1024 dimensions) for embedding consistency:
+
+| Environment | Model ID | Provider |
+|-------------|----------|----------|
+| Local (Python) | `baai/bge-m3` | OpenRouter |
+| CF Workers (hosted) | `@cf/baai/bge-m3` | Cloudflare Workers AI |
+
+BGE-M3 supports multi-lingual text and dense/sparse/multi-vector retrieval. Using the same model ensures compatible embeddings — corpus vectors from Python work with query vectors from the CF worker. Pre-built embeddings are published via GitHub Releases for zero-setup local dev.
+
 ## Multi-Version Data Strategy
 
 ### Overview
@@ -317,4 +364,4 @@ python scripts/verify_source.py --all --steps 1,2,4
 |----------|---------|
 | `GITHUB_TOKEN` | GitHub API auth (for discovery + health checks) |
 | `ARBBUILDER_ADMIN_SECRET` | Admin API auth for remote sync |
-| `ARBBUILDER_API_URL` | Remote API URL (default: https://arbbuilder.whymelabs.com) |
+| `ARBBUILDER_API_URL` | Remote API URL (default: https://arbuilder.app) |

@@ -610,7 +610,7 @@ Target network: ${network}
 
 ## Generated with ARBuilder
 
-https://arbbuilder.whymelabs.com
+https://arbuilder.app
 `,
 
     ".gitignore": `# Dependencies

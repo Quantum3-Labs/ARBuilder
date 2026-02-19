@@ -354,7 +354,15 @@ class MMRReranker:
             embedding_client: EmbeddingClient instance for generating embeddings. If None, creates new instance.
         """
         self.lambda_param = lambda_param
-        self.embedding_client = embedding_client or EmbeddingClient()
+        if embedding_client is not None:
+            self.embedding_client = embedding_client
+        else:
+            try:
+                self.embedding_client = EmbeddingClient()
+            except (ValueError, Exception) as e:
+                import logging
+                logging.warning(f"EmbeddingClient unavailable (MMR will use fallback): {e}")
+                self.embedding_client = None
 
     def rerank(
         self,
@@ -494,7 +502,15 @@ class HybridReranker:
         self.use_mmr = use_mmr
         self.use_llm = use_llm
         self.llm_reranker = llm_reranker
-        self.embedding_client = embedding_client or EmbeddingClient()
+        if embedding_client is not None:
+            self.embedding_client = embedding_client
+        else:
+            try:
+                self.embedding_client = EmbeddingClient()
+            except (ValueError, Exception) as e:
+                import logging
+                logging.warning(f"EmbeddingClient unavailable (MMR will use fallback): {e}")
+                self.embedding_client = None
 
         # Initialize cross-encoder
         if use_cross_encoder:
@@ -597,13 +613,13 @@ class HybridReranker:
             
             # Merge cross-encoder scores with MMR rankings
             final_results = []
-            for mmr_r in mmr_results:
+            for i, mmr_r in enumerate(mmr_results):
                 ce_score = results[mmr_r["index"]]["score"]
                 final_results.append({
                     "original_index": results[mmr_r["index"]].get("index", mmr_r["index"]),
                     "document": mmr_r["document"],
                     "cross_encoder_score": ce_score,
-                    "mmr_rank": mmr_r["mmr_rank"],
+                    "mmr_rank": mmr_r.get("mmr_rank", i + 1),
                     "relevance_score": mmr_r["score"],
                 })
             

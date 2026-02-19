@@ -73,8 +73,15 @@ class VectorDB:
             settings=Settings(anonymized_telemetry=False),
         )
 
-        # Initialize embedding client
-        self.embedding_client = embedding_client or EmbeddingClient()
+        # Initialize embedding client (gracefully handle missing credentials)
+        if embedding_client is not None:
+            self.embedding_client = embedding_client
+        else:
+            try:
+                self.embedding_client = EmbeddingClient()
+            except (ValueError, Exception) as e:
+                logger.warning(f"EmbeddingClient unavailable: {e}")
+                self.embedding_client = None
 
         # Get or create collection
         self.collection = self.client.get_or_create_collection(
@@ -285,6 +292,10 @@ class VectorDB:
             Query results with ids, documents, metadatas, and distances.
         """
         # Generate query embedding
+        if self.embedding_client is None:
+            raise RuntimeError(
+                "EmbeddingClient not available. Set OPENROUTER_API_KEY in .env."
+            )
         query_embedding = self.embedding_client.embed(query_text)
 
         # Query collection

@@ -7,15 +7,13 @@
 		"build": "next build",
 		"start": "next start",
 		"lint": "next lint",
-		"deploy": "bash scripts/deploy-with-containers.sh",
-		"deploy:nocontainers": "opennextjs-cloudflare build && wrangler deploy -c wrangler.jsonc",
+		"deploy": "opennextjs-cloudflare build && wrangler deploy -c wrangler.jsonc",
 		"upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
 		"preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
 		"cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts"
 	},
 	"dependencies": {
 		"@auth/d1-adapter": "^1.11.1",
-		"@cloudflare/containers": "^0.0.31",
 		"@opennextjs/cloudflare": "^1.14.4",
 		"next": "15.5.9",
 		"next-auth": "^5.0.0-beta.30",

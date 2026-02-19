@@ -21,7 +21,7 @@ import httpx
 app = Flask(__name__)
 
 # Environment variables (passed from Worker)
-MIGRATE_URL = os.environ.get("MIGRATE_URL", "https://arbbuilder.whymelabs.com")
+MIGRATE_URL = os.environ.get("MIGRATE_URL", "https://arbuilder.app")
 AUTH_SECRET = os.environ.get("AUTH_SECRET", "")
 
 # Minimum supported stylus-sdk version

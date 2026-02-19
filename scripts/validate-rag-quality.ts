@@ -13,7 +13,7 @@ import { join } from "path";
 
 // Configuration
 const API_URL =
-  process.env.API_URL || "https://arbbuilder.whymelabs.com";
+  process.env.API_URL || "https://arbuilder.app";
 const AUTH_SECRET = process.env.AUTH_SECRET!;
 const STATE_DIR = "./.rag-state";
 const SDK_VERSION_FILE = join(STATE_DIR, "sdk_version");

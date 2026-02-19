@@ -78,7 +78,7 @@ def export_embeddings(
 
     if dry_run:
         console.print(f"[yellow]DRY RUN MODE - using random embeddings[/yellow]")
-        dimensions = 768  # Standard embedding dimension
+        dimensions = 1024  # BGE-M3 dimension
         model_name = "dry-run/fake-embeddings"
     else:
         # Initialize embedding client

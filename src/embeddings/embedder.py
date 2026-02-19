@@ -20,7 +20,7 @@ from tenacity import (
 load_dotenv()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-DEFAULT_EMBEDDING_MODEL = os.getenv("DEFAULT_EMBEDDING", "google/gemini-embedding-001")
+DEFAULT_EMBEDDING_MODEL = os.getenv("DEFAULT_EMBEDDING", "baai/bge-m3")
 
 # Configure logging
 logger = logging.getLogger(__name__)

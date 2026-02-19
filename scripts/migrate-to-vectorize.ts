@@ -12,7 +12,7 @@
  * AUTH_SECRET=xxx npx tsx scripts/migrate-to-vectorize.ts
  *
  * Or for production:
- * AUTH_SECRET=xxx MIGRATE_URL=https://arbbuilder.whymelabs.com npx tsx scripts/migrate-to-vectorize.ts
+ * AUTH_SECRET=xxx MIGRATE_URL=https://arbuilder.app npx tsx scripts/migrate-to-vectorize.ts
  */
 
 import { readFileSync, readdirSync } from "fs";

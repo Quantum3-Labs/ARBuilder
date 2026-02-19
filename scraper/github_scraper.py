@@ -56,7 +56,24 @@ SKIP_DIRS = {
     "build",
     "__pycache__",
     ".cargo",
+    "vendor",
+    "third_party",
+    "artifacts",
+    ".next",
+    "coverage",
 }
+
+# Lock files and generated files to skip entirely
+SKIP_FILE_NAMES = {"package-lock.json", "yarn.lock", "Cargo.lock", "pnpm-lock.yaml"}
+
+# Files with these substrings in their relative path are auto-generated
+SKIP_FILE_SUBSTRINGS = ["__factory.ts", "__factory.js"]
+
+# Skip .ts/.js files inside these directory names (keep .rs, .json, etc.)
+SKIP_TS_JS_IN_DIRS = {"abi"}
+
+# Skip ALL files in directories whose name starts with these prefixes
+SKIP_DIR_PREFIXES = ["abi-"]
 
 
 def clone_repo(repo_url: str, target_dir: Path, retries: int = MAX_RETRIES, force_reclone: bool = False) -> bool:
@@ -205,6 +222,32 @@ def extract_code_files(repo_dir: Path) -> list[dict]:
             # Only include relevant extensions
             if path.suffix not in CODE_EXTENSIONS:
                 continue
+
+            # Skip lock files and known generated files
+            if path.name in SKIP_FILE_NAMES:
+                skipped_count += 1
+                continue
+
+            rel_path = str(path.relative_to(repo_dir))
+
+            # Skip __factory.ts / __factory.js generated files
+            if any(sub in rel_path for sub in SKIP_FILE_SUBSTRINGS):
+                skipped_count += 1
+                continue
+
+            # For .ts/.js files: skip if inside abi/ dirs or abi-* dirs
+            if path.suffix in {".ts", ".js"}:
+                parts = path.relative_to(repo_dir).parts
+                if any(part in SKIP_TS_JS_IN_DIRS for part in parts):
+                    skipped_count += 1
+                    continue
+                if any(
+                    part.startswith(prefix)
+                    for part in parts
+                    for prefix in SKIP_DIR_PREFIXES
+                ):
+                    skipped_count += 1
+                    continue
 
             try:
                 content = path.read_text(encoding="utf-8", errors="ignore")

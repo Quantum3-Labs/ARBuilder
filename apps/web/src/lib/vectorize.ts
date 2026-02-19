@@ -1,7 +1,7 @@
 /**
  * Vectorize client utilities for RAG operations.
  *
- * Uses Cloudflare Vectorize with BGE-Large embeddings (1024 dimensions).
+ * Uses Cloudflare Vectorize with BGE-M3 embeddings (1024 dimensions).
  * Supports metadata filtering for efficient content type queries.
  */
 
@@ -85,7 +85,7 @@ export async function searchVectorize(
 
 /**
  * Generate embeddings using Workers AI BGE-M3 model (1024 dimensions).
- * BGE-M3 supports multi-lingual text and longer context.
+ * BGE-M3 supports multi-lingual text and dense/sparse/multi-vector retrieval.
  */
 export async function generateEmbedding(
   ai: Ai,

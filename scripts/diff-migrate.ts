@@ -26,7 +26,7 @@ const LAST_REFRESH_FILE = join(STATE_DIR, "last-refresh.json");
 const BATCH_SIZE = 20;
 const AUTH_SECRET = process.env.AUTH_SECRET!;
 const MIGRATE_URL =
-  process.env.MIGRATE_URL || "https://arbbuilder.whymelabs.com";
+  process.env.MIGRATE_URL || "https://arbuilder.app";
 
 // Chunk structure with new metadata fields
 interface ProcessedChunk {

@@ -20,7 +20,11 @@ class TestBM25Reranker:
 
     @pytest.fixture
     def reranker(self):
-        return HybridReranker(use_llm=False)
+        r = HybridReranker(use_llm=False)
+        has_ce = r.cross_encoder and getattr(r.cross_encoder, "available", False)
+        if not has_ce:
+            pytest.skip("Cross-encoder unavailable (NVIDIA_API_KEY not set)")
+        return r
 
     def test_basic_reranking(self, reranker):
         """Test that BM25 reranks based on keyword relevance."""
@@ -93,7 +97,11 @@ class TestHybridReranker:
 
     @pytest.fixture
     def reranker(self):
-        return HybridReranker(use_llm=False)
+        r = HybridReranker(use_llm=False)
+        has_ce = r.cross_encoder and getattr(r.cross_encoder, "available", False)
+        if not has_ce:
+            pytest.skip("Cross-encoder unavailable (NVIDIA_API_KEY not set)")
+        return r
 
     def test_rrf_combination(self, reranker):
         """Test RRF combines rankings properly."""
@@ -131,11 +139,19 @@ class TestRerankerIntegration:
 
     @pytest.fixture
     def bm25_reranker(self):
-        return HybridReranker(use_llm=False)
+        r = HybridReranker(use_llm=False)
+        has_ce = r.cross_encoder and getattr(r.cross_encoder, "available", False)
+        if not has_ce:
+            pytest.skip("Cross-encoder unavailable (NVIDIA_API_KEY not set)")
+        return r
 
     @pytest.fixture
     def hybrid_reranker(self):
-        return HybridReranker(use_llm=False)
+        r = HybridReranker(use_llm=False)
+        has_ce = r.cross_encoder and getattr(r.cross_encoder, "available", False)
+        if not has_ce:
+            pytest.skip("Cross-encoder unavailable (NVIDIA_API_KEY not set)")
+        return r
 
     def test_reranking_improves_precision(self, vectordb, bm25_reranker):
         """Test that reranking improves precision on real queries."""

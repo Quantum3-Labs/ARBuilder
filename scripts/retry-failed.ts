@@ -7,7 +7,7 @@ import { join } from "path";
 
 const PROCESSED_DIR = "./data/processed";
 const AUTH_SECRET = process.env.AUTH_SECRET;
-const MIGRATE_URL = process.env.MIGRATE_URL || "https://arbbuilder.swmengappdev.workers.dev";
+const MIGRATE_URL = process.env.MIGRATE_URL || "https://arbbuilder.arbuilder-app.workers.dev";
 
 // Failed chunk IDs from the migration
 const FAILED_IDS = [

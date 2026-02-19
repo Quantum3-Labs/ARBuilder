@@ -22,7 +22,7 @@ import httpx
 app = Flask(__name__)
 
 # Environment variables (passed from Worker)
-MIGRATE_URL = os.environ.get("MIGRATE_URL", "https://arbbuilder.whymelabs.com")
+MIGRATE_URL = os.environ.get("MIGRATE_URL", "https://arbuilder.app")
 AUTH_SECRET = os.environ.get("AUTH_SECRET", "")
 
 # Minimum supported stylus-sdk version
@@ -127,7 +127,7 @@ class SourceProcessor:
             # Use simple HTTP request - works for most static docs
             async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
                 response = await client.get(url, headers={
-                    "User-Agent": "Mozilla/5.0 (compatible; ArbBuilder/1.0; +https://arbbuilder.whymelabs.com)"
+                    "User-Agent": "Mozilla/5.0 (compatible; ArbBuilder/1.0; +https://arbuilder.app)"
                 })
                 response.raise_for_status()
                 html = response.text

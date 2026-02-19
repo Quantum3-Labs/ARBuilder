@@ -149,8 +149,18 @@ def load_prebuilt(
             batch_documents = [str(doc) for doc in documents[i:batch_end]]
             batch_metadatas = [sanitize_metadata(m) for m in metadatas[i:batch_end]]
 
+            # Deduplicate within batch (keep last occurrence)
+            seen = {}
+            for j, bid in enumerate(batch_ids):
+                seen[bid] = j
+            if len(seen) < len(batch_ids):
+                unique_indices = sorted(seen.values())
+                batch_ids = [batch_ids[j] for j in unique_indices]
+                batch_embeddings = [batch_embeddings[j] for j in unique_indices]
+                batch_documents = [batch_documents[j] for j in unique_indices]
+                batch_metadatas = [batch_metadatas[j] for j in unique_indices]
+
             try:
-                # Use upsert to handle duplicates
                 collection.upsert(
                     ids=batch_ids,
                     embeddings=batch_embeddings,

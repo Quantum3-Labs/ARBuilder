@@ -62,7 +62,7 @@ export async function chatCompletion(
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
-      "HTTP-Referer": "https://arbbuilder.whymelabs.com",
+      "HTTP-Referer": "https://arbuilder.app",
       "X-Title": "ARBuilder",
     },
     body: JSON.stringify({
