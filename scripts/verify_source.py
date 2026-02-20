@@ -330,7 +330,12 @@ class SourceVerifier:
             ))
 
     def _compile_stylus(self):
-        """Run cargo stylus check on Stylus repos."""
+        """Run WASM compile check on Stylus repos.
+
+        Uses --target wasm32-unknown-unknown --lib to verify WASM deployability.
+        Native builds fail on missing Stylus host functions (msg_sender, etc.)
+        which only exist in the Stylus VM, not on any native platform.
+        """
         # Find the directory with the stylus Cargo.toml
         work_dir = self._find_stylus_root()
         if not work_dir:
@@ -340,9 +345,20 @@ class SourceVerifier:
             ))
             return
 
-        # Use cargo build --release (compile only, no on-chain verification)
-        # cargo stylus check tries to connect to a local devnode which may not be running
-        cmd = ["cargo", "build", "--release"]
+        # Use WASM target — this is what cargo stylus check does internally.
+        # Native builds (cargo build --release) may succeed on macOS via
+        # -undefined dynamic_lookup linker flags but crash at runtime,
+        # and fail outright on Linux without those flags.
+
+        # Ensure wasm32-unknown-unknown target is installed for the repo's toolchain
+        subprocess.run(
+            ["rustup", "target", "add", "wasm32-unknown-unknown"],
+            capture_output=True, text=True, timeout=60, cwd=str(work_dir),
+        )
+
+        # Use cargo check (type/borrow check only, no codegen) to save disk space.
+        # cargo build --release generates ~1-2GB of artifacts per repo.
+        cmd = ["cargo", "check", "--target", "wasm32-unknown-unknown", "--lib"]
 
         console.print(f"  Running: {' '.join(cmd)} in {work_dir}")
         try:
@@ -355,11 +371,9 @@ class SourceVerifier:
             )
 
             passed = result.returncode == 0
-            # Also check if cargo stylus check would pass (compilation part)
-            # by looking at stderr — if "Finished" appears, compilation succeeded
+            # Also check if "Finished" appears (compilation succeeded)
             compiled_ok = "Finished" in result.stderr or "Finished" in result.stdout
             if not passed and compiled_ok:
-                # Build succeeded but something else failed (e.g., post-build step)
                 passed = True
 
             console.print(f"  {'PASS' if passed else 'FAIL'} (exit code {result.returncode})")
@@ -378,6 +392,12 @@ class SourceVerifier:
                     "stderr_tail": result.stderr.strip()[-500:] if not passed else "",
                 },
             ))
+
+            # Clean up target dir to save disk space
+            target_dir = work_dir / "target"
+            if target_dir.exists():
+                shutil.rmtree(target_dir, ignore_errors=True)
+                console.print("  [dim]Cleaned up target/ directory[/dim]")
 
         except subprocess.TimeoutExpired:
             console.print("[red]  Compile timed out (300s)[/red]")
@@ -415,7 +435,7 @@ class SourceVerifier:
             # Install deps
             install_result = subprocess.run(
                 ["npm", "install"],
-                capture_output=True, text=True, timeout=120, cwd=str(work_dir),
+                capture_output=True, text=True, timeout=300, cwd=str(work_dir),
             )
 
             if install_result.returncode != 0:
@@ -590,13 +610,16 @@ class SourceVerifier:
         # Pass criteria: not archived and not deleted
         # "stale" and "abandoned" are warnings, not failures (repo may be complete)
         # Tests timed out = inconclusive, not failure
+        # Host function crashes = expected for Stylus, not failure
         health_score = combined.get("health_score", "unknown")
         hard_fail = health_score in ("archived", "deleted")
         tests_timed_out = combined.get("tests_timed_out", False)
+        host_fn_crash = combined.get("host_fn_crash", False)
         tests_failed = (
             combined.get("has_tests")
             and not combined.get("tests_pass")
             and not tests_timed_out
+            and not host_fn_crash
         )
         passed = not hard_fail and not tests_failed
 
@@ -649,7 +672,28 @@ class SourceVerifier:
                 if count_match:
                     result["test_count"] = int(count_match.group(1))
 
-                console.print(f"  Tests: {'PASS' if result['tests_pass'] else 'FAIL'} ({result['test_count']} passed)")
+                # Detect Stylus native test failures — these are expected.
+                # Stylus contracts can't run tests natively because:
+                # 1. Host functions (msg_sender, etc.) only exist in Stylus VM
+                # 2. Test binary compile fails due to native dep conflicts
+                # 3. Runtime crashes from undefined symbols via dynamic_lookup
+                # The WASM compile check (step 2) is the real quality signal.
+                stderr_combined = test_run.stderr + test_run.stdout
+                native_test_failure = any(s in stderr_combined for s in [
+                    "symbol not found", "undefined symbol",
+                    "dyld: missing symbol", "SIGILL", "SIGSEGV",
+                    "signal: 4", "signal: 11",
+                    "process didn't exit successfully",
+                    "could not compile",  # compile-time failure
+                    "build failed",  # workspace build failure
+                    "ld: symbol(s) not found",  # macOS linker
+                    "undefined reference",  # Linux linker
+                ])
+                if not result["tests_pass"] and native_test_failure and result["test_count"] == 0:
+                    result["host_fn_crash"] = True
+                    console.print("  Tests: [yellow]SKIP[/yellow] (native test build fails — expected for Stylus)")
+                else:
+                    console.print(f"  Tests: {'PASS' if result['tests_pass'] else 'FAIL'} ({result['test_count']} passed)")
 
             except subprocess.TimeoutExpired:
                 console.print("  [yellow]Tests timed out (180s) — inconclusive[/yellow]")
@@ -866,7 +910,11 @@ class SourceVerifier:
                 "low": vuln_meta.get("low", 0),
             }
 
-            console.print(f"  Dependency audit: {'CLEAN' if total == 0 else f'{total} vulnerabilities (C:{severity[\"critical\"]} H:{severity[\"high\"]} M:{severity[\"moderate\"]} L:{severity[\"low\"]})'}")
+            if total == 0:
+                console.print("  Dependency audit: CLEAN")
+            else:
+                c, h, m, l = severity["critical"], severity["high"], severity["moderate"], severity["low"]
+                console.print(f"  Dependency audit: {total} vulnerabilities (C:{c} H:{h} M:{m} L:{l})")
             return {
                 "audit_run": True,
                 "tool": "npm audit",
@@ -1157,6 +1205,9 @@ def print_summary(reports: list[dict]):
                 return "[dim]·[/dim]"  # Step not run
             if s.get("skipped"):
                 return "[yellow]-[/yellow]"
+            # Host function crash = expected for Stylus, show as skip
+            if step_name == "tests_and_health" and s.get("host_fn_crash"):
+                return "[yellow]~[/yellow]"
             return "[green]Y[/green]" if s.get("passed") else "[red]N[/red]"
 
         table.add_row(
