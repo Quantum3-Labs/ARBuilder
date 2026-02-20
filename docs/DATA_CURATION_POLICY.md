@@ -18,7 +18,7 @@ ARBuilder's knowledge base must only contain **verified, working code** that com
 - Prefer `stylus-sdk >= 0.10.0` (main version)
 - Must be actively maintained (commits within 6 months)
 - Must be deployable and functional
-- Verified with `scripts/verify_source.py --steps 1,2,4`
+- Verified with `scripts/verify_source.py --steps 1,2,4,5`
 
 **Exclusion criteria:**
 - Meta-lists (e.g., awesome-stylus) - contain mixed quality/versions
@@ -39,6 +39,32 @@ ARBuilder's knowledge base must only contain **verified, working code** that com
 | Rust | 1.88.0 | 1.81 |
 
 **Note:** Anything below stylus-sdk 0.8.0 is deprecated (uses `#[external]` instead of `#[public]`).
+
+## Verification Coverage
+
+The verification pipeline (`scripts/verify_source.py --all`) covers all source registries:
+
+- **PROJECT_EXAMPLES** (19 repos): M1 Stylus (13) + M2 SDK (5) + Orbit (1)
+- **M3_GITHUB_REPOS** (12 repos): wagmi, viem, nestjs, chainlink, etc.
+
+**Verification includes:**
+- SDK version check (stylus-sdk >= 0.8.0 or @arbitrum/sdk >= 4.0.0)
+- Compile check + linting (cargo clippy for Rust, npm lint for TypeScript — informational)
+- Tests, GitHub health, and dependency audit
+- Package manager auto-detection (pnpm/yarn/npm from lockfile)
+
+**Continuous verification:** The `maintenance.yml` workflow automatically re-verifies all repos when a new SDK version is detected, and creates a GitHub issue if any repos fail.
+
+### AI Security + Code Quality Review
+
+Step 5 of the verification pipeline runs an LLM-based code review (via OpenRouter) on each repo's source files:
+
+- **Security score** (0–100): Checks for key management issues, input validation, access control, overflow risks
+- **Quality score** (0–100): Code structure, error handling, documentation
+- **Teaching value** (high/medium/low): Whether the code demonstrates clean patterns worth teaching the AI
+- **Recommendation**: "include", "include_with_caveats", or "exclude"
+
+**Last review (2026-02-21):** 30/31 repos reviewed. Mean security score: 86/100. All repos scored ≥75 and received "include" or "include_with_caveats". 2 repos rated "high" teaching value (rust-contracts-stylus, stylusport). Common flagged issues: hardcoded example keys, missing input validation, use of `unwrap()`/`panic!()` — typical for tutorial code and non-blocking.
 
 ## Current Verified Sources (19 repos, verified 2026-02-16)
 
@@ -329,11 +355,22 @@ The RAG pipeline applies version-aware scoring during retrieval:
 
 | Script | Purpose | Usage |
 |--------|---------|-------|
-| `scripts/verify_source.py` | Verify repos compile and pass tests | `python scripts/verify_source.py --all --steps 1,2,4` |
+| `scripts/verify_source.py` | Verify repos compile, lint, and pass tests | `python scripts/verify_source.py --all --steps 1,2,4` |
 | `scripts/maintain_sources.py monitor` | Check crates.io/npm for new SDK releases | Flags all outdated repos |
 | `scripts/maintain_sources.py discover` | Search GitHub for new community repos | Returns candidates to verify |
 | `scripts/maintain_sources.py health` | Check GitHub health of all config repos | Finds archived/deleted repos |
+| `scripts/maintain_sources.py remediate` | Auto-remove critical repos from config | Removes archived/deleted, flags abandoned |
 | `scripts/audit_data.py` | Detect orphans and config drift | Compare disk vs config |
+
+### Auto-Remediation Policy
+
+The `remediate` command performs automatic cleanup of the source registry:
+
+- **Critical (archived/deleted/404)**: Automatically removed from `scraper/config.py`
+- **Abandoned (>365 days without update)**: Flagged for manual review but NOT auto-removed
+- **Stale (90-365 days)**: Informational only, no action taken
+
+In CI (`maintenance.yml`), remediation is **manual trigger only** — config changes always need human review. When triggered, it auto-commits the cleaned config.
 
 ### Scenario 1: Adding New Sources
 
@@ -357,6 +394,10 @@ python scripts/sync_remote_db.py --reingest
 ### Scenario 2: Removing Unmaintained Sources
 
 ```bash
+# Option A: Auto-remediate (removes archived/deleted from config)
+python scripts/maintain_sources.py remediate
+
+# Option B: Manual
 # 1. Run health check to identify issues
 python scripts/maintain_sources.py health
 

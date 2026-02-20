@@ -1,0 +1,1219 @@
+[
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/stylus-hello-world",
+    "repo_name": "ARBuilder-Forks_stylus-hello-world",
+    "repo_type": "stylus",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:23:30.130900",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 85,
+        "quality_score": 80,
+        "teaching_value": "medium",
+        "recommendation": "include_with_caveats",
+        "issues": [
+          {
+            "severity": "warning",
+            "file": "examples/counter.rs",
+            "message": "The example reads the private key from a file. This is not a secure practice and should be avoided in production environments. Consider using a secure key management system."
+          },
+          {
+            "severity": "info",
+            "file": "src/lib.rs",
+            "message": "The contract includes a `mul_number` function which could lead to potential overflow issues if not handled carefully."
+          }
+        ],
+        "summary": "The code provides a basic counter contract example with interaction code. The example has some minor security and quality concerns that should be addressed before being used in a production environment."
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "official_examples",
+    "config_sdk_version": "0.10.0"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/stylus-quickstart-vending-machine",
+    "repo_name": "ARBuilder-Forks_stylus-quickstart-vending-machine",
+    "repo_type": "stylus",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:23:35.449526",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 75,
+        "quality_score": 70,
+        "teaching_value": "medium",
+        "recommendation": "include_with_caveats",
+        "issues": [
+          {
+            "severity": "warning",
+            "file": "examples/vending_machine.rs",
+            "message": "Private key is read from file and printed to console, which is a security risk.  This should be removed or handled more securely (e.g., using a secure enclave or hardware wallet)."
+          },
+          {
+            "severity": "warning",
+            "file": "examples/vending_machine.rs",
+            "message": "Error handling could be improved.  Consider using more specific error types and providing more context in error messages."
+          },
+          {
+            "severity": "info",
+            "file": "examples/vending_machine.rs",
+            "message": "The example code relies on environment variables for sensitive information like private keys and RPC URLs.  This is acceptable for development but should be handled more securely in a production environment."
+          },
+          {
+            "severity": "info",
+            "file": "src/lib.rs",
+            "message": "The contract logic allows a user to receive a cupcake every 5 seconds. This might be too frequent and could be adjusted based on the application's requirements."
+          },
+          {
+            "severity": "info",
+            "file": "src/lib.rs",
+            "message": "The contract uses `console!` for logging. While useful for debugging, it should be removed or replaced with a more appropriate logging mechanism in a production environment."
+          }
+        ],
+        "summary": "The example code demonstrates a basic interaction with a Stylus contract, but it has some security and quality issues that need to be addressed before it can be considered production-ready. The contract code itself is simple and demonstrates basic storage patterns."
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "official_examples",
+    "config_sdk_version": "0.10.0"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/stylus-workshop-gol",
+    "repo_name": "ARBuilder-Forks_stylus-workshop-gol",
+    "repo_type": "stylus",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:23:39.265705",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 85,
+        "quality_score": 80,
+        "teaching_value": "medium",
+        "recommendation": "include_with_caveats",
+        "issues": [
+          {
+            "severity": "warning",
+            "file": "apps/contracts-stylus/src/lib.rs",
+            "message": "The `mint` function in the contract directly mints to the message sender without any access control. This could be a potential security issue if the contract logic relies on specific roles or permissions for minting."
+          },
+          {
+            "severity": "info",
+            "file": "apps/contracts-stylus/tests/integration_test.rs",
+            "message": "The integration test uses a hardcoded private key. This is acceptable for local testing but should never be used in a production environment."
+          },
+          {
+            "severity": "info",
+            "file": "apps/contracts-stylus/src/lib.rs",
+            "message": "The tokenURI function generates SVG images on-chain. While interesting, this can be gas-intensive and might be better handled off-chain."
+          }
+        ],
+        "summary": "The code implements a simple Game of Life NFT contract with minting and token URI generation. The integration tests cover basic functionality, but the contract lacks access control on minting and the token URI generation is gas-intensive."
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "official_examples",
+    "config_sdk_version": "0.9.0"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/rust-contracts-stylus",
+    "repo_name": "ARBuilder-Forks_rust-contracts-stylus",
+    "repo_type": "stylus",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:23:43.532035",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 95,
+        "quality_score": 90,
+        "teaching_value": "high",
+        "recommendation": "include",
+        "issues": [],
+        "summary": "The code provides a well-structured and documented library for developing secure smart contracts on Arbitrum Stylus, including a procedural macro for ERC-165 interface ID generation and implementations of common token standards like ERC-20 with extensions."
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "verified_production",
+    "config_sdk_version": "0.9.0"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/stylus-test-helpers",
+    "repo_name": "ARBuilder-Forks_stylus-test-helpers",
+    "repo_type": "stylus",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:23:49.350151",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 85,
+        "quality_score": 80,
+        "teaching_value": "medium",
+        "recommendation": "include_with_caveats",
+        "issues": [
+          {
+            "severity": "warning",
+            "file": "crates/motsu/src/storage_access.rs",
+            "message": "The `access_storage_with_backoff` function uses a spin loop with a hardcoded backoff and panic after a certain number of retries. This could lead to performance issues or denial of service if storage access is frequently contended."
+          },
+          {
+            "severity": "info",
+            "file": "crates/motsu/src/lib.rs",
+            "message": "The `deprecated` attribute is used, indicating potential future removal or changes. Consider addressing these usages."
+          },
+          {
+            "severity": "info",
+            "file": "crates/motsu/src/shims.rs",
+            "message": "The `allow(dead_code)` and `allow(clippy::missing_safety_doc)` attributes are used, which might indicate areas that need further attention or documentation."
+          },
+          {
+            "severity": "warning",
+            "file": "crates/motsu/src/context.rs",
+            "message": "The `VM::set_bytes` function clones the `value` argument. This could be inefficient for large values. Consider using a reference or Cow."
+          }
+        ],
+        "summary": "Motsu provides a testing framework for Stylus contracts, offering features like precompile deployment and storage access, but it includes potential performance bottlenecks and areas needing further documentation or refactoring."
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "verified_production",
+    "config_sdk_version": "0.9.0"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/stylusport",
+    "repo_name": "ARBuilder-Forks_stylusport",
+    "repo_type": "stylus",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:23:51.965303",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 100,
+        "quality_score": 95,
+        "teaching_value": "high",
+        "recommendation": "include",
+        "issues": [],
+        "summary": "This code provides a well-optimized implementation for determining valid characters in programming language identifiers according to Unicode Standard Annex #31, offering significant performance improvements over alternatives like `unicode-xid`."
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "verified_production",
+    "config_sdk_version": "0.9.0"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/stylus-provider",
+    "repo_name": "ARBuilder-Forks_stylus-provider",
+    "repo_type": "stylus",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:23:56.545177",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 75,
+        "quality_score": 70,
+        "teaching_value": "medium",
+        "recommendation": "include_with_caveats",
+        "issues": [
+          {
+            "severity": "warning",
+            "file": "examples/stylus_provider.rs",
+            "message": "The example code uses `dotenv` and reads private keys from environment variables, which is not recommended for production due to security risks. Consider using a more secure key management solution."
+          },
+          {
+            "severity": "warning",
+            "file": "src/merkle.rs",
+            "message": "The Merkle tree implementation uses `openzeppelin_crypto`, which might not be actively maintained. Consider using a more actively maintained and audited library for cryptographic operations."
+          },
+          {
+            "severity": "info",
+            "file": "src/merkle.rs",
+            "message": "The Merkle tree implementation converts data to strings and back, which can be inefficient. Consider optimizing the data handling for better performance."
+          },
+          {
+            "severity": "info",
+            "file": "src/lib.rs",
+            "message": "The contract uses `unwrap()` in several places, which can cause the contract to panic if the operation fails. Consider using `Result` and handling errors gracefully."
+          },
+          {
+            "severity": "info",
+            "file": "src/processor.rs",
+            "message": "The processor module uses `expect()` which can cause the contract to panic if deserialization fails. Consider using `Result` and handling errors gracefully."
+          }
+        ],
+        "summary": "The code provides a basic FHE computation service on Arbitrum Stylus, but it has some security and quality issues related to key management, dependency maintenance, error handling, and data conversion efficiency that should be addressed before production use."
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "verified_production",
+    "config_sdk_version": "0.8.4"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/ethbuc2025-gyges",
+    "repo_name": "ARBuilder-Forks_ethbuc2025-gyges",
+    "repo_type": "stylus",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:24:01.409202",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 75,
+        "quality_score": 70,
+        "teaching_value": "medium",
+        "recommendation": "include_with_caveats",
+        "issues": [
+          {
+            "severity": "warning",
+            "file": "stylus-contracts/src/lib.rs",
+            "message": "Missing input validation for username.  Usernames should be validated to prevent issues like excessively long usernames or special characters that could cause problems."
+          },
+          {
+            "severity": "warning",
+            "file": "stylus-contracts/src/lib.rs",
+            "message": "The `try_into().unwrap()` call in `get_player_by_address` can panic if `nb_games` is larger than `usize::MAX`. Consider using `try_into().ok()` and handling the `None` case or using a more appropriate type."
+          },
+          {
+            "severity": "warning",
+            "file": "stylus-contracts/src/lib.rs",
+            "message": "Incomplete error handling in `new_game`. The code snippet is cut off, but it appears to be missing the closing curly brace and potentially more logic."
+          },
+          {
+            "severity": "info",
+            "file": "stylus-contracts/src/lib.rs",
+            "message": "Consider adding access control to sensitive functions like `register_username` and `new_game` to prevent unauthorized access."
+          },
+          {
+            "severity": "info",
+            "file": "stylus-contracts/src/lib.rs",
+            "message": "The `state` field in the `Game` struct uses `bytes32`. Consider using a more descriptive type or struct to represent the game state for better readability and maintainability."
+          }
+        ],
+        "summary": "The code implements a simple game contract with user registration and game creation, but it lacks input validation, complete error handling, and proper access control, making it vulnerable to potential issues."
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "community_projects",
+    "config_sdk_version": "0.10.0"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/erc6909-with-arbitrum-stylus",
+    "repo_name": "ARBuilder-Forks_erc6909-with-arbitrum-stylus",
+    "repo_type": "stylus",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:24:05.606763",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 75,
+        "quality_score": 65,
+        "teaching_value": "medium",
+        "recommendation": "include_with_caveats",
+        "issues": [
+          {
+            "severity": "warning",
+            "file": "src/lib.rs",
+            "message": "Incomplete function `_set_opera` suggests unfinished implementation, potentially leading to unexpected behavior or vulnerabilities."
+          },
+          {
+            "severity": "warning",
+            "file": "src/lib.rs",
+            "message": "Typos in comments such as `reciver` should be corrected for better readability and professionalism."
+          },
+          {
+            "severity": "info",
+            "file": "src/lib.rs",
+            "message": "Consider adding documentation to the functions and storage variables for better understanding and maintainability."
+          }
+        ],
+        "summary": "The code implements a basic ERC6909 token with potential issues due to an incomplete function and typos, but it provides a good starting point for learning about Stylus smart contract development. The code needs further development and review before being production-ready."
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "community_projects",
+    "config_sdk_version": "0.10.0"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/fortune-generator",
+    "repo_name": "ARBuilder-Forks_fortune-generator",
+    "repo_type": "stylus",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:24:11.845442",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 75,
+        "quality_score": 70,
+        "teaching_value": "medium",
+        "recommendation": "include_with_caveats",
+        "issues": [
+          {
+            "severity": "warning",
+            "file": "fortune-contract/src/lib.rs",
+            "message": "The `pseudo_random` function is missing, which is crucial for the `generate_fortune` function's security and fairness. Without a proper implementation, the fortune generation is predictable and exploitable."
+          },
+          {
+            "severity": "info",
+            "file": "fortune-contract/src/lib.rs",
+            "message": "The code uses `unwrap_or_default()` in `get_fortune`, which might hide errors if the index is out of bounds. Consider returning an `Option` or a custom error type."
+          },
+          {
+            "severity": "info",
+            "file": "fortune-contract/src/lib.rs",
+            "message": "The code converts between `u64` and `Uint<64, 1>` using `to_be_bytes` and `from_be_bytes`. While functional, consider using the `From` and `Into` traits for cleaner conversions if available."
+          },
+          {
+            "severity": "info",
+            "file": "fortune-contract/examples/counter.rs",
+            "message": "The example code reads the private key from a file. This is not recommended for production environments. Consider using a more secure method for storing and accessing private keys."
+          }
+        ],
+        "summary": "The fortune contract demonstrates basic Stylus functionality but lacks a secure random number generation and proper error handling. The example code shows how to interact with a Stylus contract but uses an insecure method for private key management."
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "community_projects",
+    "config_sdk_version": "0.10.0"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/scaffold-stylus",
+    "repo_name": "ARBuilder-Forks_scaffold-stylus",
+    "repo_type": "stylus",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:24:15.629576",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 75,
+        "quality_score": 70,
+        "teaching_value": "medium",
+        "recommendation": "include_with_caveats",
+        "issues": [
+          {
+            "severity": "warning",
+            "file": "packages/stylus/your-contract/src/lib.rs",
+            "message": "Missing access control on `set_greeting` function, allowing anyone to modify the greeting."
+          },
+          {
+            "severity": "warning",
+            "file": "packages/stylus/your-contract/src/lib.rs",
+            "message": "The `set_greeting` function does not handle potential errors when setting the greeting string."
+          },
+          {
+            "severity": "warning",
+            "file": "packages/stylus/your-contract/src/lib.rs",
+            "message": "The `set_greeting` function does not validate the length or content of the new greeting string, which could lead to unexpected behavior or vulnerabilities."
+          },
+          {
+            "severity": "info",
+            "file": "packages/stylus/your-contract/src/lib.rs",
+            "message": "The `set_greeting` function has a comment 'Ch' that appears to be incomplete."
+          }
+        ],
+        "summary": "The contract demonstrates basic Stylus functionality with Ownable integration, but lacks proper access control and input validation on the `set_greeting` function, posing potential security risks. The code provides a good starting point for learning Stylus, but requires improvements before production use."
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "scaffold_projects",
+    "config_sdk_version": "0.9.0"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/cross-protocol-defi-tracker",
+    "repo_name": "ARBuilder-Forks_cross-protocol-defi-tracker",
+    "repo_type": "stylus",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:24:19.887905",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 85,
+        "quality_score": 80,
+        "teaching_value": "medium",
+        "recommendation": "include_with_caveats",
+        "issues": [
+          {
+            "severity": "warning",
+            "file": "packages/stylus/your-contract/src/lib.rs",
+            "message": "Missing input validation for the `greeting` variable. A malicious user could set an extremely long string, potentially causing issues."
+          },
+          {
+            "severity": "warning",
+            "file": "packages/stylus/counter/src/lib.rs",
+            "message": "The `initialize` function in the `Counter` contract uses `panic!` which can lead to unexpected behavior in a production environment. Consider using a `Result` and returning an error instead."
+          },
+          {
+            "severity": "info",
+            "file": "packages/stylus/counter/src/lib.rs",
+            "message": "The `add_from_msg_value` function does not check for overflow when adding `msg_value` to the current number."
+          }
+        ],
+        "summary": "The code provides examples of Stylus smart contracts, demonstrating basic functionality and integration with OpenZeppelin libraries, but lacks thorough input validation and error handling in some areas."
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "scaffold_projects",
+    "config_sdk_version": "0.9.0"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/WalletNaming-scaffold-stylus",
+    "repo_name": "ARBuilder-Forks_WalletNaming-scaffold-stylus",
+    "repo_type": "stylus",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:24:23.799224",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 85,
+        "quality_score": 80,
+        "teaching_value": "medium",
+        "recommendation": "include_with_caveats",
+        "issues": [
+          {
+            "severity": "warning",
+            "file": "packages/stylus/wallet_naming/src/lib.rs",
+            "message": "Missing input validation for the `name` parameter in `set_name`. Consider limiting the length and character set to prevent abuse and potential storage exhaustion."
+          },
+          {
+            "severity": "warning",
+            "file": "packages/stylus/wallet_naming/src/lib.rs",
+            "message": "The `NameChanged` event logs both the old and new names, which could be redundant. Consider logging only the new name or a hash of the old name for privacy."
+          },
+          {
+            "severity": "info",
+            "file": "packages/stylus/wallet_naming/src/lib.rs",
+            "message": "The last function in `WalletNaming` is incomplete. It should be completed or removed."
+          }
+        ],
+        "summary": "The code implements a wallet naming service with basic functionality, but lacks input validation and has an incomplete function. It's a good starting point but needs improvements before production use."
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "scaffold_projects",
+    "config_sdk_version": "0.10.0"
+  },
+  {
+    "repo_url": "https://github.com/OffchainLabs/arbitrum-sdk",
+    "repo_name": "OffchainLabs_arbitrum-sdk",
+    "repo_type": "sdk",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:24:30.016148",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 85,
+        "quality_score": 75,
+        "teaching_value": "medium",
+        "recommendation": "include_with_caveats",
+        "issues": [
+          {
+            "severity": "warning",
+            "file": "hardhat.config.ts",
+            "message": "Solidity compiler versions 0.6.11 and 0.8.7 are used. Consider using a more recent version of 0.8.x for better security and features."
+          },
+          {
+            "severity": "info",
+            "file": "hardhat.config.ts",
+            "message": "The hardhat network is configured to fork from mainnet. Ensure proper handling of sensitive data and API keys in a production environment."
+          },
+          {
+            "severity": "info",
+            "file": "packages/sdk/tests/testSetup.ts",
+            "message": "Environment variables are loaded using `dotenv`. Ensure that these variables are properly managed and not exposed in production."
+          },
+          {
+            "severity": "warning",
+            "file": "packages/sdk/tests/fork/inbox.test.ts",
+            "message": "Forking mainnet in tests can be slow and unreliable. Consider using a local test network or a more stable forking solution."
+          },
+          {
+            "severity": "info",
+            "file": "packages/sdk/tests/unit/childToParentMessageEvents.test.ts",
+            "message": "Mocks are used extensively in unit tests. Ensure that mocks accurately represent the behavior of the real contracts."
+          },
+          {
+            "severity": "info",
+            "file": "packages/sdk/tests/unit/parentToChildMessageEvents.test.ts",
+            "message": "The test uses a hardcoded transaction receipt. This should be replaced with a more dynamic approach."
+          }
+        ],
+        "summary": "The code provides a good starting point for Arbitrum Stylus development, but it has some minor security and quality issues that should be addressed before using it in a production environment; the test suite relies heavily on forking and mocking."
+      }
+    ],
+    "config_category": "arbitrum_sdk",
+    "config_subcategory": "official_repos",
+    "config_sdk_version": "N/A"
+  },
+  {
+    "repo_url": "https://github.com/OffchainLabs/arbitrum-tutorials",
+    "repo_name": "OffchainLabs_arbitrum-tutorials",
+    "repo_type": "sdk",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:24:35.312958",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 95,
+        "quality_score": 85,
+        "teaching_value": "medium",
+        "recommendation": "include_with_caveats",
+        "issues": [
+          {
+            "severity": "info",
+            "file": "packages/l1-l3-teleport/scripts/initiate-deposit.ts",
+            "message": "Missing error handling for potential exceptions during token symbol retrieval."
+          },
+          {
+            "severity": "info",
+            "file": "packages/l1-l3-teleport/scripts/initiate-deposit.ts",
+            "message": "The console.log statements could be replaced with a more robust logging mechanism."
+          },
+          {
+            "severity": "info",
+            "file": "packages/parent-chain-confirmation-checker/scripts/utils.ts",
+            "message": "Consider adding more specific error messages to improve debugging."
+          },
+          {
+            "severity": "info",
+            "file": "packages/gas-estimation/scripts/exec.ts",
+            "message": "The gas estimation script relies on hardcoded destination address and txData, which limits its reusability."
+          }
+        ],
+        "summary": "The code provides useful scripts for interacting with Arbitrum chains, including deposit initiation and status monitoring, but could benefit from improved error handling, logging, and reusability in the gas estimation script."
+      }
+    ],
+    "config_category": "arbitrum_sdk",
+    "config_subcategory": "official_repos",
+    "config_sdk_version": "4.0.1"
+  },
+  {
+    "repo_url": "https://github.com/kevinb1003/arbitrum-api",
+    "repo_name": "kevinb1003_arbitrum-api",
+    "repo_type": "sdk",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:24:39.283298",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 85,
+        "quality_score": 80,
+        "teaching_value": "medium",
+        "recommendation": "include_with_caveats",
+        "issues": [
+          {
+            "severity": "info",
+            "file": "src/middleware/auth.ts",
+            "message": "The catch block in apiKeyAuth middleware catches all errors and returns 'Unauthorized'. More specific error handling could provide better debugging information."
+          },
+          {
+            "severity": "info",
+            "file": "src/constants.ts",
+            "message": "Consider validating the environment variables used in constants.ts to ensure they are of the expected type and within acceptable ranges."
+          }
+        ],
+        "summary": "The code provides a basic API with rate limiting and API key authentication. It uses standard libraries and patterns, but could benefit from more robust error handling and input validation."
+      }
+    ],
+    "config_category": "arbitrum_sdk",
+    "config_subcategory": "community_examples",
+    "config_sdk_version": "4.0.4"
+  },
+  {
+    "repo_url": "https://github.com/gelatodigital/how-tos-18-arbitrum-orbit-bridging",
+    "repo_name": "gelatodigital_how-tos-18-arbitrum-orbit-bridging",
+    "repo_type": "sdk",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:24:46.785371",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 75,
+        "quality_score": 65,
+        "teaching_value": "medium",
+        "recommendation": "include_with_caveats",
+        "issues": [
+          {
+            "severity": "warning",
+            "file": "src/ChildToParent/erc20-withdrawal.ts",
+            "message": "Hardcoded ERC20 address (USDC) should be configurable or fetched dynamically."
+          },
+          {
+            "severity": "warning",
+            "file": "src/ChildToParent/erc20-withdrawal.ts",
+            "message": "Missing error handling for contract interactions (e.g., `outboundTransfer`)."
+          },
+          {
+            "severity": "warning",
+            "file": "src/ChildToParent/erc20-withdrawal-contract.ts",
+            "message": "Hardcoded contract addresses (childGateway, childUsdc) should be configurable."
+          },
+          {
+            "severity": "warning",
+            "file": "src/ChildToParent/erc20-withdrawal-contract.ts",
+            "message": "Missing error handling for contract interactions (e.g., `approve`, `outboundTransfer`)."
+          },
+          {
+            "severity": "info",
+            "file": "src/ChildToParent/erc20-withdrawal-contract.ts",
+            "message": "Parent ERC20 address is hardcoded."
+          },
+          {
+            "severity": "warning",
+            "file": "src/Parent/execute-txs.ts",
+            "message": "Hardcoded transaction hash for execution. This should be dynamic."
+          },
+          {
+            "severity": "warning",
+            "file": "src/ParentToChild/eth:orbit-chain/sendParentToChild.ts",
+            "message": "Incomplete transaction population in inboxContract."
+          },
+          {
+            "severity": "warning",
+            "file": "src/ParentToChild/cgt:orbit-chain/sendParentToChild.ts",
+            "message": "Hardcoded contract addresses (parentErc20Address, l2gateway) should be configurable."
+          },
+          {
+            "severity": "info",
+            "file": "src/ParentToChild/cgt:orbit-chain/sendParentToChild.ts",
+            "message": "Unused variable abi in sendParentToChild.ts"
+          },
+          {
+            "severity": "warning",
+            "file": "src/ParentToChild/erc20-deposit.ts",
+            "message": "Hardcoded ERC20 address (parentErc20Address) should be configurable."
+          },
+          {
+            "severity": "info",
+            "file": "src/ParentToChild/erc20-deposit.ts",
+            "message": "Commented out code should be removed."
+          },
+          {
+            "severity": "info",
+            "file": "src/ParentToChild/eth:orbit-chain/erc20-deposit-router.ts",
+            "message": "Unused variable initialBridgeTokenBalance."
+          },
+          {
+            "severity": "info",
+            "file": "src/ParentToChild/eth:orbit-chain/erc20-deposit-router.ts",
+            "message": "Missing error handling for contract interactions."
+          }
+        ],
+        "summary": "The code provides examples of bridging assets and calling contracts between parent and child chains using the Arbitrum SDK, but it contains hardcoded addresses and lacks robust error handling, making it suitable for learning with significant caveats regarding security and production readiness."
+      }
+    ],
+    "config_category": "arbitrum_sdk",
+    "config_subcategory": "community_examples",
+    "config_sdk_version": "4.0.2"
+  },
+  {
+    "repo_url": "https://github.com/gelatodigital/clink-bridging-cross-messaging",
+    "repo_name": "gelatodigital_clink-bridging-cross-messaging",
+    "repo_type": "sdk",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:24:54.603766",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": true,
+        "note": "AI review failed, skipped"
+      }
+    ],
+    "config_category": "arbitrum_sdk",
+    "config_subcategory": "community_examples",
+    "config_sdk_version": "4.0.2"
+  },
+  {
+    "repo_url": "https://github.com/OffchainLabs/arbitrum-orbit-sdk",
+    "repo_name": "OffchainLabs_arbitrum-orbit-sdk",
+    "repo_type": "sdk",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:25:01.463324",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 75,
+        "quality_score": 75,
+        "teaching_value": "medium",
+        "recommendation": "include_with_caveats",
+        "issues": [
+          {
+            "severity": "warning",
+            "file": "wagmi.config.ts",
+            "message": "The `fetchAbi` function directly fetches and executes JSON from an external source (Etherscan). While Etherscan is generally reliable, this introduces a potential risk if Etherscan is compromised or returns malicious data. Consider implementing additional validation or using a more secure ABI storage mechanism."
+          },
+          {
+            "severity": "warning",
+            "file": "wagmi.config.ts",
+            "message": "The `loadApiKey` function throws an error if an environment variable is not defined. This can cause the application to crash if the environment is not properly configured. Consider providing a default value or a more graceful error handling mechanism."
+          },
+          {
+            "severity": "info",
+            "file": "wagmi.config.ts",
+            "message": "The code uses `// @ts-ignore` to suppress TypeScript errors. While sometimes necessary, excessive use of `@ts-ignore` can mask underlying issues. Review the ignored errors and address them if possible."
+          },
+          {
+            "severity": "info",
+            "file": "examples/create-token-bridge-custom-fee-token/index.ts",
+            "message": "Multiple example files use `console.warn` for missing environment variables. Consider using a more robust logging mechanism or throwing an error to prevent the script from running with incomplete configuration."
+          },
+          {
+            "severity": "info",
+            "file": "examples/create-rollup-custom-fee-token/index.ts",
+            "message": "The example files use `generatePrivateKey` to create fallback private keys. This is acceptable for examples, but should never be used in production code."
+          }
+        ],
+        "summary": "The code provides configurations for testing and examples for using the Arbitrum chain-sdk. The wagmi config fetches ABIs directly from Etherscan which is a potential security risk. The example code relies heavily on environment variables and could benefit from more robust error handling."
+      }
+    ],
+    "config_category": "orbit_sdk",
+    "config_subcategory": "sdk_repo",
+    "config_sdk_version": "4.0.4"
+  },
+  {
+    "repo_url": "https://github.com/wevm/wagmi",
+    "repo_name": "wevm_wagmi",
+    "repo_type": "rust",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:25:19.734971",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 95,
+        "quality_score": 85,
+        "teaching_value": "medium",
+        "recommendation": "include",
+        "issues": [],
+        "summary": "The code provides a good overview of how to configure and test a Wagmi-based application with different frameworks and build tools. The vitest configuration is comprehensive and the playground examples are useful for demonstrating different use cases."
+      }
+    ],
+    "config_category": "m3_frontend",
+    "config_subcategory": "frontend",
+    "config_sdk_version": ""
+  },
+  {
+    "repo_url": "https://github.com/wevm/viem",
+    "repo_name": "wevm_viem",
+    "repo_type": "rust",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:25:22.907249",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 90,
+        "quality_score": 85,
+        "teaching_value": "medium",
+        "recommendation": "include_with_caveats",
+        "issues": [
+          {
+            "severity": "info",
+            "file": "test/tempo/crates/consensus/src/lib.rs",
+            "message": "Consider adding more comprehensive logging for consensus errors to aid in debugging."
+          },
+          {
+            "severity": "info",
+            "file": "test/tempo/crates/telemetry-util/src/lib.rs",
+            "message": "The `error_field` utility involves a heap allocation; consider alternatives if performance becomes a bottleneck."
+          }
+        ],
+        "summary": "The code provides essential consensus logic, telemetry utilities, and on-chain artifact definitions, along with practical examples for interacting with the Tempo network, but could benefit from more robust error handling and performance considerations in specific areas."
+      }
+    ],
+    "config_category": "m3_frontend",
+    "config_subcategory": "frontend",
+    "config_sdk_version": ""
+  },
+  {
+    "repo_url": "https://github.com/rainbow-me/rainbowkit",
+    "repo_name": "rainbow-me_rainbowkit",
+    "repo_type": "typescript",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:25:25.981018",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 95,
+        "quality_score": 85,
+        "teaching_value": "medium",
+        "recommendation": "include",
+        "issues": [
+          {
+            "severity": "info",
+            "file": "examples/with-next-mint-nft/src/wagmi.ts",
+            "message": "The projectId and Alchemy ID are placeholders and should be replaced with actual values for production use."
+          }
+        ],
+        "summary": "The code provides examples of integrating RainbowKit with Next.js, including generating contract ABIs and configuring Wagmi. The vitest configuration includes a custom JSON loader, which could be useful in some contexts."
+      }
+    ],
+    "config_category": "m3_frontend",
+    "config_subcategory": "frontend",
+    "config_sdk_version": ""
+  },
+  {
+    "repo_url": "https://github.com/saadeghi/daisyui",
+    "repo_name": "saadeghi_daisyui",
+    "repo_type": "typescript",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:25:30.872163",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 100,
+        "quality_score": 85,
+        "teaching_value": "medium",
+        "recommendation": "include",
+        "issues": [],
+        "summary": "The code appears to be a well-structured set of utilities for generating and managing themes for a UI library. The build process is complex but seems well-organized, and the plugin system is flexible."
+      }
+    ],
+    "config_category": "m3_frontend",
+    "config_subcategory": "frontend",
+    "config_sdk_version": ""
+  },
+  {
+    "repo_url": "https://github.com/scaffold-eth/scaffold-eth-2",
+    "repo_name": "scaffold-eth_scaffold-eth-2",
+    "repo_type": "rust",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:25:50.027222",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 75,
+        "quality_score": 80,
+        "teaching_value": "medium",
+        "recommendation": "include_with_caveats",
+        "issues": [
+          {
+            "severity": "warning",
+            "file": "packages/hardhat/hardhat.config.ts",
+            "message": "The default deployerPrivateKey is exposed in the code. This should only be used for local development and never committed to a public repository."
+          },
+          {
+            "severity": "warning",
+            "file": "packages/hardhat/hardhat.config.ts",
+            "message": "The default Alchemy and Etherscan API keys are exposed. These should be replaced with user-specific keys for production environments."
+          },
+          {
+            "severity": "info",
+            "file": "packages/hardhat/scripts/revealPK.ts",
+            "message": "The script 'revealPK.ts' allows revealing the private key, which is a security risk if not handled carefully."
+          },
+          {
+            "severity": "info",
+            "file": "packages/hardhat/scripts/generateTsAbis.ts",
+            "message": "The script 'generateTsAbis.ts' has a potential issue with incomplete chainId assignment within the loop, which could lead to incorrect contract data generation."
+          }
+        ],
+        "summary": "The code provides a good starting point for developing and deploying smart contracts, but it includes exposed default private keys and API keys, which pose security risks. The code quality is acceptable, but some scripts require closer inspection for potential issues."
+      }
+    ],
+    "config_category": "m3_frontend",
+    "config_subcategory": "frontend",
+    "config_sdk_version": ""
+  },
+  {
+    "repo_url": "https://github.com/graphprotocol/graph-tooling",
+    "repo_name": "graphprotocol_graph-tooling",
+    "repo_type": "rust",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:25:53.437472",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 95,
+        "quality_score": 85,
+        "teaching_value": "medium",
+        "recommendation": "include",
+        "issues": [],
+        "summary": "The code consists of a substreams example, website configuration, GraphQL setup, utility functions, and UI components. The code is generally well-structured and uses modern web development practices."
+      }
+    ],
+    "config_category": "m3_indexer",
+    "config_subcategory": "indexer",
+    "config_sdk_version": ""
+  },
+  {
+    "repo_url": "https://github.com/messari/subgraphs",
+    "repo_name": "messari_subgraphs",
+    "repo_type": "typescript",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:26:00.550979",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 75,
+        "quality_score": 70,
+        "teaching_value": "medium",
+        "recommendation": "include_with_caveats",
+        "issues": [
+          {
+            "severity": "warning",
+            "file": "subgraphs/eigenpie/src/prices/index.ts",
+            "message": "Incomplete if statement at the end of the file. Missing closing curly brace and logic for handling price aggregation when prices.length is less than INT_ONE."
+          },
+          {
+            "severity": "warning",
+            "file": "subgraphs/eigenpie/src/prices/routers/UniswapForksRouter.ts",
+            "message": "The UniswapRouterContract is bound to the tokenAddress, which is unusual. It should be bound to a known router address. This could lead to unexpected behavior if the tokenAddress is not a router."
+          },
+          {
+            "severity": "warning",
+            "file": "subgraphs/eigenpie/src/prices/routers/UniswapForksRouter.ts",
+            "message": "The loop in `getPriceFromRouter` checks `router.startBlock.gt(block.number)` but doesn't handle the case where `block` is null. This could lead to errors."
+          },
+          {
+            "severity": "info",
+            "file": "subgraphs/eigenpie/src/prices/config/mainnet.ts",
+            "message": "AAVE_ORACLE_CONTRACT_ADDRESS is initialized with default values. Consider adding a real address and start block."
+          },
+          {
+            "severity": "info",
+            "file": "subgraphs/eigenpie/src/prices/config/fuse.ts",
+            "message": "Several oracle contract addresses are initialized with default values. Consider adding real addresses and start blocks."
+          },
+          {
+            "severity": "info",
+            "file": "subgraphs/eigenpie/src/prices/config/fantom.ts",
+            "message": "CHAIN_LINK_CONTRACT_ADDRESS and AAVE_ORACLE_CONTRACT_ADDRESS are initialized with default values. Consider adding real addresses and start blocks."
+          }
+        ],
+        "summary": "The code provides price oracles for various tokens, but contains an incomplete if statement, potential misbinding of contracts, and missing oracle addresses in some configurations. The code quality is acceptable, but requires careful review and completion before production use."
+      }
+    ],
+    "config_category": "m3_indexer",
+    "config_subcategory": "indexer",
+    "config_sdk_version": ""
+  },
+  {
+    "repo_url": "https://github.com/OffchainLabs/arbitrum-subgraphs",
+    "repo_name": "OffchainLabs_arbitrum-subgraphs",
+    "repo_type": "typescript",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:26:05.543833",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 95,
+        "quality_score": 85,
+        "teaching_value": "medium",
+        "recommendation": "include_with_caveats",
+        "issues": [
+          {
+            "severity": "warning",
+            "file": "packages/layer1-token-gateway/generated/schema.ts",
+            "message": "Incomplete code detected. The file `packages/layer1-token-gateway/generated/schema.ts` was truncated, which may lead to errors during subgraph processing. Ensure the entire file is present."
+          }
+        ],
+        "summary": "The code provides generated schema and contract bindings for Arbitrum Stylus smart contracts, along with mapping handlers for events. The generated code quality is acceptable, but the truncated file in `layer1-token-gateway` needs attention."
+      }
+    ],
+    "config_category": "m3_indexer",
+    "config_subcategory": "indexer",
+    "config_sdk_version": ""
+  },
+  {
+    "repo_url": "https://github.com/smartcontractkit/smart-contract-examples",
+    "repo_name": "smartcontractkit_smart-contract-examples",
+    "repo_type": "sdk",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:26:11.112310",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 85,
+        "quality_score": 75,
+        "teaching_value": "medium",
+        "recommendation": "include_with_caveats",
+        "issues": [
+          {
+            "severity": "warning",
+            "file": "hardhat.config.ts",
+            "message": "Using rinkeby network which is deprecated. Consider using Sepolia or Goerli."
+          },
+          {
+            "severity": "info",
+            "file": "hardhat.config.ts",
+            "message": "Consider using a more recent solidity compiler version than 0.8.7 and 0.4.24."
+          },
+          {
+            "severity": "info",
+            "file": "scripts/deploy.ts",
+            "message": "Consider using environment variables for all configuration parameters, including the VRF coordinator address and key hash."
+          },
+          {
+            "severity": "info",
+            "file": "vrf-arbitrum-gas-estimation/scripts/exec.ts",
+            "message": "The script `vrf-arbitrum-gas-estimation/scripts/exec.ts` uses `require` for importing modules, which is not consistent with the rest of the codebase using `import`. Consider using `import` for consistency."
+          }
+        ],
+        "summary": "The code demonstrates a basic NFT minting process with VRF integration, but it uses deprecated networks and older Solidity versions. The code quality is acceptable, but there are opportunities for improvement in terms of configuration management and dependency management."
+      }
+    ],
+    "config_category": "m3_oracle",
+    "config_subcategory": "oracle",
+    "config_sdk_version": ""
+  },
+  {
+    "repo_url": "https://github.com/smartcontractkit/chainlink",
+    "repo_name": "smartcontractkit_chainlink",
+    "repo_type": "typescript",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:26:14.373877",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 90,
+        "quality_score": 80,
+        "teaching_value": "medium",
+        "recommendation": "include_with_caveats",
+        "issues": [],
+        "summary": "The code includes examples of using the Chainlink CRE SDK for cron-triggered workflows and a GitHub action for deleting deployments. The code quality is generally good, but some files appear to be auto-generated or contain debugging artifacts."
+      }
+    ],
+    "config_category": "m3_oracle",
+    "config_subcategory": "oracle",
+    "config_sdk_version": ""
+  },
+  {
+    "repo_url": "https://github.com/nestjs/nest",
+    "repo_name": "nestjs_nest",
+    "repo_type": "typescript",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:26:17.494510",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 95,
+        "quality_score": 85,
+        "teaching_value": "medium",
+        "recommendation": "include",
+        "issues": [
+          {
+            "severity": "info",
+            "file": "tools/gulp/tasks/samples.ts",
+            "message": "The `scriptParts` array is not fully utilized after splitting the script string, potentially leading to incomplete command execution."
+          },
+          {
+            "severity": "info",
+            "file": "tools/benchmarks/src/main.ts",
+            "message": "The `waitForServer` function uses `global.fetch` which might not be available in all Node.js environments without polyfills, consider adding a fallback or explicit dependency."
+          }
+        ],
+        "summary": "The code provides a set of gulp tasks for managing and building the project, along with benchmark tools for performance testing. The code is generally well-structured and readable, but there are minor areas for improvement."
+      }
+    ],
+    "config_category": "m3_backend",
+    "config_subcategory": "backend",
+    "config_sdk_version": ""
+  },
+  {
+    "repo_url": "https://github.com/OffchainLabs/arbitrum-token-bridge",
+    "repo_name": "OffchainLabs_arbitrum-token-bridge",
+    "repo_type": "sdk",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T17:26:19.462012",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "code_review",
+        "passed": true,
+        "skipped": false,
+        "security_score": 95,
+        "quality_score": 90,
+        "teaching_value": "medium",
+        "recommendation": "include",
+        "issues": [],
+        "summary": "The code initializes dayjs and adds orbit chains to the Arbitrum SDK. The API routes simply re-export GET handlers from other modules, promoting code reuse."
+      }
+    ],
+    "config_category": "m3_backend",
+    "config_subcategory": "backend",
+    "config_sdk_version": ""
+  }
+]

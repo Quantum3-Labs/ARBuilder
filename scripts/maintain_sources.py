@@ -2,10 +2,11 @@
 """
 Source Maintenance Pipeline for ARBuilder.
 
-Three maintenance operations:
+Four maintenance operations:
   A. SDK Monitor     — Check crates.io/npm for new SDK releases, flag outdated repos
   B. Discover Repos  — Search GitHub for new community projects using Stylus/Arbitrum SDK
   C. Health Check    — Re-verify all config repos, flag broken/deprecated
+  D. Remediate       — Auto-remove critical (archived/deleted) repos from config
 
 Usage:
     # Check for SDK version updates
@@ -17,7 +18,10 @@ Usage:
     # Run health check on all configured repos
     python scripts/maintain_sources.py health
 
-    # Run all maintenance tasks
+    # Auto-remove archived/deleted repos from config
+    python scripts/maintain_sources.py remediate
+
+    # Run all maintenance tasks (monitor + discover + health)
     python scripts/maintain_sources.py all
 
     # Output JSON report
@@ -27,6 +31,7 @@ Usage:
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from datetime import datetime
@@ -448,6 +453,95 @@ def _check_repo_health(owner: str, repo: str) -> dict:
 
 
 # ──────────────────────────────────────────────────────────────
+# D. AUTO-REMEDIATION
+# ──────────────────────────────────────────────────────────────
+
+def remediate() -> dict:
+    """Auto-remove critical (archived/deleted) repos from config.
+
+    Runs a health check first, then removes any critical repos from
+    scraper/config.py. Abandoned repos (>365 days stale) are flagged
+    but NOT auto-removed — they may be complete/stable projects.
+    """
+    console.print("\n[bold blue]═══ Auto-Remediation ═══[/bold blue]")
+    results = {"removed": [], "flagged": [], "config_modified": False}
+
+    # Run health check to find critical repos
+    health_results = health_check()
+    critical_repos = [r for r in health_results["repos"] if r["status"] == "critical"]
+    abandoned_repos = [r for r in health_results["repos"]
+                       if r["status"] == "warning" and r.get("days_since_update", 0) > 365]
+
+    if not critical_repos and not abandoned_repos:
+        console.print("[green]No critical or abandoned repos found. Config is clean.[/green]")
+        return results
+
+    # Flag abandoned repos (don't auto-remove — they may be complete projects)
+    for repo in abandoned_repos:
+        url = repo.get("url", "")
+        name = repo.get("full_name", url.split("/")[-1])
+        days = repo.get("days_since_update", 0)
+        results["flagged"].append({
+            "url": url,
+            "name": name,
+            "reason": f"abandoned ({days} days since last update)",
+        })
+        console.print(f"  [yellow]FLAGGED: {name} — {days} days since last update (manual review needed)[/yellow]")
+
+    if not critical_repos:
+        console.print("[green]No critical repos to remove.[/green]")
+        return results
+
+    # Remove critical repos from config.py
+    config_path = PROJECT_ROOT / "scraper" / "config.py"
+    config_text = config_path.read_text()
+    original_text = config_text
+
+    for repo in critical_repos:
+        url = repo.get("url", "")
+        name = repo.get("full_name", url.split("/")[-1])
+        reason = "archived" if repo.get("archived") else "deleted (404)"
+
+        if not url:
+            continue
+
+        # Remove the dict entry containing this URL from PROJECT_EXAMPLES
+        # Match pattern: {  ...  "url": "https://github.com/owner/repo",  ...  },
+        escaped_url = re.escape(url)
+        pattern = re.compile(
+            r'\s*\{[^}]*"url":\s*"' + escaped_url + r'"[^}]*\},?\n?',
+            re.DOTALL,
+        )
+        new_text, count = pattern.subn("", config_text)
+
+        # Also try M3_GITHUB_REPOS format (plain URL strings in a list)
+        if count == 0:
+            pattern2 = re.compile(
+                r'\s*"' + escaped_url + r'",?\n?',
+            )
+            new_text, count = pattern2.subn("", config_text)
+
+        if count > 0:
+            config_text = new_text
+            results["removed"].append({
+                "url": url,
+                "name": name,
+                "reason": reason,
+            })
+            console.print(f"  [red]REMOVED: {name} — {reason}[/red]")
+
+    # Write back if modified
+    if config_text != original_text:
+        config_path.write_text(config_text)
+        results["config_modified"] = True
+        console.print(f"\n[bold red]Removed {len(results['removed'])} critical repo(s) from config.py[/bold red]")
+    else:
+        console.print("[green]No changes needed to config.py[/green]")
+
+    return results
+
+
+# ──────────────────────────────────────────────────────────────
 # CLI
 # ──────────────────────────────────────────────────────────────
 
@@ -460,7 +554,8 @@ Commands:
   monitor     Check for new SDK releases, flag outdated repos
   discover    Search GitHub for new community repos
   health      Health check all configured repos (GitHub API only)
-  all         Run all maintenance tasks
+  remediate   Auto-remove archived/deleted repos from config
+  all         Run all maintenance tasks (monitor + discover + health)
 
 Examples:
   python scripts/maintain_sources.py monitor
@@ -469,7 +564,7 @@ Examples:
   python scripts/maintain_sources.py all --output reports/maintenance.json
         """,
     )
-    parser.add_argument("command", choices=["monitor", "discover", "health", "all"])
+    parser.add_argument("command", choices=["monitor", "discover", "health", "remediate", "all"])
     parser.add_argument("--output", "-o", help="Output JSON report to file")
     parser.add_argument("--min-stars", type=int, default=1, help="Minimum stars for discovery (default: 1)")
     args = parser.parse_args()
@@ -487,6 +582,9 @@ Examples:
 
     if args.command in ("health", "all"):
         report["health"] = health_check()
+
+    if args.command == "remediate":
+        report["remediation"] = remediate()
 
     # Output report
     if args.output:

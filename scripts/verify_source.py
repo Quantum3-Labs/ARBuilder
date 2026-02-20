@@ -51,6 +51,7 @@ from rich.table import Table
 
 from scraper.config import (
     PROJECT_EXAMPLES,
+    M3_GITHUB_REPOS,
     get_all_config_repo_urls,
     get_config_repo_info,
 )
@@ -393,6 +394,27 @@ class SourceVerifier:
                 },
             ))
 
+            # Run cargo clippy (informational — doesn't affect pass/fail)
+            if passed:
+                try:
+                    clippy_result = subprocess.run(
+                        ["cargo", "clippy", "--target", "wasm32-unknown-unknown", "--lib",
+                         "--", "-W", "clippy::all"],
+                        capture_output=True, text=True, timeout=300, cwd=str(work_dir),
+                    )
+                    # Count warnings from clippy output
+                    warning_count = clippy_result.stderr.count("warning:")
+                    # Subtract the summary line ("N warnings generated")
+                    summary_match = re.search(r"(\d+) warning", clippy_result.stderr)
+                    if summary_match:
+                        warning_count = int(summary_match.group(1))
+                    self.results[-1].details["clippy_warnings"] = warning_count
+                    console.print(f"  Clippy: {warning_count} warning(s)")
+                except (subprocess.TimeoutExpired, FileNotFoundError):
+                    console.print("  [dim]Clippy: skipped (not available or timed out)[/dim]")
+                except Exception:
+                    pass
+
             # Clean up target dir to save disk space
             target_dir = work_dir / "target"
             if target_dir.exists():
@@ -429,20 +451,31 @@ class SourceVerifier:
             return
 
         work_dir = pkg_json.parent
-        console.print(f"  Running npm install in {work_dir}...")
+
+        # Detect package manager: pnpm > yarn > npm
+        pkg_manager = "npm"
+        if (work_dir / "pnpm-lock.yaml").exists():
+            pkg_manager = "pnpm"
+        elif (work_dir / "yarn.lock").exists():
+            pkg_manager = "yarn"
+
+        console.print(f"  Running {pkg_manager} install in {work_dir}...")
 
         try:
             # Install deps
+            install_cmd = [pkg_manager, "install"]
+            if pkg_manager == "pnpm":
+                install_cmd.append("--no-frozen-lockfile")
             install_result = subprocess.run(
-                ["npm", "install"],
+                install_cmd,
                 capture_output=True, text=True, timeout=300, cwd=str(work_dir),
             )
 
             if install_result.returncode != 0:
-                console.print(f"  [red]npm install failed[/red]")
+                console.print(f"  [red]{pkg_manager} install failed[/red]")
                 self.results.append(VerificationResult(
                     "compile", False,
-                    {"error": "npm install failed", "stderr_tail": install_result.stderr.strip()[-500:]},
+                    {"error": f"{pkg_manager} install failed", "stderr_tail": install_result.stderr.strip()[-500:]},
                 ))
                 return
 
@@ -461,23 +494,52 @@ class SourceVerifier:
                 return
 
             # Build
-            console.print(f"  Running npm run build...")
+            console.print(f"  Running {pkg_manager} run build...")
             build_result = subprocess.run(
-                ["npm", "run", "build"],
-                capture_output=True, text=True, timeout=180, cwd=str(work_dir),
+                [pkg_manager, "run", "build"],
+                capture_output=True, text=True, timeout=300, cwd=str(work_dir),
             )
 
             passed = build_result.returncode == 0
             console.print(f"  {'PASS' if passed else 'FAIL'}")
 
+            compile_details = {
+                "command": f"{pkg_manager} run build",
+                "exit_code": build_result.returncode,
+                "stderr_tail": build_result.stderr.strip()[-500:] if not passed else "",
+            }
+
+            # Run npm lint (informational — doesn't affect pass/fail)
+            if passed and "lint" in scripts:
+                try:
+                    lint_result = subprocess.run(
+                        [pkg_manager, "run", "lint"],
+                        capture_output=True, text=True, timeout=120, cwd=str(work_dir),
+                    )
+                    lint_passed = lint_result.returncode == 0
+                    # Count lint issues from output
+                    lint_output = lint_result.stdout + lint_result.stderr
+                    error_count = lint_output.lower().count("error")
+                    warning_count = lint_output.lower().count("warning")
+                    compile_details["lint_run"] = True
+                    compile_details["lint_passed"] = lint_passed
+                    compile_details["lint_errors"] = error_count
+                    compile_details["lint_warnings"] = warning_count
+                    console.print(f"  Lint: {'PASS' if lint_passed else 'FAIL'} ({error_count} errors, {warning_count} warnings)")
+                except (subprocess.TimeoutExpired, FileNotFoundError):
+                    console.print("  [dim]Lint: skipped (timed out or not available)[/dim]")
+                except Exception:
+                    pass
+
             self.results.append(VerificationResult(
-                "compile", passed,
-                {
-                    "command": "npm run build",
-                    "exit_code": build_result.returncode,
-                    "stderr_tail": build_result.stderr.strip()[-500:] if not passed else "",
-                },
+                "compile", passed, compile_details,
             ))
+
+            # Clean up node_modules to save disk space
+            node_modules = work_dir / "node_modules"
+            if node_modules.exists():
+                shutil.rmtree(node_modules, ignore_errors=True)
+                console.print("  [dim]Cleaned up node_modules/ directory[/dim]")
 
         except subprocess.TimeoutExpired:
             console.print("[red]  Build timed out[/red]")
@@ -1038,38 +1100,44 @@ Scoring guide:
 - teaching_value: "high" = clean patterns worth teaching, "medium" = acceptable, "low" = anti-patterns
 - recommendation: "include" = add to knowledge base, "exclude" = skip entirely"""
 
-        try:
-            with httpx.Client(timeout=60.0) as client:
-                resp = client.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                        "Content-Type": "application/json",
-                        "HTTP-Referer": "https://github.com/arbbuilder",
-                        "X-Title": "ARBuilder Verification",
-                    },
-                    json={
-                        "model": REVIEW_MODEL,
-                        "messages": [{"role": "user", "content": prompt}],
-                        "temperature": 0,
-                        "max_tokens": 1000,
-                    },
-                )
-                resp.raise_for_status()
-                content = resp.json()["choices"][0]["message"]["content"].strip()
+        for attempt in range(3):
+            try:
+                with httpx.Client(timeout=180.0) as client:
+                    resp = client.post(
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                            "Content-Type": "application/json",
+                            "HTTP-Referer": "https://github.com/arbbuilder",
+                            "X-Title": "ARBuilder Verification",
+                        },
+                        json={
+                            "model": REVIEW_MODEL,
+                            "messages": [{"role": "user", "content": prompt}],
+                            "temperature": 0,
+                            "max_tokens": 1000,
+                        },
+                    )
+                    resp.raise_for_status()
+                    content = resp.json()["choices"][0]["message"]["content"].strip()
 
-                # Parse JSON from response (handle markdown code blocks)
-                content = re.sub(r"^```json?\s*\n?", "", content)
-                content = re.sub(r"\n?```\s*$", "", content)
+                    # Parse JSON from response (handle markdown code blocks)
+                    content = re.sub(r"^```json?\s*\n?", "", content)
+                    content = re.sub(r"\n?```\s*$", "", content)
 
-                return json.loads(content)
+                    return json.loads(content)
 
-        except json.JSONDecodeError as e:
-            console.print(f"  [yellow]Could not parse AI review response: {e}[/yellow]")
-            return None
-        except Exception as e:
-            console.print(f"  [yellow]AI review error: {e}[/yellow]")
-            return None
+            except json.JSONDecodeError as e:
+                console.print(f"  [yellow]Could not parse AI review response: {e}[/yellow]")
+                return None
+            except Exception as e:
+                if attempt < 2:
+                    wait = (attempt + 1) * 10
+                    console.print(f"  [yellow]AI review attempt {attempt + 1} failed: {e}. Retrying in {wait}s...[/yellow]")
+                    time.sleep(wait)
+                else:
+                    console.print(f"  [yellow]AI review error after 3 attempts: {e}[/yellow]")
+                    return None
 
     # ──────────────────────────────────────────────────────────────
     # Step 6: Fork
@@ -1171,6 +1239,25 @@ def verify_all_config_repos(
                 report["config_subcategory"] = subcat
                 report["config_sdk_version"] = entry.get("sdk_version", "")
                 reports.append(report)
+
+    # Also iterate M3 repos (third-party libraries: wagmi, viem, nestjs, etc.)
+    for subcategory, urls in M3_GITHUB_REPOS.items():
+        for url in urls:
+            if "github.com" not in url:
+                continue
+
+            verifier = SourceVerifier(
+                repo_url=url,
+                steps=steps,
+                enable_deploy=enable_deploy,
+                enable_fork=enable_fork,
+                fork_org=fork_org,
+            )
+            report = verifier.verify()
+            report["config_category"] = f"m3_{subcategory}"
+            report["config_subcategory"] = subcategory
+            report["config_sdk_version"] = ""
+            reports.append(report)
 
     return reports
 

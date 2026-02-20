@@ -14,6 +14,8 @@ on:
           - monitor
           - discover
           - health
+          - remediate
+          - reverify
         default: all
 
 env:
@@ -184,6 +186,87 @@ jobs:
               body: body,
               labels: ['maintenance'],
             });
+
+  reverify:
+    name: Re-verify All Sources
+    runs-on: ubuntu-latest
+    needs: sdk-monitor
+    if: >-
+      (needs.sdk-monitor.outputs.has_update == 'true') ||
+      (github.event.inputs.task == 'reverify')
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install dependencies
+        run: |
+          pip install -e .
+          cargo install cargo-audit || true
+
+      - name: Run full verification
+        run: python scripts/verify_source.py --all --steps 1,2,4 --output reports/reverification.json
+        timeout-minutes: 30
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reverification-report
+          path: reports/reverification.json
+          retention-days: 30
+
+  remediate:
+    name: Auto-Remediate Critical Sources
+    runs-on: ubuntu-latest
+    if: github.event.inputs.task == 'remediate'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -e .
+
+      - name: Run remediation
+        run: python scripts/maintain_sources.py remediate --output reports/remediation.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit config changes if any
+        run: |
+          if git diff --quiet scraper/config.py; then
+            echo "No config changes needed"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add scraper/config.py
+            git commit -m "fix: auto-remove archived/deleted repos from config
+
+          Co-Authored-By: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+            git push
+          fi
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: remediation-report
+          path: reports/remediation.json
+          retention-days: 30
 
   summary:
     name: Generate Summary

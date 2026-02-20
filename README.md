@@ -952,10 +952,21 @@ python -m src.embeddings.vectordb --reset
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
 | `qa.yml` | PRs to main, push to main | TypeScript type check, Python lint, Python tests |
-| `maintenance.yml` | Weekly (Mon 6AM UTC) + manual | SDK version monitoring, source health checks, community discovery |
+| `maintenance.yml` | Weekly (Mon 6AM UTC) + manual | SDK monitoring, health checks, discovery, re-verification, auto-remediation |
 | `refresh-rag.yml` | Manual | Full RAG refresh: scrape, process, migrate to Vectorize |
 | `deploy-staging.yml` | Manual | Deploy to staging environment |
 | `release-chunks.yml` | GitHub release | Build and publish pre-processed chunks + embeddings |
+
+### maintenance.yml Jobs
+
+| Job | Trigger | What It Does |
+|-----|---------|-------------|
+| `sdk-monitor` | Weekly + manual | Checks crates.io/npm for new SDK versions |
+| `health-check` | Weekly + manual | Checks all repos for archived/deleted status |
+| `discover` | Manual only | Searches GitHub for new community repos |
+| `reverify` | On SDK update or manual | Re-verifies all repos with `verify_source.py --all` |
+| `remediate` | Manual only | Auto-removes archived/deleted repos from config |
+| `create-issue` | When problems found | Creates GitHub issue with maintenance label |
 
 ## License
 

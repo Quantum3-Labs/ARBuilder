@@ -364,11 +364,14 @@ pytest tests/ -x --timeout=120
 
 ### Source Verification & Maintenance
 ```bash
-# Verify all repos (compile, tests, health, dependency audit, AI review)
+# Verify all repos — M1 Stylus + M2 SDK + M3 dApp Builder (compile, lint, tests, health, audit, AI review)
 python scripts/verify_source.py --all --steps 1,2,4,5 --output reports/verification.json
 
 # SDK monitoring + health check + community discovery
 python scripts/maintain_sources.py all --output reports/maintenance.json
+
+# Auto-remove archived/deleted repos from config
+python scripts/maintain_sources.py remediate
 ```
 
 ### Testing MCP Tools Locally
