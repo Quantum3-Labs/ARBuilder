@@ -4,10 +4,11 @@ Test cases for generate_tests MCP tool.
 Tests test generation quality, coverage, and validity.
 """
 
-import pytest
 import re
-from typing import Optional
 
+import pytest
+
+from tests.conftest import requires_api_key
 
 # Sample contract code for testing
 SAMPLE_COUNTER_CONTRACT = """
@@ -145,7 +146,6 @@ GENERATE_TESTS_TEST_CASES = [
         "priority": "P0",
         "category": "unit_tests",
     },
-
     # ===== Happy Path Tests (P0) =====
     {
         "id": "test_happy_001",
@@ -183,7 +183,6 @@ GENERATE_TESTS_TEST_CASES = [
         "priority": "P0",
         "category": "happy_path",
     },
-
     # ===== Error Case Tests (P0) =====
     {
         "id": "test_error_001",
@@ -231,7 +230,6 @@ GENERATE_TESTS_TEST_CASES = [
         "priority": "P0",
         "category": "error_cases",
     },
-
     # ===== Edge Case Tests (P1) =====
     {
         "id": "test_edge_001",
@@ -275,7 +273,6 @@ GENERATE_TESTS_TEST_CASES = [
         "priority": "P1",
         "category": "edge_cases",
     },
-
     # ===== Test Framework Selection =====
     {
         "id": "test_framework_001",
@@ -314,7 +311,6 @@ GENERATE_TESTS_TEST_CASES = [
         "priority": "P1",
         "category": "framework",
     },
-
     # ===== Coverage Focus =====
     {
         "id": "test_focus_001",
@@ -345,7 +341,6 @@ GENERATE_TESTS_TEST_CASES = [
         "priority": "P1",
         "category": "coverage_focus",
     },
-
     # ===== Fuzz Tests (P2) =====
     {
         "id": "test_fuzz_001",
@@ -366,7 +361,6 @@ GENERATE_TESTS_TEST_CASES = [
         "priority": "P2",
         "category": "fuzz_tests",
     },
-
     # ===== Test Summary =====
     {
         "id": "test_summary_001",
@@ -382,7 +376,6 @@ GENERATE_TESTS_TEST_CASES = [
         "priority": "P0",
         "category": "summary",
     },
-
     # ===== Setup Instructions =====
     {
         "id": "test_setup_001",
@@ -398,7 +391,6 @@ GENERATE_TESTS_TEST_CASES = [
         "priority": "P1",
         "category": "setup",
     },
-
     # ===== Edge Cases =====
     {
         "id": "test_input_edge_001",
@@ -448,6 +440,7 @@ sol_storage! {
 ]
 
 
+@requires_api_key
 class TestGenerateTests:
     """Test suite for generate_tests tool."""
 
@@ -455,6 +448,7 @@ class TestGenerateTests:
     def tool(self):
         """Initialize the tool for testing."""
         from src.mcp.tools import GenerateTestsTool
+
         return GenerateTestsTool()
 
     @pytest.mark.parametrize(
@@ -517,28 +511,28 @@ class TestGenerateTests:
         # Check must-have patterns
         if "must_have_patterns" in expected:
             for pattern in expected["must_have_patterns"]:
-                assert re.search(pattern, tests, re.IGNORECASE), \
-                    f"Missing pattern: {pattern}"
+                assert re.search(pattern, tests, re.IGNORECASE), f"Missing pattern: {pattern}"
 
         # Check must-not-have patterns
         if "must_not_have_patterns" in expected:
             for pattern in expected["must_not_have_patterns"]:
-                assert not re.search(pattern, tests, re.IGNORECASE), \
+                assert not re.search(pattern, tests, re.IGNORECASE), (
                     f"Should not have pattern: {pattern}"
+                )
 
         # Check should-have patterns
         if "should_have_patterns" in expected:
             found = any(
-                re.search(p, tests, re.IGNORECASE)
-                for p in expected["should_have_patterns"]
+                re.search(p, tests, re.IGNORECASE) for p in expected["should_have_patterns"]
             )
             assert found, f"None of patterns found: {expected['should_have_patterns']}"
 
         # Check minimum test count
         if "min_test_count" in expected:
             test_count = len(re.findall(r"#\[test\]|fn\s+test_", tests))
-            assert test_count >= expected["min_test_count"], \
+            assert test_count >= expected["min_test_count"], (
                 f"Too few tests: {test_count} < {expected['min_test_count']}"
+            )
 
         # Check should test functions
         if "should_test_functions" in expected:
@@ -546,10 +540,7 @@ class TestGenerateTests:
             for func in expected["should_test_functions"]:
                 func_lower = func.lower().replace("_", "")
                 # Allow some flexibility in naming
-                found = (
-                    func.lower() in tests_lower or
-                    func_lower in tests_lower.replace("_", "")
-                )
+                found = func.lower() in tests_lower or func_lower in tests_lower.replace("_", "")
                 assert found, f"Function not tested: {func}"
 
         # Check for test summary
@@ -566,8 +557,7 @@ class TestGenerateTests:
             setup = result["setup_instructions"].lower()
             if "setup_mentions" in expected:
                 for mention in expected["setup_mentions"]:
-                    assert mention.lower() in setup, \
-                        f"Setup missing mention: {mention}"
+                    assert mention.lower() in setup, f"Setup missing mention: {mention}"
 
     def _is_valid_test_syntax(self, tests: str) -> bool:
         """Basic test syntax validation."""

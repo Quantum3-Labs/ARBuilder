@@ -7,24 +7,20 @@ Tests:
 3. Template compilation using cargo stylus check (integration tests)
 """
 
-import pytest
-import tempfile
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
-from typing import Optional
+
+import pytest
 
 # Import templates
 from src.templates.stylus_templates import (
-    StylusTemplate,
     COUNTER_TEMPLATE,
-    VENDING_MACHINE_TEMPLATE,
-    SIMPLE_ERC20_TEMPLATE,
-    ACCESS_CONTROL_TEMPLATE,
-    TEMPLATES,
-    select_template,
+    StylusTemplate,
     get_template,
     list_templates,
+    select_template,
 )
 
 
@@ -225,9 +221,7 @@ class TestTemplateVersionConsistency:
     def test_no_ruint_pin_in_templates(self):
         """No template should pin ruint (alloy 1.0 manages it)."""
         for template in list_templates():
-            assert "ruint" not in template.cargo_toml, (
-                f"{template.name} still pins ruint"
-            )
+            assert "ruint" not in template.cargo_toml, f"{template.name} still pins ruint"
 
 
 class TestSystemPromptsAndDisclaimer:
@@ -236,45 +230,52 @@ class TestSystemPromptsAndDisclaimer:
     def test_system_prompt_contains_transfer_eth(self):
         """System prompt should mention transfer_eth pattern."""
         from src.mcp.tools.generate_stylus_code import get_system_prompt
+
         prompt = get_system_prompt("0.10.0")
         assert "transfer_eth" in prompt
 
     def test_system_prompt_contains_sol_error(self):
         """System prompt should mention SolError import."""
         from src.mcp.tools.generate_stylus_code import get_system_prompt
+
         prompt = get_system_prompt("0.10.0")
         assert "SolError" in prompt
 
     def test_system_prompt_forbids_evm_module(self):
         """System prompt should forbid stylus_sdk::evm."""
         from src.mcp.tools.generate_stylus_code import get_system_prompt
+
         prompt = get_system_prompt("0.10.0")
         assert "stylus_sdk::evm" in prompt
 
     def test_fix_code_preserves_sol_error_import(self):
         """_fix_code should NOT strip SolError from combined imports."""
         from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
+
         tool = GenerateStylusCodeTool()
-        code = 'use alloy_sol_types::{sol, SolError};'
+        code = "use alloy_sol_types::{sol, SolError};"
         fixed = tool._fix_code(code, None)
         assert "SolError" in fixed, f"SolError was stripped: {fixed}"
 
     def test_fix_code_strips_standalone_sol_import(self):
         """_fix_code should strip standalone alloy_sol_types::sol import."""
         from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
+
         tool = GenerateStylusCodeTool()
-        code = 'use alloy_sol_types::sol;\nuse stylus_sdk::prelude::*;'
+        code = "use alloy_sol_types::sol;\nuse stylus_sdk::prelude::*;"
         fixed = tool._fix_code(code, None)
         assert "alloy_sol_types::sol" not in fixed
 
     def test_disclaimer_exists(self):
         """TEMPLATE_DISCLAIMER should exist and contain 'starting entrypoint'."""
         from src.mcp.tools.generate_stylus_code import TEMPLATE_DISCLAIMER
+
         assert "starting entrypoint" in TEMPLATE_DISCLAIMER
 
     def test_coding_rules_has_forbidden_imports(self):
         """Coding rules should list forbidden imports."""
         from src.mcp.resources.coding_rules import STYLUS_CODING_RULES
+
         assert "forbidden_imports" in STYLUS_CODING_RULES
         forbidden = STYLUS_CODING_RULES["forbidden_imports"]
         assert "stylus_sdk::evm" in forbidden
@@ -305,18 +306,17 @@ class TestSystemPromptsAndDisclaimer:
         for template in list_templates():
             # Extract name from Cargo.toml
             import re
+
             match = re.search(r'name\s*=\s*"([^"]+)"', template.cargo_toml)
             assert match, f"{template.name} missing name in Cargo.toml"
             pkg_name = match.group(1)
-            assert "-" not in pkg_name, (
-                f"{template.name} has hyphens in package name: {pkg_name}"
-            )
+            assert "-" not in pkg_name, f"{template.name} has hyphens in package name: {pkg_name}"
 
     def test_templates_have_lib_in_crate_type(self):
         """crate-type should include both 'lib' and 'cdylib'."""
         for template in list_templates():
             assert '["lib", "cdylib"]' in template.cargo_toml, (
-                f"{template.name} crate-type should be [\"lib\", \"cdylib\"]"
+                f'{template.name} crate-type should be ["lib", "cdylib"]'
             )
 
     def test_templates_main_rs_uses_print_from_args(self):
@@ -346,18 +346,21 @@ class TestSystemPromptsAndDisclaimer:
     def test_system_prompt_has_print_from_args(self):
         """System prompt should mention print_from_args."""
         from src.mcp.tools.generate_stylus_code import get_system_prompt
+
         prompt = get_system_prompt("0.10.0")
         assert "print_from_args" in prompt
 
     def test_system_prompt_has_underscore_naming(self):
         """System prompt should mention underscore package names."""
         from src.mcp.tools.generate_stylus_code import get_system_prompt
+
         prompt = get_system_prompt("0.10.0")
         assert "underscore" in prompt.lower()
 
     def test_derive_project_name_uses_underscores(self):
         """_derive_project_name should use underscores."""
         from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
+
         tool = GenerateStylusCodeTool()
         name = tool._derive_project_name("prediction market contract")
         assert "_" in name
@@ -366,12 +369,14 @@ class TestSystemPromptsAndDisclaimer:
     def test_coding_rules_has_main_rs_pattern(self):
         """Coding rules should have main_rs pattern."""
         from src.mcp.resources.coding_rules import STYLUS_CODING_RULES
+
         assert "main_rs" in STYLUS_CODING_RULES["patterns"]
         assert "print_from_args" in STYLUS_CODING_RULES["patterns"]["main_rs"]["example"]
 
     def test_coding_rules_has_cross_contract_calls(self):
         """Coding rules should document sol_interface! call pattern."""
         from src.mcp.resources.coding_rules import STYLUS_CODING_RULES
+
         assert "cross_contract_calls" in STYLUS_CODING_RULES["patterns"]
         pattern = STYLUS_CODING_RULES["patterns"]["cross_contract_calls"]
         assert "sol_interface!" in pattern["definition"]
@@ -381,11 +386,13 @@ class TestSystemPromptsAndDisclaimer:
     def test_coding_rules_forbids_call_new_in(self):
         """Coding rules should forbid Call::new_in (0.9.x pattern)."""
         from src.mcp.resources.coding_rules import STYLUS_CODING_RULES
+
         assert "Call::new_in" in STYLUS_CODING_RULES["forbidden_imports"]
 
     def test_system_prompt_mentions_sol_interface(self):
         """System prompt should mention sol_interface! call pattern."""
         from src.mcp.tools.generate_stylus_code import get_system_prompt
+
         prompt = get_system_prompt("0.10.0")
         assert "sol_interface" in prompt
         assert "Call::new()" in prompt
@@ -393,12 +400,13 @@ class TestSystemPromptsAndDisclaimer:
     def test_abi_extractor_converts_snake_to_camel(self):
         """ABI extractor should convert snake_case fn names to camelCase."""
         from src.utils.abi_extractor import extract_abi_from_code
-        code = '''#[public]
+
+        code = """#[public]
 impl MyContract {
     pub fn get_value(&self) -> U256 { self.value.get() }
     pub fn set_value(&mut self, val: U256) { self.value.set(val); }
     pub fn create_market(&mut self, name: String) -> U256 { U256::ZERO }
-}'''
+}"""
         abi = extract_abi_from_code(code)
         names = [e["name"] for e in abi]
         assert "getValue" in names
@@ -409,11 +417,12 @@ impl MyContract {
     def test_abi_extractor_single_word_unchanged(self):
         """Single-word fn names should remain unchanged."""
         from src.utils.abi_extractor import extract_abi_from_code
-        code = '''#[public]
+
+        code = """#[public]
 impl MyContract {
     pub fn increment(&mut self) { }
     pub fn number(&self) -> U256 { U256::ZERO }
-}'''
+}"""
         abi = extract_abi_from_code(code)
         names = [e["name"] for e in abi]
         assert "increment" in names
@@ -422,44 +431,49 @@ impl MyContract {
     def test_coding_rules_has_view_function_gotcha(self):
         """Coding rules should warn about view function external call limitation."""
         from src.mcp.resources.coding_rules import STYLUS_CODING_RULES
+
         pitfalls = STYLUS_CODING_RULES["common_pitfalls"]
         assert any("view" in p.lower() and "external" in p.lower() for p in pitfalls)
 
     def test_coding_rules_has_abi_naming(self):
         """Coding rules should document camelCase ABI naming convention."""
         from src.mcp.resources.coding_rules import STYLUS_CODING_RULES
+
         assert "abi_naming" in STYLUS_CODING_RULES["patterns"]
 
     def test_template_system_prompt_mentions_sol_interface(self):
         """Template system prompt must include sol_interface! guidance."""
         from src.mcp.tools.generate_stylus_code import get_template_system_prompt
-        from src.templates.stylus_templates import COUNTER_TEMPLATE
+
         prompt = get_template_system_prompt(COUNTER_TEMPLATE, "0.10.0")
         assert "sol_interface!" in prompt
 
     def test_template_system_prompt_has_transfer_eth_use_statement(self):
         """Template system prompt must show full use statement for transfer_eth."""
         from src.mcp.tools.generate_stylus_code import get_template_system_prompt
-        from src.templates.stylus_templates import COUNTER_TEMPLATE
+
         prompt = get_template_system_prompt(COUNTER_TEMPLATE, "0.10.0")
         assert "stylus_sdk::call::transfer::transfer_eth" in prompt
 
     def test_fix_code_converts_sol_to_sol_interface(self):
         """_fix_code should convert sol! { interface to sol_interface! { interface."""
         from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
+
         tool = GenerateStylusCodeTool.__new__(GenerateStylusCodeTool)
-        broken = '''sol! {
+        broken = """sol! {
     interface IToken {
         function transfer(address to, uint256 amount) external returns (bool);
     }
-}'''
+}"""
         fixed = tool._fix_code(broken, None)
         assert "sol_interface!" in fixed
 
     def test_template_source_comments_say_0_10(self):
         """Template source comments should reference SDK 0.10.0, not 0.9.0."""
-        from src.templates import stylus_templates
         import inspect
+
+        from src.templates import stylus_templates
+
         source = inspect.getsource(stylus_templates)
         assert "(v0.9.0)" not in source
         assert "(v0.8.4)" not in source
@@ -467,8 +481,9 @@ impl MyContract {
     def test_fix_code_fixes_wrong_transfer_eth_import(self):
         """_fix_code should fix wrong transfer_eth import path."""
         from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
+
         tool = GenerateStylusCodeTool.__new__(GenerateStylusCodeTool)
-        broken = 'use stylus_sdk::call::transfer_eth;'
+        broken = "use stylus_sdk::call::transfer_eth;"
         fixed = tool._fix_code(broken, None)
         assert "stylus_sdk::call::transfer::transfer_eth" in fixed
         assert "call::transfer_eth;" not in fixed
@@ -476,16 +491,18 @@ impl MyContract {
     def test_fix_code_fixes_self_transfer_eth(self):
         """_fix_code should fix self.transfer_eth() to transfer_eth(self.vm(), ...)."""
         from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
+
         tool = GenerateStylusCodeTool.__new__(GenerateStylusCodeTool)
-        broken = 'self.transfer_eth(recipient, amount)'
+        broken = "self.transfer_eth(recipient, amount)"
         fixed = tool._fix_code(broken, None)
         assert "transfer_eth(self.vm(), recipient, amount)" in fixed
 
     def test_fix_code_fixes_transfer_eth_self_to_self_vm(self):
         """_fix_code should fix transfer_eth(self, ...) to transfer_eth(self.vm(), ...)."""
         from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
+
         tool = GenerateStylusCodeTool.__new__(GenerateStylusCodeTool)
-        broken = 'transfer_eth(self, recipient, amount)?;'
+        broken = "transfer_eth(self, recipient, amount)?;"
         fixed = tool._fix_code(broken, None)
         assert "transfer_eth(self.vm(), recipient, amount)" in fixed
         assert "transfer_eth(self, " not in fixed
@@ -493,15 +510,16 @@ impl MyContract {
     def test_fix_code_fixes_combined_transfer_eth_call_import(self):
         """_fix_code should split combined {transfer_eth, Call} import."""
         from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
+
         tool = GenerateStylusCodeTool.__new__(GenerateStylusCodeTool)
-        broken = 'use stylus_sdk::call::{transfer_eth, Call};'
+        broken = "use stylus_sdk::call::{transfer_eth, Call};"
         fixed = tool._fix_code(broken, None)
         assert "stylus_sdk::call::transfer::transfer_eth" in fixed
 
     def test_template_prompt_has_storage_get_rule(self):
         """Template system prompt must instruct .get() for storage reads."""
         from src.mcp.tools.generate_stylus_code import get_template_system_prompt
-        from src.templates.stylus_templates import COUNTER_TEMPLATE
+
         prompt = get_template_system_prompt(COUNTER_TEMPLATE, "0.10.0")
         assert "self.field.get()" in prompt
         assert "STORAGE ACCESS" in prompt
@@ -509,7 +527,7 @@ impl MyContract {
     def test_template_prompt_has_call_new_pattern(self):
         """Template system prompt must show Call::new() as second arg in cross-contract calls."""
         from src.mcp.tools.generate_stylus_code import get_template_system_prompt
-        from src.templates.stylus_templates import COUNTER_TEMPLATE
+
         prompt = get_template_system_prompt(COUNTER_TEMPLATE, "0.10.0")
         assert "self.vm(), Call::new()" in prompt
         assert "CROSS-CONTRACT CALLS" in prompt
@@ -517,14 +535,14 @@ impl MyContract {
     def test_template_prompt_allows_struct_rename(self):
         """Template system prompt should allow renaming the contract struct."""
         from src.mcp.tools.generate_stylus_code import get_template_system_prompt
-        from src.templates.stylus_templates import COUNTER_TEMPLATE
+
         prompt = get_template_system_prompt(COUNTER_TEMPLATE, "0.10.0")
         assert "Rename the contract struct" in prompt
 
     def test_template_prompt_has_reference_code_snippets(self):
-        """Template system prompt must include concrete code snippets for transfer_eth and sol_interface!."""
+        """Template system prompt must include code snippets for transfer_eth and sol_interface!."""
         from src.mcp.tools.generate_stylus_code import get_template_system_prompt
-        from src.templates.stylus_templates import COUNTER_TEMPLATE
+
         prompt = get_template_system_prompt(COUNTER_TEMPLATE, "0.10.0")
         # Must have actual ETH transfer code snippet
         assert "transfer_eth(self.vm(), to, amount)?" in prompt
@@ -539,14 +557,16 @@ impl MyContract {
     def test_fix_code_removes_deprecated_evm_import(self):
         """_fix_code should remove deprecated use stylus_sdk::evm imports."""
         from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
+
         tool = GenerateStylusCodeTool.__new__(GenerateStylusCodeTool)
-        broken = 'use stylus_sdk::evm;\nevm::log(Transfer { from, to, value });'
+        broken = "use stylus_sdk::evm;\nevm::log(Transfer { from, to, value });"
         fixed = tool._fix_code(broken, None)
         assert "use stylus_sdk::evm" not in fixed
 
     def test_defi_vault_template_has_all_advanced_patterns(self):
         """DeFiVault template must demonstrate all 5 advanced patterns."""
         from src.templates.stylus_templates import DEFI_VAULT_TEMPLATE
+
         t = DEFI_VAULT_TEMPLATE
         assert "transfer_eth(self.vm(), to, amount)?" in t.lib_rs
         assert "call::transfer::transfer_eth" in t.lib_rs
@@ -560,16 +580,25 @@ impl MyContract {
 
     def test_defi_keywords_select_vault_template(self):
         """DeFi keywords should route to DeFiVault template."""
-        for kw in ["prediction market", "staking pool", "swap contract",
-                    "deposit ETH", "oracle price feed", "lending protocol"]:
+        for kw in [
+            "prediction market",
+            "staking pool",
+            "swap contract",
+            "deposit ETH",
+            "oracle price feed",
+            "lending protocol",
+        ]:
             template = select_template("utility", kw)
-            assert template.name == "DeFiVault", f"'{kw}' should select DeFiVault, got {template.name}"
+            assert template.name == "DeFiVault", (
+                f"'{kw}' should select DeFiVault, got {template.name}"
+            )
 
     def test_fix_code_enforces_get_on_storage_reads(self):
         """_fix_code should add .get() to bare storage field reads."""
         from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
+
         tool = GenerateStylusCodeTool.__new__(GenerateStylusCodeTool)
-        broken = '''sol_storage! {
+        broken = """sol_storage! {
     #[entrypoint]
     pub struct Market {
         uint256 count;
@@ -579,7 +608,7 @@ impl MyContract {
 let c = self.count;
 let o = self.owner;
 self.count.set(val);
-self.owner.set(addr);'''
+self.owner.set(addr);"""
         fixed = tool._fix_code(broken, None)
         assert "self.count.get()" in fixed, "bare self.count should get .get()"
         assert "self.owner.get()" in fixed, "bare self.owner should get .get()"
@@ -589,8 +618,9 @@ self.owner.set(addr);'''
     def test_fix_code_enforces_get_on_nested_struct_fields(self):
         """_fix_code should add .get() to nested struct storage field reads."""
         from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
+
         tool = GenerateStylusCodeTool.__new__(GenerateStylusCodeTool)
-        broken = '''sol_storage! {
+        broken = """sol_storage! {
     #[entrypoint]
     pub struct PredictionMarket {
         mapping(uint256 => Market) markets;
@@ -607,7 +637,7 @@ let market = self.markets.get(market_id);
 if !market.resolved {
     let total = market.total_up + market.total_down;
 }
-market.resolved.set(true);'''
+market.resolved.set(true);"""
         fixed = tool._fix_code(broken, None)
         assert "market.resolved.get()" in fixed, "nested market.resolved should get .get()"
         assert "market.total_up.get()" in fixed, "nested market.total_up should get .get()"
@@ -617,9 +647,10 @@ market.resolved.set(true);'''
     def test_ask_stylus_fix_code_in_response(self):
         """ask_stylus _fix_code_in_response should fix wrong patterns in code blocks."""
         from src.mcp.tools.ask_stylus import AskStylusTool
+
         tool = AskStylusTool.__new__(AskStylusTool)
 
-        response = '''Here's how to transfer ETH:
+        response = """Here's how to transfer ETH:
 
 ```rust
 use stylus_sdk::call::transfer_eth;
@@ -641,7 +672,7 @@ sol! {
 ```
 
 Use msg::sender() to get the caller.
-'''
+"""
         fixed = tool._fix_code_in_response(response)
 
         # Check transfer_eth import path is fixed
@@ -658,6 +689,7 @@ Use msg::sender() to get the caller.
     def test_ask_stylus_system_prompt_has_reference_code(self):
         """ask_stylus system prompt should include reference code examples."""
         from src.mcp.tools.ask_stylus import SYSTEM_PROMPT
+
         assert "REFERENCE CODE" in SYSTEM_PROMPT
         assert "call::transfer::transfer_eth" in SYSTEM_PROMPT
         assert "sol_interface!" in SYSTEM_PROMPT
@@ -667,6 +699,7 @@ Use msg::sender() to get the caller.
 
 # Integration tests that require cargo-stylus
 @pytest.mark.integration
+@pytest.mark.slow
 class TestTemplateCompilation:
     """Integration tests for template compilation.
 
@@ -719,7 +752,9 @@ class TestTemplateCompilation:
             rust_toolchain.write_text(template.rust_toolchain_toml)
         else:
             rust_toolchain = project_dir / "rust-toolchain.toml"
-            rust_toolchain.write_text('[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n')
+            rust_toolchain.write_text(
+                '[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n'
+            )
 
         # Generate Cargo.lock by running cargo update
         subprocess.run(
@@ -829,9 +864,7 @@ class TestTemplateCompilation:
         # Skip if failure is from upstream dependency (not template code)
         # Known issue: alloy-consensus doesn't compile on Rust nightly 1.88.0
         if result.returncode != 0 and "alloy-consensus" in output:
-            pytest.skip(
-                "Upstream alloy-consensus crate incompatible with Rust nightly 1.88.0"
-            )
+            pytest.skip("Upstream alloy-consensus crate incompatible with Rust nightly 1.88.0")
 
         assert result.returncode == 0, (
             f"Template {template.name} tests failed:\n"
@@ -885,6 +918,7 @@ class TestOracleScaffold:
     def test_generate_oracle_returns_hardhat_config(self):
         """generate_oracle should include hardhat.config.ts in files."""
         from src.mcp.tools.generate_oracle import GenerateOracleTool
+
         tool = GenerateOracleTool()
         result = tool.execute(prompt="price feed oracle", oracle_type="price_feed")
         assert "hardhat.config.ts" in result["files"]
@@ -893,6 +927,7 @@ class TestOracleScaffold:
     def test_generate_oracle_returns_package_json(self):
         """generate_oracle should include package.json in files."""
         from src.mcp.tools.generate_oracle import GenerateOracleTool
+
         tool = GenerateOracleTool()
         result = tool.execute(prompt="price feed oracle", oracle_type="price_feed")
         assert "package.json" in result["files"]
@@ -902,6 +937,7 @@ class TestOracleScaffold:
     def test_generate_oracle_returns_env_example(self):
         """generate_oracle should include .env.example in files."""
         from src.mcp.tools.generate_oracle import GenerateOracleTool
+
         tool = GenerateOracleTool()
         result = tool.execute(prompt="price feed oracle", oracle_type="price_feed")
         assert ".env.example" in result["files"]
@@ -910,10 +946,13 @@ class TestOracleScaffold:
     def test_generate_oracle_all_types_have_scaffold(self):
         """All oracle types should include Hardhat scaffold files."""
         from src.mcp.tools.generate_oracle import GenerateOracleTool
+
         tool = GenerateOracleTool()
         for oracle_type in ["price_feed", "vrf", "automation", "functions"]:
             result = tool.execute(prompt=f"{oracle_type} oracle", oracle_type=oracle_type)
-            assert "hardhat.config.ts" in result["files"], f"{oracle_type} missing hardhat.config.ts"
+            assert "hardhat.config.ts" in result["files"], (
+                f"{oracle_type} missing hardhat.config.ts"
+            )
             assert "package.json" in result["files"], f"{oracle_type} missing package.json"
             assert ".env.example" in result["files"], f"{oracle_type} missing .env.example"
 
@@ -924,6 +963,7 @@ class TestOrchestratorDeployScripts:
     def test_deploy_script_includes_oracle_section(self):
         """deploy.sh should include oracle deploy section when oracle is a component."""
         from src.mcp.tools.orchestrate_dapp import OrchestrateDappTool
+
         tool = OrchestrateDappTool()
         result = tool.execute(
             prompt="token dapp",
@@ -936,6 +976,7 @@ class TestOrchestratorDeployScripts:
     def test_deploy_script_includes_indexer_section(self):
         """deploy.sh should include indexer deploy section when indexer is a component."""
         from src.mcp.tools.orchestrate_dapp import OrchestrateDappTool
+
         tool = OrchestrateDappTool()
         result = tool.execute(
             prompt="token dapp",
@@ -949,6 +990,7 @@ class TestOrchestratorDeployScripts:
     def test_deploy_script_excludes_oracle_when_not_requested(self):
         """deploy.sh should NOT include oracle section when oracle is not a component."""
         from src.mcp.tools.orchestrate_dapp import OrchestrateDappTool
+
         tool = OrchestrateDappTool()
         result = tool.execute(
             prompt="token dapp",
@@ -960,6 +1002,7 @@ class TestOrchestratorDeployScripts:
     def test_setup_script_includes_oracle_install(self):
         """setup.sh should include oracle npm install when oracle is a component."""
         from src.mcp.tools.orchestrate_dapp import OrchestrateDappTool
+
         tool = OrchestrateDappTool()
         result = tool.execute(
             prompt="token dapp",
@@ -972,6 +1015,7 @@ class TestOrchestratorDeployScripts:
     def test_orchestrator_oracle_has_files(self):
         """Oracle component in orchestrator should have deployable files."""
         from src.mcp.tools.orchestrate_dapp import OrchestrateDappTool
+
         tool = OrchestrateDappTool()
         result = tool.execute(
             prompt="token dapp",
@@ -983,10 +1027,10 @@ class TestOrchestratorDeployScripts:
         assert "contracts/OracleConsumer.sol" in oracle["files"]
         assert "scripts/deploy.ts" in oracle["files"]
 
-
     def test_orchestrate_dapp_description_says_scaffold(self):
         """orchestrate_dapp description should say 'Scaffold', not 'Generate a complete'."""
         from src.mcp.tools.orchestrate_dapp import OrchestrateDappTool
+
         tool = OrchestrateDappTool()
         assert "Scaffold" in tool.description
         assert "Generate a complete" not in tool.description
@@ -997,6 +1041,7 @@ class TestSetupScriptScaffolding:
 
     def _get_setup_sh(self, components, backend_framework="nestjs"):
         from src.mcp.tools.orchestrate_dapp import OrchestrateDappTool
+
         tool = OrchestrateDappTool()
         result = tool.execute(
             prompt="token dapp",
@@ -1055,6 +1100,7 @@ class TestEnvConfigOracleIndexer:
     def test_env_template_includes_graph_deploy_key(self):
         """Env template should include GRAPH_DEPLOY_KEY when indexer is present."""
         from src.utils.env_config import generate_env_template
+
         env = generate_env_template(["contract", "backend", "frontend", "indexer"])
         assert "GRAPH_DEPLOY_KEY" in env
         assert "SUBGRAPH_NAME" in env
@@ -1062,18 +1108,21 @@ class TestEnvConfigOracleIndexer:
     def test_env_template_includes_oracle_address(self):
         """Env template should include ORACLE_CONTRACT_ADDRESS when oracle is present."""
         from src.utils.env_config import generate_env_template
+
         env = generate_env_template(["contract", "backend", "frontend", "oracle"])
         assert "ORACLE_CONTRACT_ADDRESS" in env
 
     def test_env_template_includes_subgraph_url_for_frontend(self):
         """Env template should include NEXT_PUBLIC_SUBGRAPH_URL when both indexer and frontend."""
         from src.utils.env_config import generate_env_template
+
         env = generate_env_template(["contract", "backend", "frontend", "indexer"])
         assert "NEXT_PUBLIC_SUBGRAPH_URL" in env
 
     def test_env_template_excludes_oracle_when_not_requested(self):
         """Env template should NOT include oracle vars when oracle is not present."""
         from src.utils.env_config import generate_env_template
+
         env = generate_env_template(["contract", "backend", "frontend"])
         assert "ORACLE_CONTRACT_ADDRESS" not in env
         assert "GRAPH_DEPLOY_KEY" not in env

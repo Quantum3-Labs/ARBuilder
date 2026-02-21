@@ -6,6 +6,8 @@ Tests Q&A quality, debugging help, and explanation accuracy.
 
 import pytest
 
+from tests.conftest import requires_api_key
+
 # Test case definitions
 ASK_STYLUS_TEST_CASES = [
     # ===== Concept Explanation (P0) =====
@@ -353,6 +355,7 @@ pub fn transfer(&mut self, to: Address, amount: u64) {
 ]
 
 
+@requires_api_key
 class TestAskStylus:
     """Test suite for ask_stylus tool."""
 

@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import requires_api_key
+
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -58,6 +60,7 @@ class TestBM25Reranker:
         assert "Stylus SDK" in results[0]["document"]
 
 
+@requires_api_key
 class TestLLMReranker:
     """Test LLM-based reranking."""
 
@@ -92,6 +95,7 @@ class TestLLMReranker:
         assert avg_relevant > avg_irrelevant, "Relevant docs should score higher"
 
 
+@requires_api_key
 class TestHybridReranker:
     """Test hybrid reranking combining vector + BM25."""
 
@@ -124,6 +128,7 @@ class TestHybridReranker:
         assert all("ERC20" in doc or "Transfer" in doc for doc in top_2)
 
 
+@requires_api_key
 class TestRerankerIntegration:
     """Integration tests with actual vector database."""
 

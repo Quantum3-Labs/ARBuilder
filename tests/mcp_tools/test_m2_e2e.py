@@ -5,13 +5,14 @@ Tests the full flow: MCP request → code generation → TypeScript compilation.
 """
 
 import json
-import os
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
 import pytest
+
+from tests.conftest import requires_api_key
 
 
 class MCPClient:
@@ -22,10 +23,7 @@ class MCPClient:
 
     def call_tool(self, name: str, arguments: dict) -> dict:
         """Call a tool via MCP."""
-        request = {
-            "method": "tools/call",
-            "params": {"name": name, "arguments": arguments}
-        }
+        request = {"method": "tools/call", "params": {"name": name, "arguments": arguments}}
 
         result = subprocess.run(
             self.server_cmd,
@@ -47,6 +45,7 @@ class MCPClient:
         return json.loads(content_text)
 
 
+@requires_api_key
 class TestM2BridgingE2E:
     """End-to-end tests for bridging code generation."""
 
@@ -68,14 +67,9 @@ class TestM2BridgingE2E:
             "name": "m2-bridge-test",
             "version": "1.0.0",
             "type": "module",
-            "scripts": {
-                "typecheck": "tsc --noEmit"
-            },
+            "scripts": {"typecheck": "tsc --noEmit"},
             "dependencies": dependencies,
-            "devDependencies": {
-                "typescript": "^5.0.0",
-                "@types/node": "^20.0.0"
-            }
+            "devDependencies": {"typescript": "^5.0.0", "@types/node": "^20.0.0"},
         }
 
         Path(temp_dir, "package.json").write_text(json.dumps(package_json, indent=2))
@@ -90,9 +84,9 @@ class TestM2BridgingE2E:
                 "skipLibCheck": True,
                 "strict": False,
                 "noEmit": True,
-                "resolveJsonModule": True
+                "resolveJsonModule": True,
             },
-            "include": ["*.ts"]
+            "include": ["*.ts"],
         }
         Path(temp_dir, "tsconfig.json").write_text(json.dumps(tsconfig, indent=2))
 
@@ -102,10 +96,9 @@ class TestM2BridgingE2E:
     @pytest.mark.slow
     def test_eth_deposit_compiles(self, client, temp_dir):
         """Test that generated ETH deposit code compiles."""
-        result = client.call_tool("generate_bridge_code", {
-            "bridge_type": "eth_deposit",
-            "amount": "0.5"
-        })
+        result = client.call_tool(
+            "generate_bridge_code", {"bridge_type": "eth_deposit", "amount": "0.5"}
+        )
 
         assert "error" not in result, f"Generation failed: {result.get('error')}"
         assert "code" in result
@@ -149,10 +142,13 @@ class TestM2BridgingE2E:
     @pytest.mark.slow
     def test_erc20_deposit_compiles(self, client, temp_dir):
         """Test that generated ERC20 deposit code compiles."""
-        result = client.call_tool("generate_bridge_code", {
-            "bridge_type": "erc20_deposit",
-            "token_address": "0x1234567890123456789012345678901234567890"
-        })
+        result = client.call_tool(
+            "generate_bridge_code",
+            {
+                "bridge_type": "erc20_deposit",
+                "token_address": "0x1234567890123456789012345678901234567890",
+            },
+        )
 
         assert "error" not in result
         assert "Erc20Bridger" in result["code"]
@@ -167,7 +163,7 @@ class TestM2BridgingE2E:
                 capture_output=True,
                 text=True,
                 timeout=120,
-                check=True
+                check=True,
             )
 
             typecheck_result = subprocess.run(
@@ -192,10 +188,9 @@ class TestM2BridgingE2E:
     @pytest.mark.slow
     def test_eth_l1_l3_compiles(self, client, temp_dir):
         """Test that generated L1->L3 ETH bridging code compiles."""
-        result = client.call_tool("generate_bridge_code", {
-            "bridge_type": "eth_l1_l3",
-            "amount": "0.1"
-        })
+        result = client.call_tool(
+            "generate_bridge_code", {"bridge_type": "eth_l1_l3", "amount": "0.1"}
+        )
 
         assert "error" not in result
         assert "EthL1L3Bridger" in result["code"]
@@ -210,7 +205,7 @@ class TestM2BridgingE2E:
                 capture_output=True,
                 text=True,
                 timeout=120,
-                check=True
+                check=True,
             )
 
             typecheck_result = subprocess.run(
@@ -232,6 +227,7 @@ class TestM2BridgingE2E:
             pytest.skip("Timed out")
 
 
+@requires_api_key
 class TestM2MessagingE2E:
     """End-to-end tests for messaging code generation."""
 
@@ -251,14 +247,9 @@ class TestM2MessagingE2E:
             "name": "m2-messaging-test",
             "version": "1.0.0",
             "type": "module",
-            "scripts": {
-                "typecheck": "tsc --noEmit"
-            },
+            "scripts": {"typecheck": "tsc --noEmit"},
             "dependencies": dependencies,
-            "devDependencies": {
-                "typescript": "^5.0.0",
-                "@types/node": "^20.0.0"
-            }
+            "devDependencies": {"typescript": "^5.0.0", "@types/node": "^20.0.0"},
         }
 
         Path(temp_dir, "package.json").write_text(json.dumps(package_json, indent=2))
@@ -271,9 +262,9 @@ class TestM2MessagingE2E:
                 "esModuleInterop": True,
                 "skipLibCheck": True,
                 "strict": False,
-                "noEmit": True
+                "noEmit": True,
             },
-            "include": ["*.ts"]
+            "include": ["*.ts"],
         }
         Path(temp_dir, "tsconfig.json").write_text(json.dumps(tsconfig, indent=2))
 
@@ -282,9 +273,7 @@ class TestM2MessagingE2E:
     @pytest.mark.slow
     def test_l1_to_l2_message_compiles(self, client, temp_dir):
         """Test that generated L1->L2 messaging code compiles."""
-        result = client.call_tool("generate_messaging_code", {
-            "message_type": "l1_to_l2"
-        })
+        result = client.call_tool("generate_messaging_code", {"message_type": "l1_to_l2"})
 
         assert "error" not in result
         assert "code" in result
@@ -299,7 +288,7 @@ class TestM2MessagingE2E:
                 capture_output=True,
                 text=True,
                 timeout=120,
-                check=True
+                check=True,
             )
 
             typecheck_result = subprocess.run(
@@ -323,9 +312,7 @@ class TestM2MessagingE2E:
     @pytest.mark.slow
     def test_l2_to_l1_message_compiles(self, client, temp_dir):
         """Test that generated L2->L1 messaging code compiles."""
-        result = client.call_tool("generate_messaging_code", {
-            "message_type": "l2_to_l1"
-        })
+        result = client.call_tool("generate_messaging_code", {"message_type": "l2_to_l1"})
 
         assert "error" not in result
         assert "ArbSys" in result["code"] or "ARB_SYS" in result["code"]
@@ -340,7 +327,7 @@ class TestM2MessagingE2E:
                 capture_output=True,
                 text=True,
                 timeout=120,
-                check=True
+                check=True,
             )
 
             typecheck_result = subprocess.run(
@@ -364,9 +351,7 @@ class TestM2MessagingE2E:
     @pytest.mark.slow
     def test_status_check_compiles(self, client, temp_dir):
         """Test that generated status check code compiles."""
-        result = client.call_tool("generate_messaging_code", {
-            "message_type": "check_status"
-        })
+        result = client.call_tool("generate_messaging_code", {"message_type": "check_status"})
 
         assert "error" not in result
         assert "ParentToChildMessageStatus" in result["code"]
@@ -381,7 +366,7 @@ class TestM2MessagingE2E:
                 capture_output=True,
                 text=True,
                 timeout=120,
-                check=True
+                check=True,
             )
 
             typecheck_result = subprocess.run(
@@ -403,6 +388,7 @@ class TestM2MessagingE2E:
             pytest.skip("Timed out")
 
 
+@requires_api_key
 class TestM2AskBridgingE2E:
     """End-to-end tests for ask_bridging tool via MCP."""
 
@@ -412,10 +398,10 @@ class TestM2AskBridgingE2E:
 
     def test_ask_bridging_via_mcp(self, client):
         """Test ask_bridging returns valid answers via MCP."""
-        result = client.call_tool("ask_bridging", {
-            "question": "How do I deposit ETH to Arbitrum?",
-            "include_code_example": True
-        })
+        result = client.call_tool(
+            "ask_bridging",
+            {"question": "How do I deposit ETH to Arbitrum?", "include_code_example": True},
+        )
 
         assert "error" not in result
         assert "answer" in result
@@ -426,9 +412,9 @@ class TestM2AskBridgingE2E:
 
     def test_ask_bridging_retryable_question(self, client):
         """Test ask_bridging handles retryable ticket questions."""
-        result = client.call_tool("ask_bridging", {
-            "question": "What are retryable tickets and how do they work?"
-        })
+        result = client.call_tool(
+            "ask_bridging", {"question": "What are retryable tickets and how do they work?"}
+        )
 
         assert "error" not in result
         assert "retryable_tickets" in result["topics"]
@@ -443,10 +429,9 @@ def run_quick_m2_test():
 
     # Test 1: generate_bridge_code
     print("1. Testing generate_bridge_code...")
-    result = client.call_tool("generate_bridge_code", {
-        "bridge_type": "eth_deposit",
-        "amount": "0.5"
-    })
+    result = client.call_tool(
+        "generate_bridge_code", {"bridge_type": "eth_deposit", "amount": "0.5"}
+    )
     assert "code" in result, f"Failed: {result}"
     assert "EthBridger" in result["code"]
     print(f"   ✓ Generated {len(result['code'])} chars of code")
@@ -454,18 +439,14 @@ def run_quick_m2_test():
 
     # Test 2: generate_messaging_code
     print("\n2. Testing generate_messaging_code...")
-    result = client.call_tool("generate_messaging_code", {
-        "message_type": "l1_to_l2"
-    })
+    result = client.call_tool("generate_messaging_code", {"message_type": "l1_to_l2"})
     assert "code" in result, f"Failed: {result}"
     assert "createRetryableTicket" in result["code"]
     print(f"   ✓ Generated {len(result['code'])} chars of code")
 
     # Test 3: ask_bridging
     print("\n3. Testing ask_bridging...")
-    result = client.call_tool("ask_bridging", {
-        "question": "How long does a withdrawal take?"
-    })
+    result = client.call_tool("ask_bridging", {"question": "How long does a withdrawal take?"})
     assert "answer" in result, f"Failed: {result}"
     print(f"   ✓ Answer: {len(result['answer'])} chars")
     print(f"   ✓ Topics: {result['topics']}")

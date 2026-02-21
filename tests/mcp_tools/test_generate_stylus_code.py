@@ -8,6 +8,8 @@ import re
 
 import pytest
 
+from tests.conftest import requires_api_key
+
 # Test case definitions
 GENERATE_CODE_TEST_CASES = [
     # ===== Basic Contract Generation (P0) =====
@@ -335,6 +337,7 @@ GENERATE_CODE_TEST_CASES = [
 ]
 
 
+@requires_api_key
 class TestGenerateStylusCode:
     """Test suite for generate_stylus_code tool."""
 

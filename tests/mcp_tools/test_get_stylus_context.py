@@ -5,8 +5,8 @@ Tests retrieval quality, filtering, and response format.
 """
 
 import pytest
-from typing import Optional
 
+from tests.conftest import requires_api_key
 
 # Test case definitions
 GET_CONTEXT_TEST_CASES = [
@@ -57,7 +57,6 @@ GET_CONTEXT_TEST_CASES = [
         "priority": "P0",
         "category": "basic_search",
     },
-
     # ===== Semantic Search (P0) =====
     {
         "id": "ctx_semantic_001",
@@ -104,7 +103,6 @@ GET_CONTEXT_TEST_CASES = [
         "priority": "P0",
         "category": "semantic_search",
     },
-
     # ===== Code Snippet Retrieval (P0) =====
     {
         "id": "ctx_code_001",
@@ -158,7 +156,6 @@ GET_CONTEXT_TEST_CASES = [
         "priority": "P0",
         "category": "code_retrieval",
     },
-
     # ===== Documentation Retrieval (P0) =====
     {
         "id": "ctx_docs_001",
@@ -194,7 +191,6 @@ GET_CONTEXT_TEST_CASES = [
         "priority": "P0",
         "category": "docs_retrieval",
     },
-
     # ===== Filtering (P1) =====
     {
         "id": "ctx_filter_001",
@@ -226,7 +222,6 @@ GET_CONTEXT_TEST_CASES = [
         "priority": "P1",
         "category": "filtering",
     },
-
     # ===== Reranking (P1) =====
     {
         "id": "ctx_rerank_001",
@@ -261,7 +256,6 @@ GET_CONTEXT_TEST_CASES = [
         "priority": "P1",
         "category": "reranking",
     },
-
     # ===== Edge Cases =====
     {
         "id": "ctx_edge_001",
@@ -281,7 +275,8 @@ GET_CONTEXT_TEST_CASES = [
         "id": "ctx_edge_002",
         "name": "Edge: very long query",
         "input": {
-            "query": "How do I create a Stylus smart contract that implements an ERC20 token with custom transfer logic that checks if the sender has sufficient balance and also emits events for tracking " * 10,
+            "query": "How do I create a Stylus smart contract that implements an ERC20 token with custom transfer logic that checks if the sender has sufficient balance and also emits events for tracking "
+            * 10,
             "n_results": 5,
         },
         "expected": {
@@ -321,6 +316,7 @@ GET_CONTEXT_TEST_CASES = [
 ]
 
 
+@requires_api_key
 class TestGetStylusContext:
     """Test suite for get_stylus_context tool."""
 
@@ -329,6 +325,7 @@ class TestGetStylusContext:
         """Initialize the tool for testing."""
         # Placeholder - will be implemented with actual tool
         from src.mcp.tools import GetStylusContextTool
+
         return GetStylusContextTool()
 
     @pytest.mark.parametrize(
@@ -370,21 +367,14 @@ class TestGetStylusContext:
 
         # Check must-contain keywords (all must be present)
         if "must_contain_keywords" in expected:
-            all_content = " ".join(
-                ctx["content"].lower() for ctx in result.get("contexts", [])
-            )
+            all_content = " ".join(ctx["content"].lower() for ctx in result.get("contexts", []))
             for keyword in expected["must_contain_keywords"]:
                 assert keyword.lower() in all_content, f"Missing keyword: {keyword}"
 
         # Check should-contain keywords (at least one must be present)
         if "should_contain_keywords" in expected:
-            all_content = " ".join(
-                ctx["content"].lower() for ctx in result.get("contexts", [])
-            )
-            found = any(
-                kw.lower() in all_content
-                for kw in expected["should_contain_keywords"]
-            )
+            all_content = " ".join(ctx["content"].lower() for ctx in result.get("contexts", []))
+            found = any(kw.lower() in all_content for kw in expected["should_contain_keywords"])
             assert found, f"None of keywords found: {expected['should_contain_keywords']}"
 
         # Check content type filtering
