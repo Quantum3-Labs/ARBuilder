@@ -89,92 +89,157 @@ PROJECT_EXAMPLES = {
             # Official examples forked to ARBuilder-Forks org
             # hello-world & vending-machine: fully migrated to SDK 0.10.0
             # workshop-gol: reverted to original (OZ alloy-primitives conflict)
-            {"url": "https://github.com/ARBuilder-Forks/stylus-hello-world",
-             "sdk_version": "0.10.0", "verified": "2026-02-16",
-             "forked_from": "OffchainLabs/stylus-hello-world"},
-            {"url": "https://github.com/ARBuilder-Forks/stylus-quickstart-vending-machine",
-             "sdk_version": "0.10.0", "verified": "2026-02-16",
-             "forked_from": "OffchainLabs/stylus-quickstart-vending-machine"},
-            {"url": "https://github.com/ARBuilder-Forks/stylus-workshop-gol",
-             "sdk_version": "0.9.0", "verified": "2026-02-16",
-             "forked_from": "ArbitrumFoundation/stylus-workshop-gol",
-             "note": "Reverted to original — OZ alloy-primitives conflict blocks 0.10.0 migration"},
+            {
+                "url": "https://github.com/ARBuilder-Forks/stylus-hello-world",
+                "sdk_version": "0.10.0",
+                "verified": "2026-02-16",
+                "forked_from": "OffchainLabs/stylus-hello-world",
+            },
+            {
+                "url": "https://github.com/ARBuilder-Forks/stylus-quickstart-vending-machine",
+                "sdk_version": "0.10.0",
+                "verified": "2026-02-16",
+                "forked_from": "OffchainLabs/stylus-quickstart-vending-machine",
+            },
+            {
+                "url": "https://github.com/ARBuilder-Forks/stylus-workshop-gol",
+                "sdk_version": "0.9.0",
+                "verified": "2026-02-16",
+                "forked_from": "ArbitrumFoundation/stylus-workshop-gol",
+                "note": (
+                    "Reverted to original — OZ alloy-primitives conflict blocks 0.10.0 migration"
+                ),
+            },
         ],
         "verified_production": [
             # Production codebases forked to ARBuilder-Forks org
             # All reverted to original code — blocked by c-kzg/alloy version conflicts
-            {"url": "https://github.com/ARBuilder-Forks/rust-contracts-stylus",
-             "sdk_version": "0.9.0", "verified": "2026-02-16",
-             "forked_from": "OpenZeppelin/rust-contracts-stylus",
-             "note": "Reverted to original — c-kzg + alloy version conflict blocks 0.10.0"},
-            {"url": "https://github.com/ARBuilder-Forks/stylus-test-helpers",
-             "sdk_version": "0.9.0", "verified": "2026-02-16",
-             "forked_from": "OpenZeppelin/stylus-test-helpers",
-             "note": "Reverted to original — c-kzg native library conflict blocks 0.10.0"},
-            {"url": "https://github.com/ARBuilder-Forks/stylusport",
-             "sdk_version": "0.9.0", "verified": "2026-02-16",
-             "forked_from": "oak-security/stylusport",
-             "note": "Reverted to original — c-kzg native library conflict blocks 0.10.0"},
-            {"url": "https://github.com/ARBuilder-Forks/stylus-provider",
-             "sdk_version": "0.8.4", "verified": "2026-02-16",
-             "forked_from": "gnosisguild/stylus-provider",
-             "note": "Reverted to original — c-kzg native library conflict blocks 0.10.0"},
+            {
+                "url": "https://github.com/ARBuilder-Forks/rust-contracts-stylus",
+                "sdk_version": "0.9.0",
+                "verified": "2026-02-16",
+                "forked_from": "OpenZeppelin/rust-contracts-stylus",
+                "note": "Reverted to original — c-kzg + alloy version conflict blocks 0.10.0",
+            },
+            {
+                "url": "https://github.com/ARBuilder-Forks/stylus-test-helpers",
+                "sdk_version": "0.9.0",
+                "verified": "2026-02-16",
+                "forked_from": "OpenZeppelin/stylus-test-helpers",
+                "note": "Reverted to original — c-kzg native library conflict blocks 0.10.0",
+            },
+            {
+                "url": "https://github.com/ARBuilder-Forks/stylusport",
+                "sdk_version": "0.9.0",
+                "verified": "2026-02-16",
+                "forked_from": "oak-security/stylusport",
+                "note": "Reverted to original — c-kzg native library conflict blocks 0.10.0",
+            },
+            {
+                "url": "https://github.com/ARBuilder-Forks/stylus-provider",
+                "sdk_version": "0.8.4",
+                "verified": "2026-02-16",
+                "forked_from": "gnosisguild/stylus-provider",
+                "note": "Reverted to original — c-kzg native library conflict blocks 0.10.0",
+            },
         ],
         "community_projects": [
             # Community projects forked to ARBuilder-Forks org
             # All 3 fully migrated to SDK 0.10.0
-            {"url": "https://github.com/ARBuilder-Forks/ethbuc2025-gyges",
-             "sdk_version": "0.10.0", "verified": "2026-02-16",
-             "forked_from": "philogicae/ethbuc2025-gyges"},
-            {"url": "https://github.com/ARBuilder-Forks/erc6909-with-arbitrum-stylus",
-             "sdk_version": "0.10.0", "verified": "2026-02-16",
-             "forked_from": "Oluwatobilobaoke/erc6909-with-arbitrum-stylus"},
-            {"url": "https://github.com/ARBuilder-Forks/fortune-generator",
-             "sdk_version": "0.10.0", "verified": "2026-02-16",
-             "forked_from": "hummusonrails/fortune-generator"},
+            {
+                "url": "https://github.com/ARBuilder-Forks/ethbuc2025-gyges",
+                "sdk_version": "0.10.0",
+                "verified": "2026-02-16",
+                "forked_from": "philogicae/ethbuc2025-gyges",
+            },
+            {
+                "url": "https://github.com/ARBuilder-Forks/erc6909-with-arbitrum-stylus",
+                "sdk_version": "0.10.0",
+                "verified": "2026-02-16",
+                "forked_from": "Oluwatobilobaoke/erc6909-with-arbitrum-stylus",
+            },
+            {
+                "url": "https://github.com/ARBuilder-Forks/fortune-generator",
+                "sdk_version": "0.10.0",
+                "verified": "2026-02-16",
+                "forked_from": "hummusonrails/fortune-generator",
+            },
         ],
         "scaffold_projects": [
             # Scaffold-stylus projects forked to ARBuilder-Forks org
             # WalletNaming: fully migrated to 0.10.0
             # scaffold-stylus & cross-protocol-defi-tracker: reverted (OZ conflict)
-            {"url": "https://github.com/ARBuilder-Forks/scaffold-stylus",
-             "sdk_version": "0.9.0", "verified": "2026-02-16",
-             "forked_from": "Arb-Stylus/scaffold-stylus",
-             "note": "Reverted to original — OZ v0.3.0 incompatible with SDK 0.10.0"},
-            {"url": "https://github.com/ARBuilder-Forks/cross-protocol-defi-tracker",
-             "sdk_version": "0.9.0", "verified": "2026-02-16",
-             "forked_from": "iyansr/cross-protocol-defi-tracker",
-             "note": "Reverted to original — OZ alloy-primitives conflict blocks 0.10.0"},
-            {"url": "https://github.com/ARBuilder-Forks/WalletNaming-scaffold-stylus",
-             "sdk_version": "0.10.0", "verified": "2026-02-16",
-             "forked_from": "Einarmig/WalletNaming-scaffold-stylus"},
+            {
+                "url": "https://github.com/ARBuilder-Forks/scaffold-stylus",
+                "sdk_version": "0.9.0",
+                "verified": "2026-02-16",
+                "forked_from": "Arb-Stylus/scaffold-stylus",
+                "note": "Reverted to original — OZ v0.3.0 incompatible with SDK 0.10.0",
+            },
+            {
+                "url": "https://github.com/ARBuilder-Forks/cross-protocol-defi-tracker",
+                "sdk_version": "0.9.0",
+                "verified": "2026-02-16",
+                "forked_from": "iyansr/cross-protocol-defi-tracker",
+                "note": "Reverted to original — OZ alloy-primitives conflict blocks 0.10.0",
+            },
+            {
+                "url": "https://github.com/ARBuilder-Forks/WalletNaming-scaffold-stylus",
+                "sdk_version": "0.10.0",
+                "verified": "2026-02-16",
+                "forked_from": "Einarmig/WalletNaming-scaffold-stylus",
+            },
         ],
     },
     "arbitrum_sdk": {
         "official_repos": [
             # VERIFIED 2026-02-10 with verify_source.py --steps 1,2,4:
             # SDK repo - contains library code (npm install fails in monorepo, expected)
-            {"url": "https://github.com/OffchainLabs/arbitrum-sdk", "sdk_version": "N/A", "verified": "2026-02-10"},
+            {
+                "url": "https://github.com/OffchainLabs/arbitrum-sdk",
+                "sdk_version": "N/A",
+                "verified": "2026-02-10",
+            },
             # Tutorials - working examples for bridging/messaging (@arbitrum/sdk 4.0.1)
-            {"url": "https://github.com/OffchainLabs/arbitrum-tutorials", "sdk_version": "4.0.1", "verified": "2026-02-10"},
+            {
+                "url": "https://github.com/OffchainLabs/arbitrum-tutorials",
+                "sdk_version": "4.0.1",
+                "verified": "2026-02-10",
+            },
         ],
         "community_examples": [
             # VERIFIED 2026-02-10 with verify_source.py --steps 1,2,4:
             # Production REST API wrapping EthBridger/Erc20Bridger (32 stars, active)
-            {"url": "https://github.com/kevinb1003/arbitrum-api", "sdk_version": "4.0.4", "verified": "2026-02-10",
-             "note": "Tests need env vars (DB, API keys) — SDK version verified, active repo"},
+            {
+                "url": "https://github.com/kevinb1003/arbitrum-api",
+                "sdk_version": "4.0.4",
+                "verified": "2026-02-10",
+                "note": "Tests need env vars (DB, API keys) — SDK version verified, active repo",
+            },
             # Orbit chain deposit/withdrawal scripts using @arbitrum/sdk
-            {"url": "https://github.com/gelatodigital/how-tos-18-arbitrum-orbit-bridging", "sdk_version": "4.0.2", "verified": "2026-02-10",
-             "note": "Orbit bridging examples — no tests, active repo"},
+            {
+                "url": "https://github.com/gelatodigital/how-tos-18-arbitrum-orbit-bridging",
+                "sdk_version": "4.0.2",
+                "verified": "2026-02-10",
+                "note": "Orbit bridging examples — no tests, active repo",
+            },
             # Cross-chain messaging examples (L1↔L2, L2↔L3)
-            {"url": "https://github.com/gelatodigital/clink-bridging-cross-messaging", "sdk_version": "4.0.2", "verified": "2026-02-10",
-             "note": "Cross-chain messaging patterns — no tests, abandoned but unique value"},
+            {
+                "url": "https://github.com/gelatodigital/clink-bridging-cross-messaging",
+                "sdk_version": "4.0.2",
+                "verified": "2026-02-10",
+                "note": "Cross-chain messaging patterns — no tests, abandoned but unique value",
+            },
         ],
     },
     "orbit_sdk": {
         "sdk_repo": [
             # VERIFIED 2026-02-10: builds successfully, @arbitrum/sdk 4.0.4
-            {"url": "https://github.com/OffchainLabs/arbitrum-orbit-sdk", "sdk_version": "4.0.4", "verified": "2026-02-10"},
+            {
+                "url": "https://github.com/OffchainLabs/arbitrum-orbit-sdk",
+                "sdk_version": "4.0.4",
+                "verified": "2026-02-10",
+            },
         ],
     },
 }
@@ -191,7 +256,11 @@ def get_all_config_repo_urls() -> set[str]:
 
 
 def get_config_repo_info() -> dict[str, dict]:
-    """Return a mapping of repo URL -> {category, subcategory, sdk_version, verified, forked_from}."""
+    """Return a mapping of repo URL -> config info.
+
+    Each value contains: category, subcategory,
+    sdk_version, verified, forked_from.
+    """
     info = {}
     for category, subcategories in PROJECT_EXAMPLES.items():
         for subcategory, entries in subcategories.items():
@@ -210,6 +279,7 @@ def get_config_repo_info() -> dict[str, dict]:
 # BACKWARD COMPATIBILITY
 # Flat URL lists for existing consumers (scraper.py web scraping)
 # ──────────────────────────────────────────────────────────────
+
 
 def _flatten_docs(category: str) -> dict[str, list[str]]:
     """Flatten DOCS[category] to {subcategory: [url, ...]}."""

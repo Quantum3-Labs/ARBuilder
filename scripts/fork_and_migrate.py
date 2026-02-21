@@ -25,9 +25,7 @@ Usage:
 
 import argparse
 import json
-import os
 import re
-import shutil
 import subprocess
 import sys
 from datetime import datetime
@@ -38,16 +36,16 @@ from typing import Optional
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from rich.console import Console
-from rich.table import Table
+from rich.console import Console  # noqa: E402
+from rich.table import Table  # noqa: E402
 
-from scraper.config import PROJECT_EXAMPLES
-from scraper.version_extractor import extract_sdk_version_from_repo
-from src.utils.version_manager import (
+from scraper.config import PROJECT_EXAMPLES  # noqa: E402
+from scraper.version_extractor import extract_sdk_version_from_repo  # noqa: E402
+from src.utils.version_manager import (  # noqa: E402
     apply_version_transforms,
+    compare_versions,
     get_cargo_deps_for_version,
     get_main_version,
-    compare_versions,
 )
 
 console = Console()
@@ -70,21 +68,23 @@ for _subcat, entries in PROJECT_EXAMPLES.get("stylus", {}).items():
         parts = url.rstrip("/").split("/")
         if len(parts) >= 2:
             owner_repo = f"{parts[-2]}/{parts[-1]}"
-            TARGET_REPOS.append({
-                "owner_repo": owner_repo,
-                "url": url,
-                "sdk_version": entry.get("sdk_version", ""),
-                "category": _subcat,
-            })
+            TARGET_REPOS.append(
+                {
+                    "owner_repo": owner_repo,
+                    "url": url,
+                    "sdk_version": entry.get("sdk_version", ""),
+                    "category": _subcat,
+                }
+            )
 
 # Required files for SDK 0.10.0
-STYLUS_TOML_CONTENT = '[workspace]\n\n[workspace.networks]\n\n[contract]\n'
+STYLUS_TOML_CONTENT = "[workspace]\n\n[workspace.networks]\n\n[contract]\n"
 RUST_TOOLCHAIN_CONTENT = '[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n'
 
 
 def _generate_main_rs(crate_name: str) -> str:
     """Generate src/main.rs for SDK 0.10.0."""
-    return f'''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+    return f"""#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 
 #[cfg(not(any(test, feature = "export-abi")))]
 #[unsafe(no_mangle)]
@@ -94,15 +94,21 @@ pub extern "C" fn main() {{}}
 fn main() {{
     {crate_name}::print_from_args();
 }}
-'''
+"""
 
 
-def _run_cmd(cmd: list[str], cwd: Optional[Path] = None, check: bool = True) -> subprocess.CompletedProcess:
+def _run_cmd(
+    cmd: list[str], cwd: Optional[Path] = None, check: bool = True
+) -> subprocess.CompletedProcess:
     """Run a shell command and return the result."""
     try:
         return subprocess.run(
-            cmd, cwd=cwd, capture_output=True, text=True,
-            check=check, timeout=120,
+            cmd,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            check=check,
+            timeout=120,
         )
     except subprocess.TimeoutExpired:
         return subprocess.CompletedProcess(cmd, returncode=1, stdout="", stderr="Timeout")
@@ -201,26 +207,26 @@ def update_cargo_toml(repo_dir: Path, dry_run: bool = False) -> list[str]:
         # Update stylus-sdk version (simple and complex formats)
         content = re.sub(
             r'(stylus-sdk\s*=\s*(?:\{[^}]*version\s*=\s*)")([^"]+)(")',
-            rf'\g<1>{deps["stylus_sdk"]}\3',
+            rf"\g<1>{deps['stylus_sdk']}\3",
             content,
         )
         content = re.sub(
             r'(stylus-sdk\s*=\s*")([^"]+)(")',
-            rf'\g<1>{deps["stylus_sdk"]}\3',
+            rf"\g<1>{deps['stylus_sdk']}\3",
             content,
         )
 
         # Update alloy-primitives
         content = re.sub(
             r'(alloy-primitives\s*=\s*")([^"]+)(")',
-            rf'\g<1>{deps["alloy_primitives"]}\3',
+            rf"\g<1>{deps['alloy_primitives']}\3",
             content,
         )
 
         # Update alloy-sol-types
         content = re.sub(
             r'(alloy-sol-types\s*=\s*")([^"]+)(")',
-            rf'\g<1>{deps["alloy_sol_types"]}\3',
+            rf"\g<1>{deps['alloy_sol_types']}\3",
             content,
         )
 
@@ -277,7 +283,9 @@ def add_required_files(repo_dir: Path, dry_run: bool = False) -> list[str]:
 
         # rust-toolchain.toml — always overwrite to ensure correct version
         rust_toolchain = project_root / "rust-toolchain.toml"
-        existing_content = rust_toolchain.read_text(encoding="utf-8") if rust_toolchain.exists() else ""
+        existing_content = (
+            rust_toolchain.read_text(encoding="utf-8") if rust_toolchain.exists() else ""
+        )
         if existing_content.strip() != RUST_TOOLCHAIN_CONTENT.strip():
             added.append(f"{prefix}rust-toolchain.toml")
             if not dry_run:
@@ -287,7 +295,9 @@ def add_required_files(repo_dir: Path, dry_run: bool = False) -> list[str]:
         main_rs = project_root / "src" / "main.rs"
         if not main_rs.exists():
             # Derive crate name from Cargo.toml
-            cargo_content = (project_root / "Cargo.toml").read_text(encoding="utf-8", errors="replace")
+            cargo_content = (project_root / "Cargo.toml").read_text(
+                encoding="utf-8", errors="replace"
+            )
             name_match = re.search(r'name\s*=\s*"([^"]+)"', cargo_content)
             crate_name = name_match.group(1).replace("-", "_") if name_match else "contract"
 
@@ -314,21 +324,21 @@ def apply_fix_code_patterns(repo_dir: Path) -> int:
         original = content
 
         # Remove duplicate/standalone alloc::vec imports before adding combined one
-        content = re.sub(r'^use alloc::vec::Vec;\s*\n', '', content, flags=re.MULTILINE)
-        content = re.sub(r'^use alloc::vec;\s*\n', '', content, flags=re.MULTILINE)
+        content = re.sub(r"^use alloc::vec::Vec;\s*\n", "", content, flags=re.MULTILINE)
+        content = re.sub(r"^use alloc::vec;\s*\n", "", content, flags=re.MULTILINE)
 
         # Ensure alloc::{vec, vec::Vec} import (skip if already has combined alloc import)
         if "use alloc::{vec" not in content and "use alloc::{string" not in content:
             if "extern crate alloc" in content:
                 content = re.sub(
-                    r'(extern crate alloc;\s*\n)',
-                    r'\1\nuse alloc::{vec, vec::Vec};\n',
+                    r"(extern crate alloc;\s*\n)",
+                    r"\1\nuse alloc::{vec, vec::Vec};\n",
                     content,
                 )
 
         # Remove deprecated evm/msg imports (should already be done by transforms but ensure)
-        content = re.sub(r'^use stylus_sdk::evm.*;\s*\n', '', content, flags=re.MULTILINE)
-        content = re.sub(r'^use stylus_sdk::msg.*;\s*\n', '', content, flags=re.MULTILINE)
+        content = re.sub(r"^use stylus_sdk::evm.*;\s*\n", "", content, flags=re.MULTILINE)
+        content = re.sub(r"^use stylus_sdk::msg.*;\s*\n", "", content, flags=re.MULTILINE)
 
         # Fix cfg_attr patterns
         if "#![cfg_attr(not(any(test" not in content and "#![cfg_attr" in content:
@@ -338,7 +348,7 @@ def apply_fix_code_patterns(repo_dir: Path) -> int:
                 content,
             )
             content = re.sub(
-                r'#!\[cfg_attr\(not\(test\),\s*no_main\)\]',
+                r"#!\[cfg_attr\(not\(test\),\s*no_main\)\]",
                 '#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]',
                 content,
             )
@@ -420,7 +430,14 @@ def commit_and_push(repo_dir: Path) -> bool:
     """Commit changes and push to the fork."""
     _run_cmd(["git", "add", "-A"], cwd=repo_dir, check=False)
     result = _run_cmd(
-        ["git", "commit", "-m", "chore: migrate to Stylus SDK 0.10.0\n\nAutomated migration by ARBuilder fork_and_migrate.py"],
+        [
+            "git",
+            "commit",
+            "-m",
+            "chore: migrate to Stylus SDK 0.10.0\n\n"
+            "Automated migration by ARBuilder"
+            " fork_and_migrate.py",
+        ],
         cwd=repo_dir,
         check=False,
     )
@@ -479,7 +496,9 @@ def process_repo(
         verify_results = verify_repo(clone_dir)
         report["compile_result"] = verify_results.get("compile_check")
         report["test_result"] = verify_results.get("test_check")
-        report["status"] = "verified" if verify_results.get("compile_check", {}).get("passed") else "verify_failed"
+        report["status"] = (
+            "verified" if verify_results.get("compile_check", {}).get("passed") else "verify_failed"
+        )
         return report
 
     # Step 1: Check if fork exists
@@ -515,8 +534,10 @@ def process_repo(
                         break
         if not clone_dir.exists():
             report["status"] = "dry_run_no_source"
-            report["error"] = f"No local clone found for dry run. Clone to {FORKS_DIR / repo_name} first."
-            console.print(f"  [yellow]Dry run: no local clone found[/yellow]")
+            report["error"] = (
+                f"No local clone found for dry run. Clone to {FORKS_DIR / repo_name} first."
+            )
+            console.print("  [yellow]Dry run: no local clone found[/yellow]")
             return report
 
     # Step 4: Migrate .rs files
@@ -542,8 +563,10 @@ def process_repo(
             console.print(f"  [blue]Applied fix patterns to {fix_count} files[/blue]")
 
     if dry_run:
-        console.print(f"  [cyan]DRY RUN — would change {len(rs_changed)} .rs files, "
-                       f"{len(cargo_changed)} Cargo.toml, add {len(added)} files[/cyan]")
+        console.print(
+            f"  [cyan]DRY RUN — would change {len(rs_changed)} .rs files, "
+            f"{len(cargo_changed)} Cargo.toml, add {len(added)} files[/cyan]"
+        )
         report["status"] = "dry_run"
         return report
 
@@ -613,11 +636,15 @@ def print_summary(reports: list[dict]):
 
         compile_str = ""
         if r.get("compile_result"):
-            compile_str = "[green]PASS[/green]" if r["compile_result"].get("passed") else "[red]FAIL[/red]"
+            compile_str = (
+                "[green]PASS[/green]" if r["compile_result"].get("passed") else "[red]FAIL[/red]"
+            )
 
         test_str = ""
         if r.get("test_result"):
-            test_str = "[green]PASS[/green]" if r["test_result"].get("passed") else "[yellow]FAIL[/yellow]"
+            test_str = (
+                "[green]PASS[/green]" if r["test_result"].get("passed") else "[yellow]FAIL[/yellow]"
+            )
 
         table.add_row(
             r["repo"],
@@ -635,7 +662,9 @@ def main():
     parser = argparse.ArgumentParser(description="Fork & Migrate Stylus repos to SDK 0.10.0")
     parser.add_argument("--all", action="store_true", help="Process all target repos")
     parser.add_argument("--repo", type=str, help="Process specific repo (owner/name)")
-    parser.add_argument("--dry-run", action="store_true", help="Show what would change without modifying")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Show what would change without modifying"
+    )
     parser.add_argument("--skip-verify", action="store_true", help="Skip compile verification")
     parser.add_argument("--verify-only", action="store_true", help="Only re-verify existing forks")
     parser.add_argument("--output", type=str, help="Output JSON report path")
@@ -650,12 +679,14 @@ def main():
         matching = [r for r in TARGET_REPOS if r["owner_repo"] == args.repo]
         if not matching:
             # Allow arbitrary repo
-            matching = [{
-                "owner_repo": args.repo,
-                "url": f"https://github.com/{args.repo}",
-                "sdk_version": "0.9.0",
-                "category": "custom",
-            }]
+            matching = [
+                {
+                    "owner_repo": args.repo,
+                    "url": f"https://github.com/{args.repo}",
+                    "sdk_version": "0.9.0",
+                    "category": "custom",
+                }
+            ]
         repos_to_process = matching
     else:
         repos_to_process = TARGET_REPOS
@@ -663,7 +694,10 @@ def main():
     console.print(f"\n[bold]Fork & Migrate to SDK {TARGET_VERSION}[/bold]")
     console.print(f"  Target org: {FORK_ORG}")
     console.print(f"  Repos: {len(repos_to_process)}")
-    console.print(f"  Mode: {'DRY RUN' if args.dry_run else 'VERIFY ONLY' if args.verify_only else 'FULL MIGRATION'}")
+    console.print(
+        "  Mode: "
+        f"{'DRY RUN' if args.dry_run else 'VERIFY ONLY' if args.verify_only else 'FULL MIGRATION'}"
+    )
 
     reports = []
     for repo_info in repos_to_process:

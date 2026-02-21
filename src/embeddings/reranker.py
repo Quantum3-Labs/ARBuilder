@@ -10,6 +10,7 @@ import httpx
 import numpy as np
 from dotenv import load_dotenv
 from tenacity import retry, stop_after_attempt, wait_exponential
+
 from .embedder import EmbeddingClient
 
 load_dotenv()
@@ -18,6 +19,7 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "deepseek/deepseek-chat")
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
 DEFAULT_CROSS_ENCODER = os.getenv("DEFAULT_CROSS_ENCODER", "nvidia/llama-3.2-nv-rerankqa-1b-v2")
+
 
 class Reranker:
     """
@@ -82,14 +84,21 @@ class Reranker:
             return []
 
         # Build the reranking prompt
-        docs_text = "\n\n".join([
-            f"[Document {i+1}]\n{doc[:1500]}"  # Truncate long docs
-            for i, doc in enumerate(documents)
-        ])
+        docs_text = "\n\n".join(
+            [
+                f"[Document {i + 1}]\n{doc[:1500]}"  # Truncate long docs
+                for i, doc in enumerate(documents)
+            ]
+        )
 
-        prompt = f"""You are a relevance scoring assistant. Given a query and a list of documents, score each document's relevance to the query on a scale of 0-10.
-
-Query: {query}
+        prompt = (
+            "You are a relevance scoring assistant."
+            " Given a query and a list of documents,"
+            " score each document's relevance to the"
+            " query on a scale of 0-10."
+            f"\n\nQuery: {query}"
+        )
+        prompt += f"""
 
 Documents:
 {docs_text}
@@ -125,7 +134,7 @@ No explanations, just the JSON array."""
             import re
 
             # Find array in response
-            match = re.search(r'\[[\d\s,\.]+\]', content)
+            match = re.search(r"\[[\d\s,\.]+\]", content)
             if match:
                 scores = json.loads(match.group())
             else:
@@ -184,13 +193,15 @@ No explanations, just the JSON array."""
         final_results = []
         for item in reranked:
             idx = item["index"]
-            final_results.append({
-                "id": ids[idx],
-                "document": item["document"],
-                "metadata": metadatas[idx],
-                "original_distance": distances[idx],
-                "rerank_score": item["score"],
-            })
+            final_results.append(
+                {
+                    "id": ids[idx],
+                    "document": item["document"],
+                    "metadata": metadatas[idx],
+                    "original_distance": distances[idx],
+                    "rerank_score": item["score"],
+                }
+            )
 
         return final_results
 
@@ -296,6 +307,7 @@ class CrossEncoderReranker:
             rankings = self._request_rankings(query, documents)
         except Exception as e:
             import logging
+
             logging.warning(f"NVIDIA reranking failed: {e}")
             return [
                 {"index": i, "document": doc, "score": 0.5}
@@ -342,16 +354,16 @@ class MMRReranker:
     """
 
     def __init__(
-        self, 
-        lambda_param: float = 0.5,
-        embedding_client: Optional[EmbeddingClient] = None
+        self, lambda_param: float = 0.5, embedding_client: Optional[EmbeddingClient] = None
     ):
         """
         Initialize MMR reranker.
 
         Args:
-            lambda_param: Trade-off between relevance (1.0) and diversity (0.0). Default 0.5 for balance.
-            embedding_client: EmbeddingClient instance for generating embeddings. If None, creates new instance.
+            lambda_param: Trade-off between relevance (1.0) and
+                diversity (0.0). Default 0.5 for balance.
+            embedding_client: EmbeddingClient instance for generating
+                embeddings. If None, creates new instance.
         """
         self.lambda_param = lambda_param
         if embedding_client is not None:
@@ -361,6 +373,7 @@ class MMRReranker:
                 self.embedding_client = EmbeddingClient()
             except (ValueError, Exception) as e:
                 import logging
+
                 logging.warning(f"EmbeddingClient unavailable (MMR will use fallback): {e}")
                 self.embedding_client = None
 
@@ -397,12 +410,13 @@ class MMRReranker:
             except Exception as e:
                 # Fallback: return documents without reranking
                 import logging
+
                 logging.warning(f"Failed to generate embeddings for MMR: {e}")
                 return [
                     {"index": i, "document": doc, "score": 1.0 / (i + 1)}
                     for i, doc in enumerate(documents[:top_k])
                 ]
-        
+
         # If query embedding not provided, compute it
         if query_embedding is None:
             try:
@@ -411,6 +425,7 @@ class MMRReranker:
             except Exception as e:
                 # Fallback: use first doc as reference
                 import logging
+
                 logging.warning(f"Failed to generate query embedding for MMR: {e}")
                 query_embedding = embeddings[0]
 
@@ -419,10 +434,7 @@ class MMRReranker:
             return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
         # Initial relevance scores
-        relevance_scores = [
-            cosine_similarity(query_embedding, doc_emb)
-            for doc_emb in embeddings
-        ]
+        relevance_scores = [cosine_similarity(query_embedding, doc_emb) for doc_emb in embeddings]
 
         # MMR selection
         selected_indices = []
@@ -496,7 +508,8 @@ class HybridReranker:
             mmr_lambda: MMR trade-off parameter (1.0 = relevance, 0.0 = diversity, 0.5 = balanced).
             use_llm: Whether to use LLM for final reranking (optional, slower).
             llm_reranker: LLM reranker instance.
-            embedding_client: EmbeddingClient instance for MMR embeddings. If None, creates new instance.
+            embedding_client: EmbeddingClient instance for MMR
+                embeddings. If None, creates new instance.
         """
         self.use_cross_encoder = use_cross_encoder
         self.use_mmr = use_mmr
@@ -509,6 +522,7 @@ class HybridReranker:
                 self.embedding_client = EmbeddingClient()
             except (ValueError, Exception) as e:
                 import logging
+
                 logging.warning(f"EmbeddingClient unavailable (MMR will use fallback): {e}")
                 self.embedding_client = None
 
@@ -522,8 +536,7 @@ class HybridReranker:
         # Initialize MMR with shared embedding client
         if use_mmr:
             self.mmr_reranker = MMRReranker(
-                lambda_param=mmr_lambda,
-                embedding_client=self.embedding_client
+                lambda_param=mmr_lambda, embedding_client=self.embedding_client
             )
         else:
             self.mmr_reranker = None
@@ -559,7 +572,7 @@ class HybridReranker:
             # Get more candidates for MMR to work with
             ce_top_k = top_k * 2 if self.use_mmr else top_k
             ce_results = self.cross_encoder.rerank(query, documents, top_k=ce_top_k)
-            
+
             # Reorder documents by cross-encoder scores
             results = ce_results
         else:
@@ -573,7 +586,7 @@ class HybridReranker:
         if self.use_mmr and self.mmr_reranker and len(results) > 1:
             # Extract documents for MMR
             reranked_docs = [r["document"] for r in results]
-            
+
             # Compute embeddings once if not provided (to avoid recalculation in MMR)
             if embeddings is None and self.embedding_client:
                 try:
@@ -582,9 +595,10 @@ class HybridReranker:
                     embeddings = np.array(doc_embeddings)
                 except Exception as e:
                     import logging
+
                     logging.warning(f"Failed to generate embeddings for MMR: {e}")
                     embeddings = None
-            
+
             # Compute query embedding once if not provided
             if query_embedding is None and self.embedding_client and embeddings is not None:
                 try:
@@ -592,37 +606,40 @@ class HybridReranker:
                     query_embedding = np.array(query_emb)
                 except Exception as e:
                     import logging
+
                     logging.warning(f"Failed to generate query embedding for MMR: {e}")
                     query_embedding = None
-            
+
             # Reorder embeddings based on cross-encoder results if provided
             if embeddings is not None:
                 doc_to_embedding = {documents[i]: embeddings[i] for i in range(len(documents))}
                 reordered_embeddings = np.array([doc_to_embedding[doc] for doc in reranked_docs])
             else:
                 reordered_embeddings = None
-            
+
             # Apply MMR with pre-computed embeddings
             mmr_results = self.mmr_reranker.rerank(
-                query, 
+                query,
                 reranked_docs,
                 embeddings=reordered_embeddings,
                 query_embedding=query_embedding,
-                top_k=top_k
+                top_k=top_k,
             )
-            
+
             # Merge cross-encoder scores with MMR rankings
             final_results = []
             for i, mmr_r in enumerate(mmr_results):
                 ce_score = results[mmr_r["index"]]["score"]
-                final_results.append({
-                    "original_index": results[mmr_r["index"]].get("index", mmr_r["index"]),
-                    "document": mmr_r["document"],
-                    "cross_encoder_score": ce_score,
-                    "mmr_rank": mmr_r.get("mmr_rank", i + 1),
-                    "relevance_score": mmr_r["score"],
-                })
-            
+                final_results.append(
+                    {
+                        "original_index": results[mmr_r["index"]].get("index", mmr_r["index"]),
+                        "document": mmr_r["document"],
+                        "cross_encoder_score": ce_score,
+                        "mmr_rank": mmr_r.get("mmr_rank", i + 1),
+                        "relevance_score": mmr_r["score"],
+                    }
+                )
+
             results = final_results
         else:
             # No MMR: just take top_k from cross-encoder results
@@ -640,7 +657,7 @@ class HybridReranker:
                 result_data["llm_score"] = llm_r["score"]
                 result_data["final_rank"] = i + 1
                 final_results.append(result_data)
-            
+
             results = final_results
 
         return results

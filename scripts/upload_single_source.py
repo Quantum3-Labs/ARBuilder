@@ -13,6 +13,7 @@ API_URL = os.environ.get("ARBBUILDER_API_URL", "https://arbuilder.app")
 ADMIN_SECRET = os.environ.get("ARBBUILDER_ADMIN_SECRET", "")
 BATCH_SIZE = 5
 
+
 def main():
     if not ADMIN_SECRET:
         print("ERROR: ARBBUILDER_ADMIN_SECRET not set")
@@ -69,17 +70,23 @@ def main():
                 if resp.status_code == 200 and data.get("status") == "ok":
                     batch_ok = data.get("processed", len(batch))
                     succeeded += batch_ok
-                    print(f"  [{batch_num}/{num_batches}] +{batch_ok} = {succeeded}/{total}", flush=True)
+                    print(
+                        f"  [{batch_num}/{num_batches}] +{batch_ok} = {succeeded}/{total}",
+                        flush=True,
+                    )
                     ok = True
                     break
                 else:
-                    print(f"  [{batch_num}] attempt {attempt+1} bad response: {resp.status_code}", flush=True)
+                    print(
+                        f"  [{batch_num}] attempt {attempt + 1} bad response: {resp.status_code}",
+                        flush=True,
+                    )
                     if attempt < 2:
-                        time.sleep(2 ** attempt)
+                        time.sleep(2**attempt)
             except Exception as e:
-                print(f"  [{batch_num}] attempt {attempt+1} error: {e}", flush=True)
+                print(f"  [{batch_num}] attempt {attempt + 1} error: {e}", flush=True)
                 if attempt < 2:
-                    time.sleep(2 ** attempt)
+                    time.sleep(2**attempt)
 
         if not ok:
             failed_batches += 1

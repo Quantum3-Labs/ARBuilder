@@ -5,26 +5,26 @@ Main data processor for ARBuilder preprocessing pipeline.
 import hashlib
 import json
 import os
-import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
+from .chunker import CodeChunker, DocumentChunker
 from .cleaner import TextCleaner
-from .chunker import DocumentChunker, CodeChunker, Chunk
 
 # Import version extractor - handle import error gracefully
 try:
     from scraper.version_extractor import (
-        get_latest_sdk_version_sync,
-        extract_sdk_version_from_repo,
         detect_deprecated_patterns,
+        extract_sdk_version_from_repo,
+        get_latest_sdk_version_sync,
         is_version_current,
     )
+
     HAS_VERSION_EXTRACTOR = True
 except ImportError:
     HAS_VERSION_EXTRACTOR = False
@@ -32,11 +32,14 @@ except ImportError:
 # Import version manager for deprecation checking
 try:
     from src.utils.version_manager import (
-        is_version_deprecated as check_version_deprecated,
+        apply_version_transforms,
         get_main_version,
         get_minimum_version,
-        apply_version_transforms,
     )
+    from src.utils.version_manager import (
+        is_version_deprecated as check_version_deprecated,
+    )
+
     HAS_VERSION_MANAGER = True
 except ImportError:
     HAS_VERSION_MANAGER = False
@@ -45,6 +48,7 @@ except ImportError:
 # Import config for repo filtering
 try:
     from scraper.config import get_all_config_repo_urls, get_config_repo_info
+
     HAS_CONFIG = True
 except ImportError:
     HAS_CONFIG = False
@@ -110,8 +114,18 @@ class DataProcessor:
 
     # Same patterns as Layer 1 (scraper) — defense-in-depth for files
     # already captured in github_repos_*.json before these filters existed.
-    _SKIP_DIRS = {"vendor", "third_party", "artifacts", ".next", "coverage",
-                  "node_modules", "target", ".git", "dist", "build"}
+    _SKIP_DIRS = {
+        "vendor",
+        "third_party",
+        "artifacts",
+        ".next",
+        "coverage",
+        "node_modules",
+        "target",
+        ".git",
+        "dist",
+        "build",
+    }
     _SKIP_FILE_NAMES = {"package-lock.json", "yarn.lock", "Cargo.lock", "pnpm-lock.yaml"}
     _SKIP_FILE_SUBSTRINGS = ("__factory.ts", "__factory.js")
     _SKIP_TS_JS_IN_DIRS = {"abi"}
@@ -234,10 +248,12 @@ class DataProcessor:
             return set()
         try:
             from src.utils.version_manager import load_version_config
+
             config = load_version_config()
             main_version = config.get("main_version", "")
             return {
-                v for v, info in config.get("versions", {}).items()
+                v
+                for v, info in config.get("versions", {}).items()
                 if v != main_version and info.get("status") != "deprecated"
             }
         except Exception:
@@ -379,7 +395,9 @@ class DataProcessor:
 
                 progress.advance(task)
 
-        console.print(f"[green]Processed {len(raw_data)} documents into {len(all_chunks)} chunks[/green]")
+        console.print(
+            f"[green]Processed {len(raw_data)} documents into {len(all_chunks)} chunks[/green]"
+        )
         return all_chunks
 
     def process_github_repos(
@@ -432,7 +450,11 @@ class DataProcessor:
             total_files += len(repo.get("files", []))
 
         if skipped_repos:
-            console.print(f"[yellow]Skipped {len(skipped_repos)} repos not in config: {', '.join(skipped_repos)}[/yellow]")
+            console.print(
+                f"[yellow]Skipped {len(skipped_repos)}"
+                f" repos not in config:"
+                f" {', '.join(skipped_repos)}[/yellow]"
+            )
 
         with Progress(
             SpinnerColumn(),
@@ -472,9 +494,7 @@ class DataProcessor:
                     display_sdk_version = repo_sdk_version
                 else:
                     # Check if this repo has any .rs files — if not, it's non-Rust
-                    has_rust = any(
-                        f.get("extension") == ".rs" for f in repo.get("files", [])
-                    )
+                    has_rust = any(f.get("extension") == ".rs" for f in repo.get("files", []))
                     display_sdk_version = "" if has_rust else "N/A"
 
                 if repo_sdk_version and repo_sdk_version != "N/A":
@@ -522,7 +542,9 @@ class DataProcessor:
                     # Check if repo SDK version is current
                     latest_sdk = self._get_latest_sdk_version()
                     is_current = True
-                    effective_version = repo_sdk_version if repo_sdk_version and repo_sdk_version != "N/A" else None
+                    effective_version = (
+                        repo_sdk_version if repo_sdk_version and repo_sdk_version != "N/A" else None
+                    )
                     if effective_version and latest_sdk and HAS_VERSION_EXTRACTOR:
                         is_current = is_version_current(effective_version, latest_sdk)
 
@@ -532,7 +554,11 @@ class DataProcessor:
                         version_deprecated = check_version_deprecated(effective_version)
 
                     # Determine source type for cleaner classification
-                    source_type = "project" if category in ("stylus",) and subcategory not in ("official", "articles") else "github"
+                    source_type = (
+                        "project"
+                        if category in ("stylus",) and subcategory not in ("official", "articles")
+                        else "github"
+                    )
 
                     # Metadata for code files
                     metadata = {
@@ -701,7 +727,9 @@ class DataProcessor:
                 if chunk.get("modernized", False):
                     modernized_count += 1
                     from_ver = chunk.get("modernized_from", "unknown")
-                    modernized_from_versions[from_ver] = modernized_from_versions.get(from_ver, 0) + 1
+                    modernized_from_versions[from_ver] = (
+                        modernized_from_versions.get(from_ver, 0) + 1
+                    )
 
         # Get version config info
         main_version = None
@@ -756,7 +784,7 @@ class DataProcessor:
 
         # SDK version info
         if stats.get("latest_sdk_version") or stats.get("main_supported_version"):
-            console.print(f"\n[bold]SDK Version Info:[/bold]")
+            console.print("\n[bold]SDK Version Info:[/bold]")
             if stats.get("main_supported_version"):
                 console.print(f"  Main supported: {stats['main_supported_version']}")
             if stats.get("minimum_supported_version"):
@@ -765,8 +793,12 @@ class DataProcessor:
                 console.print(f"  Latest on crates.io: {stats['latest_sdk_version']}")
             console.print(f"  Current chunks: {stats.get('current_chunks', 0):,}")
             console.print(f"  Outdated chunks: {stats.get('outdated_chunks', 0):,}")
-            console.print(f"  Deprecated version chunks: {stats.get('deprecated_version_chunks', 0):,}")
-            console.print(f"  With deprecated patterns: {stats.get('deprecated_pattern_chunks', 0):,}")
+            console.print(
+                f"  Deprecated version chunks: {stats.get('deprecated_version_chunks', 0):,}"
+            )
+            console.print(
+                f"  With deprecated patterns: {stats.get('deprecated_pattern_chunks', 0):,}"
+            )
 
             if stats.get("modernized_chunks", 0) > 0:
                 console.print(f"  Modernized chunks: {stats['modernized_chunks']:,}")
@@ -788,7 +820,9 @@ class DataProcessor:
             for reason, count in sorted(breakdown.items(), key=lambda x: -x[1]):
                 console.print(f"    {reason}: {count:,}")
             console.print(f"  Hex content excluded: {fstats.get('hex_content_excluded', 0):,}")
-            console.print(f"  Cross-repo dedup excluded: {fstats.get('cross_repo_dedup_excluded', 0):,}")
+            console.print(
+                f"  Cross-repo dedup excluded: {fstats.get('cross_repo_dedup_excluded', 0):,}"
+            )
             console.print(f"  [bold]Total excluded: {fstats.get('total_excluded', 0):,}[/bold]")
 
 

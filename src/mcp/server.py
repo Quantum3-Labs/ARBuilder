@@ -11,55 +11,61 @@ MCP Capabilities:
 
 import json
 import sys
-from typing import Any
 
 # Version manager — single source of truth for SDK versions
 try:
     from src.utils.version_manager import get_main_version
+
     _MAIN_VERSION = get_main_version()
 except Exception:
     _MAIN_VERSION = "0.10.0"  # last-resort fallback
 
 # M1: Stylus Tools
-from .tools import (
-    GetStylusContextTool,
-    GenerateStylusCodeTool,
-    AskStylusTool,
-    GenerateTestsTool,
-    GetWorkflowTool,
-)
+from .prompts import PROMPTS
+from .resources import RESOURCES
 
 # M2: Arbitrum SDK Tools
-from .tools import (
-    GenerateBridgeCodeTool,
-    GenerateMessagingCodeTool,
-    AskBridgingTool,
-)
-
 # M3: Full dApp Builder Tools
 from .tools import (
+    AskBridgingTool,
+    AskStylusTool,
     GenerateBackendTool,
+    GenerateBridgeCodeTool,
     GenerateFrontendTool,
     GenerateIndexerTool,
+    GenerateMessagingCodeTool,
     GenerateOracleTool,
+    GenerateStylusCodeTool,
+    GenerateTestsTool,
+    GetStylusContextTool,
+    GetWorkflowTool,
     OrchestrateDappTool,
 )
-
-from .resources import RESOURCES
-from .prompts import PROMPTS
-
 
 # Tool definitions for MCP
 TOOL_DEFINITIONS = [
     {
         "name": "get_stylus_context",
-        "description": "Retrieve relevant Stylus documentation and code examples from the knowledge base. Use this to find examples, patterns, and documentation for Stylus development. Supports version-aware search to prioritize results matching your SDK version.",
+        "description": (
+            "Retrieve relevant Stylus documentation"
+            " and code examples from the knowledge"
+            " base. Use this to find examples,"
+            " patterns, and documentation for Stylus"
+            " development. Supports version-aware"
+            " search to prioritize results matching"
+            " your SDK version."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Search query (concept, function name, or code pattern). Include specific technical terms for best results.",
+                    "description": (
+                        "Search query (concept, function"
+                        " name, or code pattern). Include"
+                        " specific technical terms for"
+                        " best results."
+                    ),
                 },
                 "n_results": {
                     "type": "integer",
@@ -74,12 +80,22 @@ TOOL_DEFINITIONS = [
                 },
                 "rerank": {
                     "type": "boolean",
-                    "description": "Whether to apply advanced reranking with BM25 and metadata boosting (default: true, recommended)",
+                    "description": (
+                        "Whether to apply advanced"
+                        " reranking with BM25 and metadata"
+                        " boosting (default: true,"
+                        " recommended)"
+                    ),
                     "default": True,
                 },
                 "target_version": {
                     "type": "string",
-                    "description": "Target stylus-sdk version to prioritize results for. Results matching this version are boosted.",
+                    "description": (
+                        "Target stylus-sdk version to"
+                        " prioritize results for. Results"
+                        " matching this version are"
+                        " boosted."
+                    ),
                 },
             },
             "required": ["query"],
@@ -87,7 +103,13 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "generate_stylus_code",
-        "description": "Generate Stylus/Rust smart contract code based on requirements. Uses RAG context to provide relevant examples. Supports version-aware generation for different stylus-sdk versions.",
+        "description": (
+            "Generate Stylus/Rust smart contract"
+            " code based on requirements. Uses RAG"
+            " context to provide relevant examples."
+            " Supports version-aware generation for"
+            " different stylus-sdk versions."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -116,12 +138,22 @@ TOOL_DEFINITIONS = [
                 },
                 "target_version": {
                     "type": "string",
-                    "description": f"Target stylus-sdk version (default: {_MAIN_VERSION}). Use this to generate code for a specific SDK version.",
+                    "description": (
+                        f"Target stylus-sdk version"
+                        f" (default: {_MAIN_VERSION})."
+                        " Use this to generate code for"
+                        " a specific SDK version."
+                    ),
                     "default": _MAIN_VERSION,
                 },
                 "cargo_toml": {
                     "type": "string",
-                    "description": "Optional Cargo.toml content for automatic SDK version detection. If provided, target_version is auto-detected from dependencies.",
+                    "description": (
+                        "Optional Cargo.toml content for"
+                        " automatic SDK version detection."
+                        " If provided, target_version is"
+                        " auto-detected from dependencies."
+                    ),
                 },
             },
             "required": ["prompt"],
@@ -129,7 +161,12 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "ask_stylus",
-        "description": "Ask questions about Stylus development, get concept explanations, or debug code issues. Supports version-specific guidance.",
+        "description": (
+            "Ask questions about Stylus development,"
+            " get concept explanations, or debug code"
+            " issues. Supports version-specific"
+            " guidance."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -149,7 +186,11 @@ TOOL_DEFINITIONS = [
                 },
                 "target_version": {
                     "type": "string",
-                    "description": f"Target stylus-sdk version for version-specific guidance (default: {_MAIN_VERSION}).",
+                    "description": (
+                        "Target stylus-sdk version for"
+                        " version-specific guidance"
+                        f" (default: {_MAIN_VERSION})."
+                    ),
                 },
             },
             "required": ["question"],
@@ -174,7 +215,7 @@ TOOL_DEFINITIONS = [
                 "test_types": {
                     "type": "array",
                     "items": {"type": "string", "enum": ["unit", "integration", "fuzz"]},
-                    "description": "Types of tests to generate (default: [\"unit\"])",
+                    "description": 'Types of tests to generate (default: ["unit"])',
                     "default": ["unit"],
                 },
                 "coverage_focus": {
@@ -188,7 +229,13 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "get_workflow",
-        "description": "Get structured workflow information for Stylus development. Returns step-by-step commands for build, deploy, test operations. Use this when the user needs guidance on development workflows.",
+        "description": (
+            "Get structured workflow information for"
+            " Stylus development. Returns step-by-step"
+            " commands for build, deploy, test"
+            " operations. Use this when the user needs"
+            " guidance on development workflows."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -215,15 +262,26 @@ TOOL_DEFINITIONS = [
     # M2: Arbitrum SDK Tools
     {
         "name": "generate_bridge_code",
-        "description": "Generate TypeScript code for Arbitrum asset bridging using the Arbitrum SDK. Supports ETH/ERC20 bridging L1<->L2 and L1->L3.",
+        "description": (
+            "Generate TypeScript code for Arbitrum"
+            " asset bridging using the Arbitrum SDK."
+            " Supports ETH/ERC20 bridging L1<->L2"
+            " and L1->L3."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "bridge_type": {
                     "type": "string",
-                    "enum": ["eth_deposit", "eth_deposit_to", "eth_withdraw",
-                             "erc20_deposit", "erc20_withdraw",
-                             "eth_l1_l3", "erc20_l1_l3"],
+                    "enum": [
+                        "eth_deposit",
+                        "eth_deposit_to",
+                        "eth_withdraw",
+                        "erc20_deposit",
+                        "erc20_withdraw",
+                        "eth_l1_l3",
+                        "erc20_l1_l3",
+                    ],
                     "description": "Type of bridging operation to generate code for",
                 },
                 "amount": {
@@ -245,7 +303,11 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "generate_messaging_code",
-        "description": "Generate TypeScript code for Arbitrum cross-chain messaging. Supports L1->L2 retryable tickets and L2->L1 messages.",
+        "description": (
+            "Generate TypeScript code for Arbitrum"
+            " cross-chain messaging. Supports L1->L2"
+            " retryable tickets and L2->L1 messages."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -265,7 +327,9 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "ask_bridging",
-        "description": "Answer questions about Arbitrum bridging and cross-chain messaging patterns.",
+        "description": (
+            "Answer questions about Arbitrum bridging and cross-chain messaging patterns."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -285,7 +349,11 @@ TOOL_DEFINITIONS = [
     # M3: Full dApp Builder Tools
     {
         "name": "generate_backend",
-        "description": "Generate TypeScript backend code for Arbitrum dApps. Supports NestJS and Express with viem integration.",
+        "description": (
+            "Generate TypeScript backend code for"
+            " Arbitrum dApps. Supports NestJS and"
+            " Express with viem integration."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -323,7 +391,9 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "generate_frontend",
-        "description": "Generate Next.js frontend code for Arbitrum dApps. Uses wagmi v2 and RainbowKit.",
+        "description": (
+            "Generate Next.js frontend code for Arbitrum dApps. Uses wagmi v2 and RainbowKit."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -333,7 +403,12 @@ TOOL_DEFINITIONS = [
                 },
                 "template": {
                     "type": "string",
-                    "enum": ["nextjs_wagmi", "daisyui_components", "contract_dashboard", "token_interface"],
+                    "enum": [
+                        "nextjs_wagmi",
+                        "daisyui_components",
+                        "contract_dashboard",
+                        "token_interface",
+                    ],
                     "description": "Specific template to use (auto-selected if not provided)",
                 },
                 "contract_abi": {
@@ -429,7 +504,11 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "orchestrate_dapp",
-        "description": "Scaffold a template-based dApp monorepo with starter components (contract, backend, frontend, indexer, oracle).",
+        "description": (
+            "Scaffold a template-based dApp monorepo"
+            " with starter components (contract,"
+            " backend, frontend, indexer, oracle)."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -697,7 +776,12 @@ class MCPServer:
     def run_stdio(self):
         """Run server in stdio mode for MCP."""
         print("ARBuilder MCP Server started", file=sys.stderr)
-        print(f"Capabilities: {len(self.tools)} tools, {len(self.resources)} resources, {len(self.prompts)} prompts", file=sys.stderr)
+        print(
+            f"Capabilities: {len(self.tools)} tools,"
+            f" {len(self.resources)} resources,"
+            f" {len(self.prompts)} prompts",
+            file=sys.stderr,
+        )
 
         for line in sys.stdin:
             try:

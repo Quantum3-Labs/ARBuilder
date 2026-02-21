@@ -10,8 +10,8 @@ import pytest
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from src.embeddings.reranker import HybridReranker, Reranker
 from src.embeddings.vectordb import VectorDB
-from src.embeddings.reranker import Reranker, HybridReranker
 from tests.test_queries import TEST_QUERIES
 
 
@@ -195,7 +195,7 @@ class TestRerankerIntegration:
             # Get vector results
             vector_results = vectordb.query(query_text=query, n_results=20)
             docs = vector_results["documents"][0]
-            distances = vector_results["distances"][0]
+            distances = vector_results["distances"][0]  # noqa: F841
 
             # Hybrid rerank
             reranked = hybrid_reranker.rerank(
@@ -206,16 +206,15 @@ class TestRerankerIntegration:
 
             # Check keyword presence in top 5
             top_5_docs = [r["document"] for r in reranked[:5]]
-            hits = sum(
-                1 for doc in top_5_docs
-                for kw in expected if kw.lower() in doc.lower()
-            )
+            hits = sum(1 for doc in top_5_docs for kw in expected if kw.lower() in doc.lower())
 
-            results_summary.append({
-                "query": query,
-                "keyword_hits": hits,
-                "max_possible": len(expected) * 5,
-            })
+            results_summary.append(
+                {
+                    "query": query,
+                    "keyword_hits": hits,
+                    "max_possible": len(expected) * 5,
+                }
+            )
 
         # Print summary
         print("\n=== Hybrid Reranking Benchmark ===")

@@ -38,13 +38,13 @@ REPOS_DIR = RAW_DATA_DIR / "repos"
 
 # File extensions to extract for code context
 CODE_EXTENSIONS = {
-    ".rs",      # Rust (Stylus contracts)
-    ".toml",    # Cargo.toml
-    ".md",      # Documentation
-    ".json",    # Config files
-    ".ts",      # TypeScript (SDK)
-    ".js",      # JavaScript
-    ".sol",     # Solidity (for reference)
+    ".rs",  # Rust (Stylus contracts)
+    ".toml",  # Cargo.toml
+    ".md",  # Documentation
+    ".json",  # Config files
+    ".ts",  # TypeScript (SDK)
+    ".js",  # JavaScript
+    ".sol",  # Solidity (for reference)
 }
 
 # Directories to skip
@@ -76,7 +76,9 @@ SKIP_TS_JS_IN_DIRS = {"abi"}
 SKIP_DIR_PREFIXES = ["abi-"]
 
 
-def clone_repo(repo_url: str, target_dir: Path, retries: int = MAX_RETRIES, force_reclone: bool = False) -> bool:
+def clone_repo(
+    repo_url: str, target_dir: Path, retries: int = MAX_RETRIES, force_reclone: bool = False
+) -> bool:
     """
     Clone a GitHub repository with retry logic.
 
@@ -129,13 +131,16 @@ def clone_repo(repo_url: str, target_dir: Path, retries: int = MAX_RETRIES, forc
                 is_retryable = any(err.lower() in last_error.lower() for err in retryable_errors)
 
                 if is_retryable and attempt < retries - 1:
-                    delay = RETRY_DELAY_BASE * (2 ** attempt)
+                    delay = RETRY_DELAY_BASE * (2**attempt)
                     logger.warning(
-                        f"Retryable error cloning {repo_url} (attempt {attempt + 1}/{retries}): {last_error}. "
-                        f"Retrying in {delay}s..."
+                        f"Retryable error cloning {repo_url}"
+                        f" (attempt {attempt + 1}/{retries}):"
+                        f" {last_error}. Retrying in {delay}s..."
                     )
                     console.print(
-                        f"[yellow]Retry {attempt + 1}/{retries} for {repo_url} in {delay}s...[/yellow]"
+                        f"[yellow]Retry {attempt + 1}/{retries}"
+                        f" for {repo_url}"
+                        f" in {delay}s...[/yellow]"
                     )
                     # Clean up partial clone if exists
                     if target_dir.exists():
@@ -150,8 +155,12 @@ def clone_repo(repo_url: str, target_dir: Path, retries: int = MAX_RETRIES, forc
         except subprocess.TimeoutExpired:
             last_error = "Operation timed out"
             if attempt < retries - 1:
-                delay = RETRY_DELAY_BASE * (2 ** attempt)
-                logger.warning(f"Timeout cloning {repo_url} (attempt {attempt + 1}/{retries}). Retrying in {delay}s...")
+                delay = RETRY_DELAY_BASE * (2**attempt)
+                logger.warning(
+                    f"Timeout cloning {repo_url}"
+                    f" (attempt {attempt + 1}/{retries})."
+                    f" Retrying in {delay}s..."
+                )
                 console.print(f"[yellow]Timeout, retrying {repo_url} in {delay}s...[/yellow]")
                 # Clean up partial clone if exists
                 if target_dir.exists():
@@ -168,10 +177,12 @@ def clone_repo(repo_url: str, target_dir: Path, retries: int = MAX_RETRIES, forc
             error_type = type(e).__name__
 
             if attempt < retries - 1:
-                delay = RETRY_DELAY_BASE * (2 ** attempt)
+                delay = RETRY_DELAY_BASE * (2**attempt)
                 logger.warning(
-                    f"Error cloning {repo_url} (attempt {attempt + 1}/{retries}): {error_type}: {e}. "
-                    f"Retrying in {delay}s..."
+                    f"Error cloning {repo_url}"
+                    f" (attempt {attempt + 1}/{retries}):"
+                    f" {error_type}: {e}."
+                    f" Retrying in {delay}s..."
                 )
                 console.print(f"[yellow]Error, retrying {repo_url} in {delay}s...[/yellow]")
                 # Clean up partial clone if exists
@@ -241,11 +252,7 @@ def extract_code_files(repo_dir: Path) -> list[dict]:
                 if any(part in SKIP_TS_JS_IN_DIRS for part in parts):
                     skipped_count += 1
                     continue
-                if any(
-                    part.startswith(prefix)
-                    for part in parts
-                    for prefix in SKIP_DIR_PREFIXES
-                ):
+                if any(part.startswith(prefix) for part in parts for prefix in SKIP_DIR_PREFIXES):
                     skipped_count += 1
                     continue
 
@@ -264,12 +271,14 @@ def extract_code_files(repo_dir: Path) -> list[dict]:
                     skipped_count += 1
                     continue
 
-                files.append({
-                    "path": str(path.relative_to(repo_dir)),
-                    "extension": path.suffix,
-                    "content": content,
-                    "lines": len(content.splitlines()),
-                })
+                files.append(
+                    {
+                        "path": str(path.relative_to(repo_dir)),
+                        "extension": path.suffix,
+                        "content": content,
+                        "lines": len(content.splitlines()),
+                    }
+                )
             except UnicodeDecodeError as e:
                 logger.debug(f"Unicode error reading {path}: {e}")
                 skipped_count += 1
@@ -285,9 +294,17 @@ def extract_code_files(repo_dir: Path) -> list[dict]:
             error_count += 1
 
     if error_count > 0:
-        console.print(f"[yellow]Encountered {error_count} errors while extracting files from {repo_dir}[/yellow]")
+        console.print(
+            f"[yellow]Encountered {error_count} errors"
+            f" while extracting files"
+            f" from {repo_dir}[/yellow]"
+        )
 
-    logger.info(f"Extracted {len(files)} files from {repo_dir} (skipped: {skipped_count}, errors: {error_count})")
+    logger.info(
+        f"Extracted {len(files)} files from {repo_dir}"
+        f" (skipped: {skipped_count},"
+        f" errors: {error_count})"
+    )
     return files
 
 
@@ -318,23 +335,25 @@ def audit_repos() -> dict:
     orphans = on_disk - config_repo_names
     missing = config_repo_names - on_disk
 
-    console.print(f"\n[bold]Audit Report[/bold]")
+    console.print("\n[bold]Audit Report[/bold]")
     console.print(f"  Config repos: {len(config_repo_names)}")
     console.print(f"  On disk: {len(on_disk)}")
 
     if orphans:
-        console.print(f"\n[yellow]Orphan repos (on disk but NOT in config): {len(orphans)}[/yellow]")
+        console.print(
+            f"\n[yellow]Orphan repos (on disk but NOT in config): {len(orphans)}[/yellow]"
+        )
         for name in sorted(orphans):
             console.print(f"  - {name}")
     else:
-        console.print(f"\n[green]No orphan repos[/green]")
+        console.print("\n[green]No orphan repos[/green]")
 
     if missing:
         console.print(f"\n[red]Missing repos (in config but NOT on disk): {len(missing)}[/red]")
         for name in sorted(missing):
             console.print(f"  - {name}")
     else:
-        console.print(f"\n[green]All configured repos are on disk[/green]")
+        console.print("\n[green]All configured repos are on disk[/green]")
 
     return {"orphans": sorted(orphans), "missing": sorted(missing)}
 
@@ -367,7 +386,12 @@ def prune_orphan_repos(dry_run: bool = True) -> list[str]:
         pruned.append(name)
 
     if dry_run:
-        console.print(f"\n[yellow]Dry run: {len(pruned)} repos would be deleted. Use --prune (without --dry-run) to delete.[/yellow]")
+        console.print(
+            f"\n[yellow]Dry run: {len(pruned)} repos"
+            " would be deleted. Use --prune"
+            " (without --dry-run)"
+            " to delete.[/yellow]"
+        )
     else:
         console.print(f"\n[red]Pruned {len(pruned)} orphan repos.[/red]")
 
@@ -391,7 +415,7 @@ async def scrape_all_repos(
 
     # Collect all GitHub repo entries from PROJECT_EXAMPLES
     all_repos = []
-    repo_info_map = get_config_repo_info()
+    repo_info_map = get_config_repo_info()  # noqa: F841
 
     for category, subcategories in PROJECT_EXAMPLES.items():
         if categories and category not in categories:
@@ -401,13 +425,15 @@ async def scrape_all_repos(
             for entry in entries:
                 url = entry["url"]
                 if "github.com" in url:
-                    all_repos.append({
-                        "url": url,
-                        "category": category,
-                        "subcategory": subcategory,
-                        "sdk_version": entry.get("sdk_version", ""),
-                        "verified": entry.get("verified", ""),
-                    })
+                    all_repos.append(
+                        {
+                            "url": url,
+                            "category": category,
+                            "subcategory": subcategory,
+                            "sdk_version": entry.get("sdk_version", ""),
+                            "verified": entry.get("verified", ""),
+                        }
+                    )
 
     results = []
 
@@ -430,17 +456,19 @@ async def scrape_all_repos(
                 # Extract code files
                 files = extract_code_files(target_dir)
 
-                results.append({
-                    "repo_url": url,
-                    "repo_name": repo_name,
-                    "category": repo_info["category"],
-                    "subcategory": repo_info["subcategory"],
-                    "sdk_version": repo_info["sdk_version"],
-                    "verified": repo_info["verified"],
-                    "files": files,
-                    "file_count": len(files),
-                    "scraped_at": datetime.utcnow().isoformat(),
-                })
+                results.append(
+                    {
+                        "repo_url": url,
+                        "repo_name": repo_name,
+                        "category": repo_info["category"],
+                        "subcategory": repo_info["subcategory"],
+                        "sdk_version": repo_info["sdk_version"],
+                        "verified": repo_info["verified"],
+                        "files": files,
+                        "file_count": len(files),
+                        "scraped_at": datetime.utcnow().isoformat(),
+                    }
+                )
 
                 console.print(f"[green]Extracted {len(files)} files from {repo_name}[/green]")
 
@@ -452,7 +480,9 @@ async def scrape_all_repos(
         json.dump(results, f, indent=2, ensure_ascii=False)
 
     total_files = sum(r["file_count"] for r in results)
-    console.print(f"\n[green]Processed {len(results)} repositories with {total_files} total files[/green]")
+    console.print(
+        f"\n[green]Processed {len(results)} repositories with {total_files} total files[/green]"
+    )
     console.print(f"[green]Saved to {output_file}[/green]")
 
 

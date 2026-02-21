@@ -10,11 +10,11 @@ from typing import Optional
 import httpx
 from dotenv import load_dotenv
 from tenacity import (
+    before_sleep_log,
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
-    before_sleep_log,
 )
 
 load_dotenv()
@@ -29,7 +29,9 @@ logger = logging.getLogger(__name__)
 class EmbeddingAPIError(Exception):
     """Custom exception for embedding API errors."""
 
-    def __init__(self, message: str, status_code: Optional[int] = None, response_body: Optional[str] = None):
+    def __init__(
+        self, message: str, status_code: Optional[int] = None, response_body: Optional[str] = None
+    ):
         super().__init__(message)
         self.status_code = status_code
         self.response_body = response_body
@@ -107,15 +109,14 @@ class EmbeddingClient:
 
         if "data" not in data:
             raise EmbeddingAPIError(
-                f"Invalid response format: missing 'data' field",
-                response_body=str(data)[:500]
+                "Invalid response format: missing 'data' field", response_body=str(data)[:500]
             )
 
         embeddings_data = data["data"]
         if not isinstance(embeddings_data, list) or len(embeddings_data) == 0:
             raise EmbeddingAPIError(
-                f"Invalid response format: 'data' is empty or not a list",
-                response_body=str(data)[:500]
+                "Invalid response format: 'data' is empty or not a list",
+                response_body=str(data)[:500],
             )
 
         # Sort by index to maintain order
@@ -126,7 +127,7 @@ class EmbeddingClient:
             if "embedding" not in item:
                 raise EmbeddingAPIError(
                     f"Invalid response format: missing 'embedding' in item {i}",
-                    response_body=str(item)[:200]
+                    response_body=str(item)[:200],
                 )
             embeddings.append(item["embedding"])
 
@@ -135,7 +136,9 @@ class EmbeddingClient:
     @retry(
         stop=stop_after_attempt(5),
         wait=wait_exponential(multiplier=1, min=2, max=30),
-        retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.TimeoutException, EmbeddingAPIError)),
+        retry=retry_if_exception_type(
+            (httpx.HTTPStatusError, httpx.TimeoutException, EmbeddingAPIError)
+        ),
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,
     )
@@ -174,22 +177,22 @@ class EmbeddingClient:
 
             if self._is_retryable_error(response.status_code):
                 raise httpx.HTTPStatusError(
-                    f"HTTP {response.status_code}",
-                    request=response.request,
-                    response=response
+                    f"HTTP {response.status_code}", request=response.request, response=response
                 )
             else:
                 raise EmbeddingAPIError(
-                    f"Non-retryable API error",
+                    "Non-retryable API error",
                     status_code=response.status_code,
-                    response_body=response_text
+                    response_body=response_text,
                 )
 
         try:
             data = response.json()
         except Exception as e:
             logger.error(f"Failed to parse embedding response as JSON: {e}")
-            raise EmbeddingAPIError(f"Invalid JSON response: {e}", response_body=response.text[:500])
+            raise EmbeddingAPIError(
+                f"Invalid JSON response: {e}", response_body=response.text[:500]
+            )
 
         embeddings = self._parse_embedding_response(data, expected_count=1)
         return embeddings[0]
@@ -222,11 +225,13 @@ class EmbeddingClient:
                     f"Timeout on batch {batch_index}, attempt {attempt + 1}/{max_retries}: {e}"
                 )
                 if attempt < max_retries - 1:
-                    delay = base_delay * (2 ** attempt)
+                    delay = base_delay * (2**attempt)
                     logger.info(f"Retrying batch {batch_index} in {delay}s...")
                     time.sleep(delay)
                     continue
-                raise EmbeddingAPIError(f"Timeout after {max_retries} attempts on batch {batch_index}")
+                raise EmbeddingAPIError(
+                    f"Timeout after {max_retries} attempts on batch {batch_index}"
+                )
 
             # Handle HTTP errors
             if response.status_code != 200:
@@ -238,7 +243,7 @@ class EmbeddingClient:
 
                 if self._is_retryable_error(response.status_code) and attempt < max_retries - 1:
                     # Exponential backoff with extra delay for rate limits
-                    delay = base_delay * (2 ** attempt)
+                    delay = base_delay * (2**attempt)
                     if response.status_code == 429:
                         delay = max(delay, 10)  # Minimum 10s for rate limits
                         logger.info(f"Rate limited. Waiting {delay}s before retry...")
@@ -250,7 +255,7 @@ class EmbeddingClient:
                     raise EmbeddingAPIError(
                         f"API error on batch {batch_index}",
                         status_code=response.status_code,
-                        response_body=response_text
+                        response_body=response_text,
                     )
 
             # Parse response
@@ -259,11 +264,11 @@ class EmbeddingClient:
             except Exception as e:
                 logger.error(f"Failed to parse batch {batch_index} response as JSON: {e}")
                 if attempt < max_retries - 1:
-                    time.sleep(base_delay * (2 ** attempt))
+                    time.sleep(base_delay * (2**attempt))
                     continue
                 raise EmbeddingAPIError(
                     f"Invalid JSON response on batch {batch_index}",
-                    response_body=response.text[:500]
+                    response_body=response.text[:500],
                 )
 
             # Validate and extract embeddings
@@ -273,11 +278,13 @@ class EmbeddingClient:
             except EmbeddingAPIError as e:
                 logger.warning(f"Batch {batch_index} parse error (attempt {attempt + 1}): {e}")
                 if attempt < max_retries - 1:
-                    time.sleep(base_delay * (2 ** attempt))
+                    time.sleep(base_delay * (2**attempt))
                     continue
                 raise
 
-        raise EmbeddingAPIError(f"Failed to process batch {batch_index} after {max_retries} attempts")
+        raise EmbeddingAPIError(
+            f"Failed to process batch {batch_index} after {max_retries} attempts"
+        )
 
     def embed_batch(
         self,
@@ -300,16 +307,20 @@ class EmbeddingClient:
         all_embeddings = []
         total_batches = (len(texts) + batch_size - 1) // batch_size
 
-        logger.info(f"Processing {len(texts)} texts in {total_batches} batches (batch_size={batch_size})")
+        logger.info(
+            f"Processing {len(texts)} texts in {total_batches} batches (batch_size={batch_size})"
+        )
 
         for i in range(0, len(texts), batch_size):
-            batch = texts[i:i + batch_size]
+            batch = texts[i : i + batch_size]
             batch_index = i // batch_size + 1
 
             try:
                 embeddings = self._embed_batch_single(batch, batch_index)
                 all_embeddings.extend(embeddings)
-                logger.debug(f"Batch {batch_index}/{total_batches} completed: {len(embeddings)} embeddings")
+                logger.debug(
+                    f"Batch {batch_index}/{total_batches} completed: {len(embeddings)} embeddings"
+                )
             except EmbeddingAPIError as e:
                 logger.error(f"Failed to process batch {batch_index}/{total_batches}: {e}")
                 raise

@@ -19,7 +19,7 @@ import chromadb
 import numpy as np
 from chromadb.config import Settings
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
 console = Console()
 
@@ -188,7 +188,7 @@ def load_prebuilt(
         "final_count": final_count,
     }
 
-    console.print(f"\n[green]Import complete![/green]")
+    console.print("\n[green]Import complete![/green]")
     console.print(f"  Collection: {collection_name}")
     console.print(f"  Total in collection: {final_count}")
     console.print(f"  Added: {added}")

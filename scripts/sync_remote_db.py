@@ -38,13 +38,12 @@ from pathlib import Path
 
 import httpx
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 from rich.table import Table
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from scraper.config import DOCS, PROJECT_EXAMPLES, get_all_config_repo_urls, get_config_repo_info
+from scraper.config import DOCS, get_all_config_repo_urls, get_config_repo_info
 
 console = Console()
 
@@ -178,17 +177,20 @@ def upload_chunks(chunks: list[dict], label: str = ""):
                     batch_ok = data.get("processed", len(batch))
                     succeeded += batch_ok
                     if batch_num % 50 == 0 or batch_num == num_batches:
-                        print(f"  [{batch_num}/{num_batches}] {succeeded}/{total} chunks uploaded", flush=True)
+                        print(
+                            f"  [{batch_num}/{num_batches}] {succeeded}/{total} chunks uploaded",
+                            flush=True,
+                        )
                     break
                 else:
                     if attempt < retries - 1:
-                        time.sleep(2 ** attempt)
+                        time.sleep(2**attempt)
                         continue
                     print(f"  Batch {batch_num} failed: {data}", flush=True)
                     failed_batches += 1
             except Exception as e:
                 if attempt < retries - 1:
-                    time.sleep(2 ** attempt)
+                    time.sleep(2**attempt)
                     continue
                 print(f"  Batch {batch_num} error: {e}", flush=True)
                 failed_batches += 1
@@ -307,7 +309,7 @@ def delete_stale_sources():
             )
             if resp.status_code == 200:
                 deleted += 1
-                console.print(f"    [green]OK[/green]")
+                console.print("    [green]OK[/green]")
             else:
                 console.print(f"    [red]Failed: {resp.status_code} {resp.text}[/red]")
         except Exception as e:
@@ -315,7 +317,11 @@ def delete_stale_sources():
         time.sleep(0.2)  # Rate limit
 
     console.print(f"\n[green]Deleted {deleted}/{len(stale)} stale sources from registry.[/green]")
-    console.print("[yellow]Note: Vectors still exist in Vectorize. Use --full-reset to clear vectors too.[/yellow]")
+    console.print(
+        "[yellow]Note: Vectors still exist in Vectorize."
+        " Use --full-reset to clear vectors"
+        " too.[/yellow]"
+    )
 
 
 def full_reset():
@@ -331,7 +337,10 @@ def full_reset():
             timeout=300,
         )
         data = resp.json()
-        console.print(f"  Deleted {data.get('deleted', '?')} vectors in {data.get('iterations', '?')} iterations")
+        console.print(
+            f"  Deleted {data.get('deleted', '?')} vectors"
+            f" in {data.get('iterations', '?')} iterations"
+        )
     except Exception as e:
         console.print(f"  [red]Error clearing vectors: {e}[/red]")
 
@@ -385,7 +394,9 @@ def push_missing():
         if chunk_url in missing:
             filtered.append(chunk)
 
-    console.print(f"\n[bold]Uploading {len(filtered)} chunks for {len(missing)} missing sources...[/bold]")
+    console.print(
+        f"\n[bold]Uploading {len(filtered)} chunks for {len(missing)} missing sources...[/bold]"
+    )
     upload_chunks(filtered, label="missing source chunks")
 
 
@@ -393,10 +404,16 @@ def main():
     parser = argparse.ArgumentParser(description="Sync remote Cloudflare DB with local config")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--dry-run", action="store_true", help="Show what would change")
-    group.add_argument("--delete-stale", action="store_true", help="Delete stale sources from remote registry")
-    group.add_argument("--full-reset", action="store_true", help="Clear all vectors + delete stale sources")
+    group.add_argument(
+        "--delete-stale", action="store_true", help="Delete stale sources from remote registry"
+    )
+    group.add_argument(
+        "--full-reset", action="store_true", help="Clear all vectors + delete stale sources"
+    )
     group.add_argument("--reingest", action="store_true", help="Push ALL local chunks to remote")
-    group.add_argument("--push-missing", action="store_true", help="Push only chunks for missing sources")
+    group.add_argument(
+        "--push-missing", action="store_true", help="Push only chunks for missing sources"
+    )
 
     args = parser.parse_args()
 

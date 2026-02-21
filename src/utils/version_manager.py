@@ -8,10 +8,9 @@ Both systems read from the same shared/stylus-versions.json config file.
 
 import json
 import re
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
-from functools import lru_cache
-
 
 # Path to shared config (relative to project root)
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -137,7 +136,9 @@ def get_alloy_sol_types_version(sdk_version: str) -> str:
 
     # Default to main version's alloy-sol-types
     main = config["main_version"]
-    return config["versions"][main].get("alloy_sol_types", config["versions"][main]["alloy_primitives"])
+    return config["versions"][main].get(
+        "alloy_sol_types", config["versions"][main]["alloy_primitives"]
+    )
 
 
 def compare_versions(v1: str, v2: str) -> int:
@@ -151,9 +152,10 @@ def compare_versions(v1: str, v2: str) -> int:
     Returns:
         -1 if v1 < v2, 0 if v1 == v2, 1 if v1 > v2
     """
+
     def parse(v: str) -> tuple:
         # Strip version prefixes like ^, ~, >=, etc.
-        cleaned = re.sub(r'^[\^~>=<]+', '', v)
+        cleaned = re.sub(r"^[\^~>=<]+", "", v)
         parts = cleaned.split(".")
         return tuple(int(x) for x in parts[:3] if x.isdigit())
 
@@ -205,7 +207,7 @@ def detect_version_from_cargo_toml(cargo_content: str) -> Optional[str]:
     # Pattern 3: Check workspace root for version
     # stylus-sdk = { workspace = true } in member Cargo.toml
     # [workspace.dependencies] stylus-sdk = "0.9.0" in root
-    workspace_member_pattern = r'stylus-sdk\s*=\s*\{[^}]*workspace\s*=\s*true'
+    workspace_member_pattern = r"stylus-sdk\s*=\s*\{[^}]*workspace\s*=\s*true"
     if re.search(workspace_member_pattern, cargo_content):
         # Look for workspace dependencies section
         workspace_dep_pattern = r'\[workspace\.dependencies\][^\[]*stylus-sdk\s*=\s*"([^"]+)"'
@@ -214,7 +216,9 @@ def detect_version_from_cargo_toml(cargo_content: str) -> Optional[str]:
             return match.group(1)
 
         # Also try complex workspace dependency format
-        workspace_dep_complex = r'\[workspace\.dependencies\][^\[]*stylus-sdk\s*=\s*\{[^}]*version\s*=\s*"([^"]+)"'
+        workspace_dep_complex = (
+            r'\[workspace\.dependencies\][^\[]*stylus-sdk\s*=\s*\{[^}]*version\s*=\s*"([^"]+)"'
+        )
         match = re.search(workspace_dep_complex, cargo_content, re.DOTALL)
         if match:
             return match.group(1)
@@ -239,10 +243,7 @@ def get_deprecation_warning(version: str) -> Optional[str]:
     template = config.get("deprecation_warnings", {}).get("below_minimum", "")
 
     if template:
-        return template.format(
-            version=version,
-            minimum=config["minimum_version"]
-        )
+        return template.format(version=version, minimum=config["minimum_version"])
 
     return f"SDK version {version} is deprecated. Minimum supported: {config['minimum_version']}"
 
@@ -313,11 +314,15 @@ VERSION_TRANSFORMS: dict[tuple[str, str], list[dict]] = {
         # 5. sol! { interface → sol_interface! { interface
         {"pattern": r"sol!\s*\{\s*(interface\b)", "replacement": r"sol_interface! { \1"},
         # 6. Fix transfer_eth import path
-        {"pattern": r"use stylus_sdk::call::transfer_eth;",
-         "replacement": "use stylus_sdk::call::transfer::transfer_eth;"},
+        {
+            "pattern": r"use stylus_sdk::call::transfer_eth;",
+            "replacement": "use stylus_sdk::call::transfer::transfer_eth;",
+        },
         # 7. self.transfer_eth(to, amount) → transfer_eth(self.vm(), to, amount)
-        {"pattern": r"self\.transfer_eth\(([^)]+)\)",
-         "replacement": r"transfer_eth(self.vm(), \1)"},
+        {
+            "pattern": r"self\.transfer_eth\(([^)]+)\)",
+            "replacement": r"transfer_eth(self.vm(), \1)",
+        },
         # 8. transfer_eth(self, ...) → transfer_eth(self.vm(), ...)
         {"pattern": r"transfer_eth\(self,\s*", "replacement": "transfer_eth(self.vm(), "},
         # 9. .getter( → .get(
@@ -332,7 +337,7 @@ VERSION_TRANSFORMS: dict[tuple[str, str], list[dict]] = {
 
 def _to_major_minor(version: str) -> str:
     """Convert a version string to major.minor format."""
-    parts = re.sub(r'^[\^~>=<]+', '', version).split(".")
+    parts = re.sub(r"^[\^~>=<]+", "", version).split(".")
     return f"{parts[0]}.{parts[1]}" if len(parts) >= 2 else version
 
 
@@ -375,6 +380,7 @@ def _apply_storage_type_forward(code: str) -> str:
     Handles: StorageMap<K, V> → mapping(k => v), StorageVec<T> → t[],
     and standalone StorageX → solidity_type.
     """
+
     # StorageMap<K, V> → mapping(k => v)
     def _replace_storage_map(match: re.Match) -> str:
         key_type = match.group(1).strip()
@@ -385,7 +391,7 @@ def _apply_storage_type_forward(code: str) -> str:
         return f"mapping({key_type} => {val_type})"
 
     code = re.sub(
-        r'StorageMap\s*<\s*([^,>]+)\s*,\s*([^>]+)\s*>',
+        r"StorageMap\s*<\s*([^,>]+)\s*,\s*([^>]+)\s*>",
         _replace_storage_map,
         code,
     )
@@ -398,14 +404,14 @@ def _apply_storage_type_forward(code: str) -> str:
         return f"{inner}[]"
 
     code = re.sub(
-        r'StorageVec\s*<\s*([^>]+)\s*>',
+        r"StorageVec\s*<\s*([^>]+)\s*>",
         _replace_storage_vec,
         code,
     )
 
     # Standalone StorageX → solidity_type
     for old, new in STORAGE_TYPE_MAP_FORWARD.items():
-        code = re.sub(rf'\b{old}\b', new, code)
+        code = re.sub(rf"\b{old}\b", new, code)
 
     return code
 
@@ -419,7 +425,7 @@ def _apply_storage_type_reverse(code: str) -> str:
     and simple types like address → StorageAddress.
     """
     # Find sol_storage! block boundaries
-    sol_storage_match = re.search(r'(sol_storage!\s*\{)', code)
+    sol_storage_match = re.search(r"(sol_storage!\s*\{)", code)
     if not sol_storage_match:
         return code
 
@@ -428,9 +434,9 @@ def _apply_storage_type_reverse(code: str) -> str:
     depth = 0
     end = start
     for i in range(start, len(code)):
-        if code[i] == '{':
+        if code[i] == "{":
             depth += 1
-        elif code[i] == '}':
+        elif code[i] == "}":
             depth -= 1
             if depth == 0:
                 end = i + 1
@@ -445,12 +451,12 @@ def _apply_storage_type_reverse(code: str) -> str:
         key_type = match.group(1).strip()
         val_type = match.group(2).strip()
         for sol, storage in STORAGE_TYPE_MAP_REVERSE.items():
-            key_type = re.sub(rf'\b{re.escape(sol)}\b', storage, key_type)
-            val_type = re.sub(rf'\b{re.escape(sol)}\b', storage, val_type)
+            key_type = re.sub(rf"\b{re.escape(sol)}\b", storage, key_type)
+            val_type = re.sub(rf"\b{re.escape(sol)}\b", storage, val_type)
         return f"StorageMap<{key_type}, {val_type}>"
 
     block = re.sub(
-        r'mapping\(\s*(\w+)\s*=>\s*(\w+)\s*\)',
+        r"mapping\(\s*(\w+)\s*=>\s*(\w+)\s*\)",
         _reverse_mapping,
         block,
     )
@@ -459,11 +465,11 @@ def _apply_storage_type_reverse(code: str) -> str:
     def _reverse_vec(match: re.Match) -> str:
         inner = match.group(1).strip()
         for sol, storage in STORAGE_TYPE_MAP_REVERSE.items():
-            inner = re.sub(rf'\b{re.escape(sol)}\b', storage, inner)
+            inner = re.sub(rf"\b{re.escape(sol)}\b", storage, inner)
         return f"StorageVec<{inner}>"
 
     block = re.sub(
-        r'\b(\w+)\[\]',
+        r"\b(\w+)\[\]",
         _reverse_vec,
         block,
     )
@@ -472,8 +478,8 @@ def _apply_storage_type_reverse(code: str) -> str:
     # Only inside field declarations (type fieldname;)
     for sol, storage in STORAGE_TYPE_MAP_REVERSE.items():
         block = re.sub(
-            rf'\b{re.escape(sol)}\b(\s+\w+\s*;)',
-            rf'{storage}\1',
+            rf"\b{re.escape(sol)}\b(\s+\w+\s*;)",
+            rf"{storage}\1",
             block,
         )
 
@@ -521,7 +527,16 @@ def apply_version_transforms(code: str, from_version: str, to_version: str) -> s
                 search = rule["replacement"]
                 # The original "pattern" is a regex string — unescape it
                 # to get the literal text for use as a replacement value.
-                replace_with = rule["pattern"].replace(r"\(", "(").replace(r"\)", ")").replace(r"\.", ".").replace(r"\{", "{").replace(r"\}", "}").replace(r"\[", "[").replace(r"\]", "]")
+                replace_with = (
+                    rule["pattern"]
+                    .replace(r"\(", "(")
+                    .replace(r"\)", ")")
+                    .replace(r"\.", ".")
+                    .replace(r"\{", "{")
+                    .replace(r"\}", "}")
+                    .replace(r"\[", "[")
+                    .replace(r"\]", "]")
+                )
 
                 # Skip rules that can't be reversed (regex groups, empty replacements)
                 if not search or r"\1" in search or r"\g<" in search:
@@ -535,15 +550,15 @@ def apply_version_transforms(code: str, from_version: str, to_version: str) -> s
         if "self.vm().msg_sender()" not in code and "msg::sender()" in code:
             if "use stylus_sdk::msg" not in code:
                 code = re.sub(
-                    r'(use stylus_sdk::prelude::\*;)',
-                    r'\1\nuse stylus_sdk::msg;',
+                    r"(use stylus_sdk::prelude::\*;)",
+                    r"\1\nuse stylus_sdk::msg;",
                     code,
                 )
         if "self.vm().log(" not in code and "evm::log(" in code:
             if "use stylus_sdk::evm" not in code:
                 code = re.sub(
-                    r'(use stylus_sdk::prelude::\*;)',
-                    r'\1\nuse stylus_sdk::evm;',
+                    r"(use stylus_sdk::prelude::\*;)",
+                    r"\1\nuse stylus_sdk::evm;",
                     code,
                 )
 

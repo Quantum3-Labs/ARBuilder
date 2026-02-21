@@ -42,21 +42,20 @@ from typing import Optional
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-import httpx
-from dotenv import load_dotenv
-from rich.console import Console
-from rich.table import Table
+import httpx  # noqa: E402
+from dotenv import load_dotenv  # noqa: E402
+from rich.console import Console  # noqa: E402
+from rich.table import Table  # noqa: E402
 
-from scraper.config import (
-    PROJECT_EXAMPLES,
+from scraper.config import (  # noqa: E402
     MAIN_STYLUS_SDK_VERSION,
     MIN_STYLUS_SDK_VERSION,
     get_all_config_repo_urls,
     get_config_repo_info,
 )
-from scraper.version_extractor import (
-    get_latest_sdk_version_sync,
+from scraper.version_extractor import (  # noqa: E402
     compare_versions,
+    get_latest_sdk_version_sync,
 )
 
 load_dotenv()
@@ -79,6 +78,7 @@ def _github_headers() -> dict:
 # ──────────────────────────────────────────────────────────────
 # A. SDK VERSION MONITOR
 # ──────────────────────────────────────────────────────────────
+
 
 def monitor_sdk_versions() -> dict:
     """Check crates.io and npm for latest SDK versions, compare to config."""
@@ -182,9 +182,9 @@ def _version_distance(current: str, latest: str) -> str:
     """Human-readable description of how far behind a version is."""
     try:
         c = current.lstrip("^~>=<").split(".")
-        l = latest.lstrip("^~>=<").split(".")
+        lat = latest.lstrip("^~>=<").split(".")
         c_major, c_minor, c_patch = int(c[0]), int(c[1]), int(c[2]) if len(c) > 2 else 0
-        l_major, l_minor, l_patch = int(l[0]), int(l[1]), int(l[2]) if len(l) > 2 else 0
+        l_major, l_minor, l_patch = int(lat[0]), int(lat[1]), int(lat[2]) if len(lat) > 2 else 0
 
         if c_major != l_major:
             return f"{l_major - c_major} major version(s) behind"
@@ -333,6 +333,7 @@ def _normalize_url(url: str) -> str:
 # C. HEALTH CHECK
 # ──────────────────────────────────────────────────────────────
 
+
 def health_check() -> dict:
     """Check GitHub health of all configured repos (no compilation, just API)."""
     console.print("\n[bold blue]═══ Health Check ═══[/bold blue]")
@@ -353,15 +354,23 @@ def health_check() -> dict:
         if health.get("archived") or health.get("not_found"):
             health["status"] = "critical"
             results["critical"] += 1
-            console.print(f"  [red]CRITICAL: {'archived' if health.get('archived') else '404 not found'}[/red]")
+            console.print(
+                "  [red]CRITICAL: "
+                f"{'archived' if health.get('archived') else '404 not found'}"
+                "[/red]"
+            )
         elif health.get("days_since_update", 0) > 365:
             health["status"] = "warning"
             results["warnings"] += 1
-            console.print(f"  [yellow]WARNING: {health['days_since_update']} days since last update[/yellow]")
+            console.print(
+                f"  [yellow]WARNING: {health['days_since_update']} days since last update[/yellow]"
+            )
         else:
             health["status"] = "healthy"
             results["healthy"] += 1
-            console.print(f"  [green]OK ({health.get('days_since_update', '?')} days ago, {health.get('stars', '?')} stars)[/green]")
+            days = health.get("days_since_update", "?")
+            stars = health.get("stars", "?")
+            console.print(f"  [green]OK ({days} days ago, {stars} stars)[/green]")
 
         results["repos"].append(health)
 
@@ -377,7 +386,9 @@ def health_check() -> dict:
     table.add_column("Issues")
 
     for r in results["repos"]:
-        status_style = {"healthy": "green", "warning": "yellow", "critical": "red"}.get(r["status"], "white")
+        status_style = {"healthy": "green", "warning": "yellow", "critical": "red"}.get(
+            r["status"], "white"
+        )
         issues = []
         if r.get("archived"):
             issues.append("archived")
@@ -456,6 +467,7 @@ def _check_repo_health(owner: str, repo: str) -> dict:
 # D. AUTO-REMEDIATION
 # ──────────────────────────────────────────────────────────────
 
+
 def remediate() -> dict:
     """Auto-remove critical (archived/deleted) repos from config.
 
@@ -469,8 +481,11 @@ def remediate() -> dict:
     # Run health check to find critical repos
     health_results = health_check()
     critical_repos = [r for r in health_results["repos"] if r["status"] == "critical"]
-    abandoned_repos = [r for r in health_results["repos"]
-                       if r["status"] == "warning" and r.get("days_since_update", 0) > 365]
+    abandoned_repos = [
+        r
+        for r in health_results["repos"]
+        if r["status"] == "warning" and r.get("days_since_update", 0) > 365
+    ]
 
     if not critical_repos and not abandoned_repos:
         console.print("[green]No critical or abandoned repos found. Config is clean.[/green]")
@@ -481,12 +496,18 @@ def remediate() -> dict:
         url = repo.get("url", "")
         name = repo.get("full_name", url.split("/")[-1])
         days = repo.get("days_since_update", 0)
-        results["flagged"].append({
-            "url": url,
-            "name": name,
-            "reason": f"abandoned ({days} days since last update)",
-        })
-        console.print(f"  [yellow]FLAGGED: {name} — {days} days since last update (manual review needed)[/yellow]")
+        results["flagged"].append(
+            {
+                "url": url,
+                "name": name,
+                "reason": f"abandoned ({days} days since last update)",
+            }
+        )
+        console.print(
+            f"  [yellow]FLAGGED: {name} — {days} days "
+            "since last update (manual review needed)"
+            "[/yellow]"
+        )
 
     if not critical_repos:
         console.print("[green]No critical repos to remove.[/green]")
@@ -523,18 +544,23 @@ def remediate() -> dict:
 
         if count > 0:
             config_text = new_text
-            results["removed"].append({
-                "url": url,
-                "name": name,
-                "reason": reason,
-            })
+            results["removed"].append(
+                {
+                    "url": url,
+                    "name": name,
+                    "reason": reason,
+                }
+            )
             console.print(f"  [red]REMOVED: {name} — {reason}[/red]")
 
     # Write back if modified
     if config_text != original_text:
         config_path.write_text(config_text)
         results["config_modified"] = True
-        console.print(f"\n[bold red]Removed {len(results['removed'])} critical repo(s) from config.py[/bold red]")
+        removed_count = len(results["removed"])
+        console.print(
+            f"\n[bold red]Removed {removed_count} critical repo(s) from config.py[/bold red]"
+        )
     else:
         console.print("[green]No changes needed to config.py[/green]")
 
@@ -544,6 +570,7 @@ def remediate() -> dict:
 # ──────────────────────────────────────────────────────────────
 # CLI
 # ──────────────────────────────────────────────────────────────
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -566,7 +593,9 @@ Examples:
     )
     parser.add_argument("command", choices=["monitor", "discover", "health", "remediate", "all"])
     parser.add_argument("--output", "-o", help="Output JSON report to file")
-    parser.add_argument("--min-stars", type=int, default=1, help="Minimum stars for discovery (default: 1)")
+    parser.add_argument(
+        "--min-stars", type=int, default=1, help="Minimum stars for discovery (default: 1)"
+    )
     args = parser.parse_args()
 
     report = {

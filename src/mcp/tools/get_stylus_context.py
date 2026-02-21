@@ -4,8 +4,8 @@ get_stylus_context MCP Tool.
 Retrieves relevant documentation and code examples from the RAG database.
 """
 
-import sys
 import math
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -13,9 +13,9 @@ from typing import Optional
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.embeddings.vectordb import VectorDB
-from src.embeddings.reranker import HybridReranker
-from src.mcp.tools.base import BaseTool
+from src.embeddings.reranker import HybridReranker  # noqa: E402
+from src.embeddings.vectordb import VectorDB  # noqa: E402
+from src.mcp.tools.base import BaseTool  # noqa: E402
 
 
 class GetStylusContextTool(BaseTool):
@@ -46,11 +46,7 @@ class GetStylusContextTool(BaseTool):
 
         if use_reranking:
             # Cross-encoder + MMR for relevance and diversity
-            self.reranker = HybridReranker(
-                use_cross_encoder=True,
-                use_mmr=True,
-                use_llm=False
-            )
+            self.reranker = HybridReranker(use_cross_encoder=True, use_mmr=True, use_llm=False)
         else:
             self.reranker = None
 
@@ -94,14 +90,16 @@ class GetStylusContextTool(BaseTool):
             collection_name = self.vectordb.collection_name
             persist_dir = str(self.vectordb.persist_directory)
             persist_dir_abs = str(self.vectordb.persist_directory.resolve())
-            
+
             # Check if persist directory exists
             persist_dir_exists = self.vectordb.persist_directory.exists()
             cwd = str(Path.cwd())
-            
+
             if collection_count == 0:
                 return {
-                    "error": "Collection is empty. Please ingest data first using the ingestion script.",
+                    "error": (
+                        "Collection is empty. Please ingest data first using the ingestion script."
+                    ),
                     "contexts": [],
                     "total_results": 0,
                     "query": query,
@@ -111,7 +109,11 @@ class GetStylusContextTool(BaseTool):
                     "persist_directory_absolute": persist_dir_abs,
                     "persist_directory_exists": persist_dir_exists,
                     "current_working_directory": cwd,
-                    "diagnostic": "If you just ingested data, you may need to restart the MCP server to pick up the new collection.",
+                    "diagnostic": (
+                        "If you just ingested data, you may"
+                        " need to restart the MCP server to"
+                        " pick up the new collection."
+                    ),
                 }
         except Exception as e:
             return {"error": f"Retrieval failed: {str(e)}"}
@@ -176,17 +178,17 @@ class GetStylusContextTool(BaseTool):
         # If explicitly provided, use it (even if empty)
         if category_boosts is not None:
             return category_boosts
-        
+
         # Default: Category boosts based on data distribution:
         # - stylus: 7196 chunks (82.8%) - PRIMARY focus, gets highest boost
         # - orbit_sdk: 1012 chunks (11.6%) - Related to Arbitrum chains
         # - arbitrum_sdk: 451 chunks (5.2%) - SDK documentation
         # - arbitrum_docs: 33 chunks (0.4%) - General docs
         return {
-            "stylus": 1.3,        # 30% boost for Stylus content (primary focus)
-            "orbit_sdk": 1.1,     # 10% boost for Orbit SDK (related)
-            "arbitrum_sdk": 1.05, # 5% boost for Arbitrum SDK
-            "arbitrum_docs": 1.0, # No boost (neutral)
+            "stylus": 1.3,  # 30% boost for Stylus content (primary focus)
+            "orbit_sdk": 1.1,  # 10% boost for Orbit SDK (related)
+            "arbitrum_sdk": 1.05,  # 5% boost for Arbitrum SDK
+            "arbitrum_docs": 1.0,  # No boost (neutral)
         }
 
     def _process_results(
@@ -211,21 +213,21 @@ class GetStylusContextTool(BaseTool):
         # Check if results are empty
         if not raw_results:
             return []
-        
+
         # ChromaDB returns results as: {"ids": [[id1, id2, ...]], ...}
         # Check if we have any results
         if not raw_results.get("ids") or len(raw_results["ids"]) == 0:
             return []
-        
+
         # Check if the first (and only) result list is empty
         if len(raw_results["ids"][0]) == 0:
             return []
 
-        ids = raw_results["ids"][0]
+        ids = raw_results["ids"][0]  # noqa: F841
         documents = raw_results["documents"][0]
         metadatas = raw_results["metadatas"][0]
-        distances = raw_results["distances"][0]
-        
+        distances = raw_results["distances"][0]  # noqa: F841
+
         # Check if hybrid search scores are available
         hybrid_scores = raw_results.get("scores", [[]])[0] if "scores" in raw_results else None
 
@@ -244,11 +246,11 @@ class GetStylusContextTool(BaseTool):
             for item in reranked:
                 # Get original index from reranked result
                 orig_idx = item.get("original_index", item.get("index", 0))
-                
+
                 # Ensure index is within bounds
                 if orig_idx >= len(documents):
                     continue
-                    
+
                 metadata = metadatas[orig_idx] if orig_idx < len(metadatas) else {}
 
                 # Prefer the hybrid combined score (cross-encoder + MMR) when available.
@@ -256,12 +258,14 @@ class GetStylusContextTool(BaseTool):
                 # NVIDIA reranker returns unbounded logits; map to [0, 1] with sigmoid.
                 relevance = 1.0 / (1.0 + math.exp(-float(ce_score)))
 
-                contexts.append(self._build_context(
-                    content=documents[orig_idx],
-                    metadata=metadata,
-                    distance=distances[orig_idx] if orig_idx < len(distances) else 1.0,
-                    relevance_score=relevance,
-                ))
+                contexts.append(
+                    self._build_context(
+                        content=documents[orig_idx],
+                        metadata=metadata,
+                        distance=distances[orig_idx] if orig_idx < len(distances) else 1.0,
+                        relevance_score=relevance,
+                    )
+                )
 
             return contexts
 
@@ -280,12 +284,14 @@ class GetStylusContextTool(BaseTool):
                 # Distance of 2 = opposite = 0.0 relevance
                 relevance = max(0.0, 1.0 - (distances[i] / 2.0))
 
-            contexts.append(self._build_context(
-                content=documents[i],
-                metadata=metadata,
-                distance=distances[i],
-                relevance_score=relevance,
-            ))
+            contexts.append(
+                self._build_context(
+                    content=documents[i],
+                    metadata=metadata,
+                    distance=distances[i],
+                    relevance_score=relevance,
+                )
+            )
 
         return contexts
 

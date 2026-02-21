@@ -13,24 +13,39 @@ from .get_stylus_context import GetStylusContextTool
 # Version manager — single source of truth for SDK versions
 try:
     from src.utils.version_manager import (
-        get_main_version,
-        get_version_patterns,
+        _to_major_minor,
         get_alloy_primitives_version,
         get_alloy_sol_types_version,
-        load_version_config,
-        _to_major_minor,
+        get_main_version,
+        get_version_patterns,
         is_at_least_010,
+        load_version_config,
     )
+
     _HAS_VERSION_MANAGER = True
 except ImportError:
     _HAS_VERSION_MANAGER = False
-    def get_main_version(): return "0.10.0"
-    def get_version_patterns(v): return {}
-    def get_alloy_primitives_version(v): return "1.0.1"
-    def get_alloy_sol_types_version(v): return "1.0.1"
-    def load_version_config(): return {}
-    def _to_major_minor(v): return ".".join(v.split(".")[:2])
-    def is_at_least_010(v): return True
+
+    def get_main_version():
+        return "0.10.0"
+
+    def get_version_patterns(v):
+        return {}
+
+    def get_alloy_primitives_version(v):
+        return "1.0.1"
+
+    def get_alloy_sol_types_version(v):
+        return "1.0.1"
+
+    def load_version_config():
+        return {}
+
+    def _to_major_minor(v):
+        return ".".join(v.split(".")[:2])
+
+    def is_at_least_010(v):
+        return True
 
 
 def get_system_prompt(target_version: str) -> str:
@@ -74,10 +89,28 @@ def get_system_prompt(target_version: str) -> str:
     if required_files:
         required_files_section = "\n".join(f"- {f}" for f in required_files)
 
-    return f"""You are an expert Stylus smart contract developer and educator. You help developers understand and build Arbitrum Stylus contracts.
+    # Pre-compute optional sections
+    imports_section = ""
+    if required_imports:
+        joined = ", ".join(f"`{i}`" for i in required_imports)
+        imports_section = f"\nRequired imports: {joined}"
+    forbidden_mod_section = ""
+    if forbidden_section:
+        forbidden_mod_section = f"\nForbidden modules:\n{forbidden_section}"
+    req_files_section = ""
+    if required_files_section:
+        req_files_section = f"\nRequired project files:\n{required_files_section}"
+    breaking_section = ""
+    if breaking_changes:
+        breaking_section = f"Breaking changes in {target_version}:\n{breaking_changes}"
+
+    return f"""You are an expert Stylus smart contract \
+developer and educator. You help developers understand \
+and build Arbitrum Stylus contracts.
 
 ## CRITICAL VERSION INFORMATION
-ALWAYS use these versions - ignore any outdated version info in retrieved context:
+ALWAYS use these versions - ignore any outdated \
+version info in retrieved context:
 - stylus-sdk: {target_version} (current target)
 - alloy-primitives: {alloy_prim}
 - alloy-sol-types: {alloy_sol}
@@ -90,25 +123,36 @@ alloy-primitives = "{alloy_prim}"
 alloy-sol-types = "{alloy_sol}"
 ```
 
-{f"Breaking changes in {target_version}:" + chr(10) + breaking_changes if breaking_changes else ""}
+{breaking_section}
 
 ## KEY API PATTERNS for v{target_version}
 - Get caller address: `{sender}`
 - Get sent ETH value: `{value}`
 - Emit events: `{log}`
-- STORAGE ACCESS: ALWAYS use .get() to read: `self.field.get()` NOT `self.field`. ALWAYS use .set() to write.
-- For mappings: `self.map.get(key)` and `self.map.setter(key).set(val)`
-- Nested mapping writes: chain in one expression: `self.map.setter(k1).setter(k2).set(v)`
-- TRANSFER ETH: `use stylus_sdk::call::transfer::transfer_eth;` then `transfer_eth(self.vm(), to, amount)?;`
-- Error types: define with sol! {{ error MyError(...); }}, wrap enum with #[derive(SolidityError)]
-- For .abi_encode() on errors: `use alloy_sol_types::SolError;`
-- EXTERNAL INTERFACES: use `sol_interface!` (NOT `sol!`). Call pattern: `ifoo.method(self.vm(), Call::new(), arg1, arg2)?`
+- STORAGE ACCESS: ALWAYS use .get() to read: \
+`self.field.get()` NOT `self.field`. \
+ALWAYS use .set() to write.
+- For mappings: `self.map.get(key)` \
+and `self.map.setter(key).set(val)`
+- Nested mapping writes: chain in one expression: \
+`self.map.setter(k1).setter(k2).set(v)`
+- TRANSFER ETH: \
+`use stylus_sdk::call::transfer::transfer_eth;` \
+then `transfer_eth(self.vm(), to, amount)?;`
+- Error types: define with \
+sol! {{ error MyError(...); }}, \
+wrap enum with #[derive(SolidityError)]
+- For .abi_encode() on errors: \
+`use alloy_sol_types::SolError;`
+- EXTERNAL INTERFACES: use `sol_interface!` \
+(NOT `sol!`). Call pattern: \
+`ifoo.method(self.vm(), Call::new(), arg1, arg2)?`
 - ABI export function: `{abi_export}`
 - Package name in Cargo.toml MUST use underscores
 - crate-type = ["lib", "cdylib"]
-{f"{chr(10)}Required imports: " + ", ".join(f"`{i}`" for i in required_imports) if required_imports else ""}
-{f"{chr(10)}Forbidden modules:" + chr(10) + forbidden_section if forbidden_section else ""}
-{f"{chr(10)}Required project files:" + chr(10) + required_files_section if required_files_section else ""}
+{imports_section}\
+{forbidden_mod_section}\
+{req_files_section}
 
 ## REFERENCE CODE — use these EXACT patterns in your code examples
 
@@ -165,7 +209,9 @@ When answering:
 4. Suggest follow-up topics when appropriate
 5. For debugging, identify the specific issue and explain the fix
 6. For concepts, explain at an appropriate level of detail
-7. IMPORTANT: When asked about versions, ALWAYS use the version info above, NOT from retrieved context which may be outdated
+7. IMPORTANT: When asked about versions, ALWAYS use \
+the version info above, NOT from retrieved context \
+which may be outdated
 """
 
 
@@ -230,14 +276,32 @@ class AskStylusTool(BaseTool):
 
         # Check if question is Stylus-related
         stylus_keywords = [
-            "stylus", "rust", "contract", "arbitrum", "storage", "entrypoint",
-            "sol_storage", "erc", "token", "deploy", "wasm", "sdk"
+            "stylus",
+            "rust",
+            "contract",
+            "arbitrum",
+            "storage",
+            "entrypoint",
+            "sol_storage",
+            "erc",
+            "token",
+            "deploy",
+            "wasm",
+            "sdk",
         ]
         is_stylus_related = any(kw in question.lower() for kw in stylus_keywords)
 
         if not is_stylus_related and not code_context:
             return {
-                "answer": "This question doesn't appear to be related to Stylus or Arbitrum development. I'm specialized in helping with Stylus smart contract development. Please ask about Stylus concepts, code, or debugging.",
+                "answer": (
+                    "This question doesn't appear to be"
+                    " related to Stylus or Arbitrum"
+                    " development. I'm specialized in"
+                    " helping with Stylus smart contract"
+                    " development. Please ask about"
+                    " Stylus concepts, code,"
+                    " or debugging."
+                ),
                 "code_examples": [],
                 "references": [],
                 "follow_up_questions": [
@@ -267,12 +331,16 @@ class AskStylusTool(BaseTool):
 
             if "contexts" in context_result:
                 for ctx in context_result["contexts"]:
-                    references.append({
-                        "title": ctx["metadata"].get("title", "Reference"),
-                        "source": ctx["source"],
-                        "relevance": f"Relevance score: {ctx['relevance_score']:.2f}",
-                    })
-                    context_text += f"\n--- Reference: {ctx['source']} ---\n{ctx['content'][:1200]}\n"
+                    references.append(
+                        {
+                            "title": ctx["metadata"].get("title", "Reference"),
+                            "source": ctx["source"],
+                            "relevance": f"Relevance score: {ctx['relevance_score']:.2f}",
+                        }
+                    )
+                    context_text += (
+                        f"\n--- Reference: {ctx['source']} ---\n{ctx['content'][:1200]}\n"
+                    )
 
             # Build prompt
             user_prompt = self._build_prompt(
@@ -377,25 +445,25 @@ class AskStylusTool(BaseTool):
             if is_010:
                 # ── 0.10.0 fixes (forward) ──
 
-                code = re.sub(r'sol!\s*\{\s*(interface\b)', r'sol_interface! { \1', code)
+                code = re.sub(r"sol!\s*\{\s*(interface\b)", r"sol_interface! { \1", code)
 
                 code = code.replace(
                     "use stylus_sdk::call::transfer_eth;",
                     "use stylus_sdk::call::transfer::transfer_eth;",
                 )
                 code = re.sub(
-                    r'use stylus_sdk::call::\{([^}]*)\btransfer_eth\b([^}]*)\};',
+                    r"use stylus_sdk::call::\{([^}]*)\btransfer_eth\b([^}]*)\};",
                     lambda m: self._split_transfer_eth_import(m),
                     code,
                 )
                 code = re.sub(
-                    r'self\.transfer_eth\(([^)]+)\)',
-                    r'transfer_eth(self.vm(), \1)',
+                    r"self\.transfer_eth\(([^)]+)\)",
+                    r"transfer_eth(self.vm(), \1)",
                     code,
                 )
                 code = re.sub(
-                    r'transfer_eth\(self,\s*',
-                    'transfer_eth(self.vm(), ',
+                    r"transfer_eth\(self,\s*",
+                    "transfer_eth(self.vm(), ",
                     code,
                 )
 
@@ -403,35 +471,35 @@ class AskStylusTool(BaseTool):
                 code = code.replace("msg::value()", "self.vm().msg_value()")
                 code = code.replace("evm::log(", "self.vm().log(")
 
-                code = re.sub(r'^use stylus_sdk::evm.*;\s*$', '', code, flags=re.MULTILINE)
-                code = re.sub(r'^use stylus_sdk::msg.*;\s*$', '', code, flags=re.MULTILINE)
+                code = re.sub(r"^use stylus_sdk::evm.*;\s*$", "", code, flags=re.MULTILINE)
+                code = re.sub(r"^use stylus_sdk::msg.*;\s*$", "", code, flags=re.MULTILINE)
 
-                code = re.sub(r'\.getter\(', '.get(', code)
+                code = re.sub(r"\.getter\(", ".get(", code)
 
                 # StorageMap/StorageVec/StorageX → Solidity types
                 code = re.sub(
-                    r'StorageMap<Storage(\w+),\s*Storage(\w+)>',
-                    lambda m: f'mapping({m.group(1).lower()} => {m.group(2).lower()})',
+                    r"StorageMap<Storage(\w+),\s*Storage(\w+)>",
+                    lambda m: f"mapping({m.group(1).lower()} => {m.group(2).lower()})",
                     code,
                 )
                 code = re.sub(
-                    r'StorageVec<Storage(\w+)>',
-                    lambda m: f'{m.group(1).lower()}[]',
+                    r"StorageVec<Storage(\w+)>",
+                    lambda m: f"{m.group(1).lower()}[]",
                     code,
                 )
-                code = code.replace('StorageAddress', 'address')
-                code = code.replace('StorageU256', 'uint256')
-                code = code.replace('StorageBool', 'bool')
-                code = code.replace('StorageU8', 'uint8')
-                code = code.replace('StorageU64', 'uint64')
-                code = code.replace('StorageU128', 'uint128')
+                code = code.replace("StorageAddress", "address")
+                code = code.replace("StorageU256", "uint256")
+                code = code.replace("StorageBool", "bool")
+                code = code.replace("StorageU8", "uint8")
+                code = code.replace("StorageU64", "uint64")
+                code = code.replace("StorageU128", "uint128")
             else:
                 # ── 0.9.x fixes (reverse) ──
 
                 # sol_interface! → sol!
                 code = re.sub(
-                    r'sol_interface!\s*\{\s*(interface\b)',
-                    r'sol! { \1',
+                    r"sol_interface!\s*\{\s*(interface\b)",
+                    r"sol! { \1",
                     code,
                 )
 
@@ -449,31 +517,31 @@ class AskStylusTool(BaseTool):
                 code = code.replace("self.vm().log(", "evm::log(")
 
                 # .get( → .getter(
-                code = re.sub(r'\.get\(', '.getter(', code)
+                code = re.sub(r"\.get\(", ".getter(", code)
 
                 # print_from_args() → print_abi()
                 code = code.replace("print_from_args()", "print_abi()")
 
                 # Add evm/msg imports if needed
-                if 'msg::sender()' in code or 'msg::value()' in code:
-                    if 'use stylus_sdk::msg' not in code:
+                if "msg::sender()" in code or "msg::value()" in code:
+                    if "use stylus_sdk::msg" not in code:
                         code = re.sub(
-                            r'(use stylus_sdk::prelude::\*;)',
-                            r'\1\nuse stylus_sdk::msg;',
+                            r"(use stylus_sdk::prelude::\*;)",
+                            r"\1\nuse stylus_sdk::msg;",
                             code,
                         )
-                if 'evm::log(' in code:
-                    if 'use stylus_sdk::evm' not in code:
+                if "evm::log(" in code:
+                    if "use stylus_sdk::evm" not in code:
                         code = re.sub(
-                            r'(use stylus_sdk::prelude::\*;)',
-                            r'\1\nuse stylus_sdk::evm;',
+                            r"(use stylus_sdk::prelude::\*;)",
+                            r"\1\nuse stylus_sdk::evm;",
                             code,
                         )
 
             return f"```{lang}\n{code}```"
 
         # Fix all code blocks in the response
-        return re.sub(r'```(\w*)\n([\s\S]*?)```', fix_code_block, response)
+        return re.sub(r"```(\w*)\n([\s\S]*?)```", fix_code_block, response)
 
     def _split_transfer_eth_import(self, match: re.Match) -> str:
         """Split combined import that includes transfer_eth into separate imports."""
@@ -485,7 +553,9 @@ class AskStylusTool(BaseTool):
             return f"{transfer_line}\nuse stylus_sdk::call::{{{others}}};"
         return transfer_line
 
-    def _parse_response(self, response: str, target_version: str = "0.10.0") -> tuple[str, list[dict]]:
+    def _parse_response(
+        self, response: str, target_version: str = "0.10.0"
+    ) -> tuple[str, list[dict]]:
         """Parse answer and code examples from response."""
         # Fix wrong patterns in code blocks before parsing
         response = self._fix_code_in_response(response, target_version=target_version)
@@ -497,10 +567,12 @@ class AskStylusTool(BaseTool):
         matches = re.findall(code_pattern, response)
 
         for i, match in enumerate(matches):
-            code_examples.append({
-                "description": f"Example {i + 1}",
-                "code": match.strip(),
-            })
+            code_examples.append(
+                {
+                    "description": f"Example {i + 1}",
+                    "code": match.strip(),
+                }
+            )
 
         # Get the full answer text
         answer = response.strip()

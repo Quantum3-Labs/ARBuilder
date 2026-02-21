@@ -17,6 +17,7 @@ from typing import List, Optional
 @dataclass
 class StylusTemplate:
     """A curated Stylus contract template."""
+
     name: str
     description: str
     contract_type: str  # token, nft, defi, utility, custom
@@ -37,7 +38,7 @@ COUNTER_TEMPLATE = StylusTemplate(
     contract_type="utility",
     sdk_version="0.10.0",
     features=["storage", "public functions", "payable", "tests"],
-    lib_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+    lib_rs="""#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
 #[macro_use]
 extern crate alloc;
@@ -105,7 +106,7 @@ mod test {
         contract.add_from_msg_value();
         assert_eq!(U256::from(102), contract.number());
     }
-}''',
+}""",
     cargo_toml='''[package]
 name = "stylus_counter"
 version = "0.1.0"
@@ -139,7 +140,7 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"''',
-    main_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+    main_rs="""#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 
 #[cfg(not(any(test, feature = "export-abi")))]
 #[unsafe(no_mangle)]
@@ -148,8 +149,8 @@ pub extern "C" fn main() {}
 #[cfg(feature = "export-abi")]
 fn main() {
     stylus_counter::print_from_args();
-}''',
-    stylus_toml='[workspace]\n\n[workspace.networks]\n\n[contract]\n',
+}""",
+    stylus_toml="[workspace]\n\n[workspace.networks]\n\n[contract]\n",
     rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
 )
 
@@ -160,7 +161,7 @@ VENDING_MACHINE_TEMPLATE = StylusTemplate(
     contract_type="defi",
     sdk_version="0.10.0",
     features=["mappings", "timestamps", "rate limiting", "tests"],
-    lib_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+    lib_rs="""#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
 #[macro_use]
 extern crate alloc;
@@ -249,7 +250,7 @@ mod test {
         assert!(contract.claim(user).unwrap());
         assert_eq!(contract.balance_of(user), U256::from(2));
     }
-}''',
+}""",
     cargo_toml='''[package]
 name = "stylus_vending_machine"
 version = "0.1.0"
@@ -283,7 +284,7 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"''',
-    main_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+    main_rs="""#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 
 #[cfg(not(any(test, feature = "export-abi")))]
 #[unsafe(no_mangle)]
@@ -292,8 +293,8 @@ pub extern "C" fn main() {}
 #[cfg(feature = "export-abi")]
 fn main() {
     stylus_vending_machine::print_from_args();
-}''',
-    stylus_toml='[workspace]\n\n[workspace.networks]\n\n[contract]\n',
+}""",
+    stylus_toml="[workspace]\n\n[workspace.networks]\n\n[contract]\n",
     rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
 )
 
@@ -304,7 +305,7 @@ SIMPLE_ERC20_TEMPLATE = StylusTemplate(
     contract_type="token",
     sdk_version="0.10.0",
     features=["ERC20", "mappings", "events", "error handling"],
-    lib_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+    lib_rs="""#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
 #[macro_use]
 extern crate alloc;
@@ -478,7 +479,7 @@ mod test {
         assert_eq!(contract.balance_of(owner), U256::from(999000));
         assert_eq!(contract.balance_of(recipient), U256::from(1000));
     }
-}''',
+}""",
     cargo_toml='''[package]
 name = "stylus_erc20"
 version = "0.1.0"
@@ -512,7 +513,7 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"''',
-    main_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+    main_rs="""#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 
 #[cfg(not(any(test, feature = "export-abi")))]
 #[unsafe(no_mangle)]
@@ -521,8 +522,8 @@ pub extern "C" fn main() {}
 #[cfg(feature = "export-abi")]
 fn main() {
     stylus_erc20::print_from_args();
-}''',
-    stylus_toml='[workspace]\n\n[workspace.networks]\n\n[contract]\n',
+}""",
+    stylus_toml="[workspace]\n\n[workspace.networks]\n\n[contract]\n",
     rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
 )
 
@@ -533,7 +534,7 @@ ACCESS_CONTROL_TEMPLATE = StylusTemplate(
     contract_type="utility",
     sdk_version="0.10.0",
     features=["access control", "ownership", "modifiers"],
-    lib_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+    lib_rs="""#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
 #[macro_use]
 extern crate alloc;
@@ -663,7 +664,7 @@ mod test {
         assert!(contract.transfer_ownership(other).is_ok());
         assert_eq!(contract.owner(), other);
     }
-}''',
+}""",
     cargo_toml='''[package]
 name = "stylus_ownable"
 version = "0.1.0"
@@ -697,7 +698,7 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"''',
-    main_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+    main_rs="""#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 
 #[cfg(not(any(test, feature = "export-abi")))]
 #[unsafe(no_mangle)]
@@ -706,8 +707,8 @@ pub extern "C" fn main() {}
 #[cfg(feature = "export-abi")]
 fn main() {
     stylus_ownable::print_from_args();
-}''',
-    stylus_toml='[workspace]\n\n[workspace.networks]\n\n[contract]\n',
+}""",
+    stylus_toml="[workspace]\n\n[workspace.networks]\n\n[contract]\n",
     rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
 )
 
@@ -723,8 +724,15 @@ DEFI_VAULT_TEMPLATE = StylusTemplate(
     description="ETH vault with deposits, withdrawals, oracle price feeds, and access control",
     contract_type="defi",
     sdk_version="0.10.0",
-    features=["ETH transfer", "cross-contract calls", "events", "errors", "access control", "mappings"],
-    lib_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+    features=[
+        "ETH transfer",
+        "cross-contract calls",
+        "events",
+        "errors",
+        "access control",
+        "mappings",
+    ],
+    lib_rs="""#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
 #[macro_use]
 extern crate alloc;
@@ -884,7 +892,7 @@ mod test {
         assert_eq!(contract.balance_of(user), U256::from(1000));
         assert_eq!(contract.total_deposits(), U256::from(1000));
     }
-}''',
+}""",
     cargo_toml='''[package]
 name = "stylus_vault"
 version = "0.1.0"
@@ -918,7 +926,7 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"''',
-    main_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+    main_rs="""#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 
 #[cfg(not(any(test, feature = "export-abi")))]
 #[unsafe(no_mangle)]
@@ -927,8 +935,8 @@ pub extern "C" fn main() {}
 #[cfg(feature = "export-abi")]
 fn main() {
     stylus_vault::print_from_args();
-}''',
-    stylus_toml='[workspace]\n\n[workspace.networks]\n\n[contract]\n',
+}""",
+    stylus_toml="[workspace]\n\n[workspace.networks]\n\n[contract]\n",
     rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
 )
 
@@ -964,9 +972,9 @@ def adapt_template(template: StylusTemplate, target_version: str) -> StylusTempl
     # Import version_manager lazily to avoid circular imports
     try:
         from src.utils.version_manager import (
+            _to_major_minor,
             apply_version_transforms,
             get_cargo_deps_for_version,
-            _to_major_minor,
             is_at_least_010,
         )
     except ImportError:
@@ -1011,8 +1019,8 @@ def adapt_template(template: StylusTemplate, target_version: str) -> StylusTempl
     # Adjust crate-type for 0.9.x (only cdylib, no lib)
     crate_type_str = json.dumps(deps["crate_type"])
     adapted_cargo = re.sub(
-        r'crate-type = \[.*?\]',
-        f'crate-type = {crate_type_str}',
+        r"crate-type = \[.*?\]",
+        f"crate-type = {crate_type_str}",
         adapted_cargo,
     )
 
@@ -1022,7 +1030,7 @@ def adapt_template(template: StylusTemplate, target_version: str) -> StylusTempl
         # Remove [[bin]] section
         adapted_cargo = re.sub(
             r'\[\[bin\]\]\n.*?path = "src/main\.rs"\n\n?',
-            '',
+            "",
             adapted_cargo,
             flags=re.DOTALL,
         )
@@ -1043,7 +1051,9 @@ def adapt_template(template: StylusTemplate, target_version: str) -> StylusTempl
     )
 
 
-def select_template(contract_type: str, prompt: str, target_version: Optional[str] = None) -> StylusTemplate:
+def select_template(
+    contract_type: str, prompt: str, target_version: Optional[str] = None
+) -> StylusTemplate:
     """Select the best template based on contract type, prompt keywords, and target version.
 
     Args:
@@ -1063,12 +1073,31 @@ def select_template(contract_type: str, prompt: str, target_version: Optional[st
         template = ACCESS_CONTROL_TEMPLATE
     elif any(kw in lower_prompt for kw in ["vending", "claim", "cooldown", "rate limit"]):
         template = VENDING_MACHINE_TEMPLATE
-    elif any(kw in lower_prompt for kw in [
-        "vault", "deposit", "withdraw", "stake", "staking", "swap",
-        "pool", "liquidity", "oracle", "price", "feed",
-        "prediction", "market", "bet", "wager", "auction",
-        "lending", "borrow", "collateral", "bridge",
-    ]):
+    elif any(
+        kw in lower_prompt
+        for kw in [
+            "vault",
+            "deposit",
+            "withdraw",
+            "stake",
+            "staking",
+            "swap",
+            "pool",
+            "liquidity",
+            "oracle",
+            "price",
+            "feed",
+            "prediction",
+            "market",
+            "bet",
+            "wager",
+            "auction",
+            "lending",
+            "borrow",
+            "collateral",
+            "bridge",
+        ]
+    ):
         template = DEFI_VAULT_TEMPLATE
     else:
         # Fall back to contract type

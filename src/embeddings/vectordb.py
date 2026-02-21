@@ -16,20 +16,21 @@ from chromadb.config import Settings
 from dotenv import load_dotenv
 from rank_bm25 import BM25Okapi
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
-from .embedder import EmbeddingClient, EmbeddingAPIError
+from .embedder import EmbeddingAPIError, EmbeddingClient
 
 # Import version manager for version-aware boosting
 try:
     from src.utils.version_manager import load_version_config as _load_version_config
+
     _HAS_VERSION_MANAGER = True
 except ImportError:
     _HAS_VERSION_MANAGER = False
 
 load_dotenv()
 
-import logging
+import logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +134,7 @@ class VectorDB:
             )
 
         batches = [
-            deduped_chunks[i:i + batch_size] for i in range(0, len(deduped_chunks), batch_size)
+            deduped_chunks[i : i + batch_size] for i in range(0, len(deduped_chunks), batch_size)
         ]
         # Reduced default workers from 5 to 2 to avoid rate limiting
         worker_count = max_workers or 2
@@ -203,7 +204,9 @@ class VectorDB:
                     logger.error(error_msg)
                     return 0, error_msg
                 except Exception as e:
-                    error_msg = f"Batch {batch_num}: Unexpected embedding error - {type(e).__name__}: {e}"
+                    error_msg = (
+                        f"Batch {batch_num}: Unexpected embedding error - {type(e).__name__}: {e}"
+                    )
                     logger.error(error_msg)
                     return 0, error_msg
 
@@ -251,7 +254,9 @@ class VectorDB:
                         total_ingested += ingested
                         progress.advance(task, ingested if ingested > 0 else batch_size)
                     except Exception as e:
-                        error_msg = f"Batch {batch_num}: Future execution error - {type(e).__name__}: {e}"
+                        error_msg = (
+                            f"Batch {batch_num}: Future execution error - {type(e).__name__}: {e}"
+                        )
                         logger.error(error_msg)
                         console.print(f"[red]{error_msg}[/red]")
                         failed_batches += 1
@@ -293,9 +298,7 @@ class VectorDB:
         """
         # Generate query embedding
         if self.embedding_client is None:
-            raise RuntimeError(
-                "EmbeddingClient not available. Set OPENROUTER_API_KEY in .env."
-            )
+            raise RuntimeError("EmbeddingClient not available. Set OPENROUTER_API_KEY in .env.")
         query_embedding = self.embedding_client.embed(query_text)
 
         # Query collection
@@ -327,7 +330,8 @@ class VectorDB:
             n_results: Number of results to return.
             where: Metadata filter.
             alpha: Weight between BM25 (1.0) and vector (0.0). Default 0.5 for balanced.
-            category_boosts: Dict mapping category names to boost multipliers (e.g., {"stylus": 1.3}).
+            category_boosts: Dict mapping category names to boost
+                multipliers (e.g., {"stylus": 1.3}).
             use_bm25: Whether to use BM25 scoring (if False, falls back to simple keyword matching).
             target_version: Target stylus-sdk version for version-aware scoring.
                           Matching versions get boosted, deprecated versions get penalized.
@@ -364,15 +368,15 @@ class VectorDB:
         if use_bm25:
             try:
                 from rank_bm25 import BM25Okapi
-                
+
                 # Tokenize documents
                 tokenized_docs = [doc.lower().split() for doc in documents]
                 query_tokens = query_text.lower().split()
-                
+
                 # Compute BM25 scores
                 bm25 = BM25Okapi(tokenized_docs)
                 bm25_scores = bm25.get_scores(query_tokens)
-                
+
                 # Normalize BM25 scores to 0-1 range
                 if len(bm25_scores) > 0:
                     max_bm25 = max(bm25_scores) if max(bm25_scores) > 0 else 1.0
@@ -391,7 +395,7 @@ class VectorDB:
                 doc_lower = doc.lower()
                 keyword_score = sum(1 for kw in keywords if kw in doc_lower)
                 keyword_scores.append(keyword_score)
-            
+
             # Normalize keyword scores
             max_kw = max(keyword_scores) if max(keyword_scores) > 0 else 1.0
             bm25_normalized = [score / max_kw for score in keyword_scores]
@@ -450,7 +454,8 @@ class VectorDB:
         try:
             config = _load_version_config()
             return {
-                v for v, info in config.get("versions", {}).items()
+                v
+                for v, info in config.get("versions", {}).items()
                 if info.get("status") == "deprecated"
             }
         except Exception:

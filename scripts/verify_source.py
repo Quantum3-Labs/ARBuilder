@@ -34,7 +34,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -44,21 +43,18 @@ from typing import Optional
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-import httpx
-from dotenv import load_dotenv
-from rich.console import Console
-from rich.table import Table
+import httpx  # noqa: E402
+from dotenv import load_dotenv  # noqa: E402
+from rich.console import Console  # noqa: E402
+from rich.table import Table  # noqa: E402
 
-from scraper.config import (
-    PROJECT_EXAMPLES,
+from scraper.config import (  # noqa: E402
     M3_GITHUB_REPOS,
-    get_all_config_repo_urls,
-    get_config_repo_info,
+    PROJECT_EXAMPLES,
 )
-from scraper.version_extractor import (
-    extract_sdk_version_from_repo,
+from scraper.version_extractor import (  # noqa: E402
     compare_versions,
-    detect_deprecated_patterns,
+    extract_sdk_version_from_repo,
 )
 
 load_dotenv()
@@ -165,7 +161,6 @@ class SourceVerifier:
 
         # Determine overall status
         failed = [r for r in self.results if not r.passed and not r.skipped]
-        skipped = [r for r in self.results if r.skipped]
         passed = [r for r in self.results if r.passed]
 
         if failed:
@@ -245,29 +240,37 @@ class SourceVerifier:
 
             if not version:
                 console.print("[red]  No stylus-sdk found in Cargo.toml[/red]")
-                self.results.append(VerificationResult(
-                    "sdk_version", False,
-                    {"error": "stylus-sdk not found in Cargo.toml"},
-                ))
+                self.results.append(
+                    VerificationResult(
+                        "sdk_version",
+                        False,
+                        {"error": "stylus-sdk not found in Cargo.toml"},
+                    )
+                )
                 return
 
             meets_min = compare_versions(version, MIN_STYLUS_SDK) >= 0
             is_main = compare_versions(version, MAIN_STYLUS_SDK) >= 0
 
-            status = "pass" if meets_min else "fail"
-            console.print(f"  SDK version: {version} ({'PASS' if meets_min else 'FAIL'}, min={MIN_STYLUS_SDK})")
+            console.print(
+                f"  SDK version: {version}"
+                f" ({'PASS' if meets_min else 'FAIL'}, min={MIN_STYLUS_SDK})"
+            )
             console.print(f"  Main version: {'yes' if is_main else 'no'} (main={MAIN_STYLUS_SDK})")
 
-            self.results.append(VerificationResult(
-                "sdk_version", meets_min,
-                {
-                    "sdk_version": version,
-                    "meets_minimum": meets_min,
-                    "is_main_version": is_main,
-                    "minimum_required": MIN_STYLUS_SDK,
-                    "main_version": MAIN_STYLUS_SDK,
-                },
-            ))
+            self.results.append(
+                VerificationResult(
+                    "sdk_version",
+                    meets_min,
+                    {
+                        "sdk_version": version,
+                        "meets_minimum": meets_min,
+                        "is_main_version": is_main,
+                        "minimum_required": MIN_STYLUS_SDK,
+                        "main_version": MAIN_STYLUS_SDK,
+                    },
+                )
+            )
 
         elif self.repo_type == "sdk":
             version = self._extract_arbitrum_sdk_version()
@@ -275,28 +278,41 @@ class SourceVerifier:
 
             if not version:
                 console.print("[red]  No @arbitrum/sdk found in package.json[/red]")
-                self.results.append(VerificationResult(
-                    "sdk_version", False,
-                    {"error": "@arbitrum/sdk not found in package.json"},
-                ))
+                self.results.append(
+                    VerificationResult(
+                        "sdk_version",
+                        False,
+                        {"error": "@arbitrum/sdk not found in package.json"},
+                    )
+                )
                 return
 
             meets_min = compare_versions(version, MIN_ARBITRUM_SDK) >= 0
             console.print(f"  @arbitrum/sdk version: {version} ({'PASS' if meets_min else 'FAIL'})")
 
-            self.results.append(VerificationResult(
-                "sdk_version", meets_min,
-                {
-                    "sdk_version": version,
-                    "meets_minimum": meets_min,
-                    "minimum_required": MIN_ARBITRUM_SDK,
-                },
-            ))
+            self.results.append(
+                VerificationResult(
+                    "sdk_version",
+                    meets_min,
+                    {
+                        "sdk_version": version,
+                        "meets_minimum": meets_min,
+                        "minimum_required": MIN_ARBITRUM_SDK,
+                    },
+                )
+            )
         else:
-            console.print(f"  [yellow]Repo type '{self.repo_type}' — no SDK version check applicable[/yellow]")
-            self.results.append(VerificationResult(
-                "sdk_version", True, {"note": f"No SDK check for repo type: {self.repo_type}"}, skipped=True,
-            ))
+            console.print(
+                f"  [yellow]Repo type '{self.repo_type}' — no SDK version check applicable[/yellow]"
+            )
+            self.results.append(
+                VerificationResult(
+                    "sdk_version",
+                    True,
+                    {"note": f"No SDK check for repo type: {self.repo_type}"},
+                    skipped=True,
+                )
+            )
 
     def _extract_arbitrum_sdk_version(self) -> Optional[str]:
         """Extract @arbitrum/sdk version from package.json."""
@@ -326,9 +342,14 @@ class SourceVerifier:
             self._compile_typescript()
         else:
             console.print(f"  [yellow]No compile check for repo type: {self.repo_type}[/yellow]")
-            self.results.append(VerificationResult(
-                "compile", True, {"note": f"No compile check for: {self.repo_type}"}, skipped=True,
-            ))
+            self.results.append(
+                VerificationResult(
+                    "compile",
+                    True,
+                    {"note": f"No compile check for: {self.repo_type}"},
+                    skipped=True,
+                )
+            )
 
     def _compile_stylus(self):
         """Run WASM compile check on Stylus repos.
@@ -341,9 +362,13 @@ class SourceVerifier:
         work_dir = self._find_stylus_root()
         if not work_dir:
             console.print("[red]  Could not find Stylus project root[/red]")
-            self.results.append(VerificationResult(
-                "compile", False, {"error": "No Stylus project root found"},
-            ))
+            self.results.append(
+                VerificationResult(
+                    "compile",
+                    False,
+                    {"error": "No Stylus project root found"},
+                )
+            )
             return
 
         # Use WASM target — this is what cargo stylus check does internally.
@@ -354,7 +379,10 @@ class SourceVerifier:
         # Ensure wasm32-unknown-unknown target is installed for the repo's toolchain
         subprocess.run(
             ["rustup", "target", "add", "wasm32-unknown-unknown"],
-            capture_output=True, text=True, timeout=60, cwd=str(work_dir),
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=str(work_dir),
         )
 
         # Use cargo check (type/borrow check only, no codegen) to save disk space.
@@ -385,22 +413,36 @@ class SourceVerifier:
                 for line in stderr_lines:
                     console.print(f"  [red]{line}[/red]")
 
-            self.results.append(VerificationResult(
-                "compile", passed,
-                {
-                    "command": " ".join(cmd),
-                    "exit_code": result.returncode,
-                    "stderr_tail": result.stderr.strip()[-500:] if not passed else "",
-                },
-            ))
+            self.results.append(
+                VerificationResult(
+                    "compile",
+                    passed,
+                    {
+                        "command": " ".join(cmd),
+                        "exit_code": result.returncode,
+                        "stderr_tail": result.stderr.strip()[-500:] if not passed else "",
+                    },
+                )
+            )
 
             # Run cargo clippy (informational — doesn't affect pass/fail)
             if passed:
                 try:
                     clippy_result = subprocess.run(
-                        ["cargo", "clippy", "--target", "wasm32-unknown-unknown", "--lib",
-                         "--", "-W", "clippy::all"],
-                        capture_output=True, text=True, timeout=300, cwd=str(work_dir),
+                        [
+                            "cargo",
+                            "clippy",
+                            "--target",
+                            "wasm32-unknown-unknown",
+                            "--lib",
+                            "--",
+                            "-W",
+                            "clippy::all",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=300,
+                        cwd=str(work_dir),
                     )
                     # Count warnings from clippy output
                     warning_count = clippy_result.stderr.count("warning:")
@@ -423,14 +465,22 @@ class SourceVerifier:
 
         except subprocess.TimeoutExpired:
             console.print("[red]  Compile timed out (300s)[/red]")
-            self.results.append(VerificationResult(
-                "compile", False, {"error": "Compile timed out after 300s"},
-            ))
+            self.results.append(
+                VerificationResult(
+                    "compile",
+                    False,
+                    {"error": "Compile timed out after 300s"},
+                )
+            )
         except Exception as e:
             console.print(f"[red]  Compile error: {e}[/red]")
-            self.results.append(VerificationResult(
-                "compile", False, {"error": str(e)},
-            ))
+            self.results.append(
+                VerificationResult(
+                    "compile",
+                    False,
+                    {"error": str(e)},
+                )
+            )
 
     def _compile_typescript(self):
         """Run npm install + npm run build on TypeScript repos."""
@@ -445,9 +495,13 @@ class SourceVerifier:
 
         if not pkg_json.exists():
             console.print("[red]  No package.json found[/red]")
-            self.results.append(VerificationResult(
-                "compile", False, {"error": "No package.json found"},
-            ))
+            self.results.append(
+                VerificationResult(
+                    "compile",
+                    False,
+                    {"error": "No package.json found"},
+                )
+            )
             return
 
         work_dir = pkg_json.parent
@@ -468,15 +522,24 @@ class SourceVerifier:
                 install_cmd.append("--no-frozen-lockfile")
             install_result = subprocess.run(
                 install_cmd,
-                capture_output=True, text=True, timeout=300, cwd=str(work_dir),
+                capture_output=True,
+                text=True,
+                timeout=300,
+                cwd=str(work_dir),
             )
 
             if install_result.returncode != 0:
                 console.print(f"  [red]{pkg_manager} install failed[/red]")
-                self.results.append(VerificationResult(
-                    "compile", False,
-                    {"error": f"{pkg_manager} install failed", "stderr_tail": install_result.stderr.strip()[-500:]},
-                ))
+                self.results.append(
+                    VerificationResult(
+                        "compile",
+                        False,
+                        {
+                            "error": f"{pkg_manager} install failed",
+                            "stderr_tail": install_result.stderr.strip()[-500:],
+                        },
+                    )
+                )
                 return
 
             # Check if build script exists
@@ -488,16 +551,24 @@ class SourceVerifier:
 
             if "build" not in scripts:
                 console.print("  [yellow]No build script, skipping build step[/yellow]")
-                self.results.append(VerificationResult(
-                    "compile", True, {"note": "No build script, install succeeded"}, skipped=True,
-                ))
+                self.results.append(
+                    VerificationResult(
+                        "compile",
+                        True,
+                        {"note": "No build script, install succeeded"},
+                        skipped=True,
+                    )
+                )
                 return
 
             # Build
             console.print(f"  Running {pkg_manager} run build...")
             build_result = subprocess.run(
                 [pkg_manager, "run", "build"],
-                capture_output=True, text=True, timeout=300, cwd=str(work_dir),
+                capture_output=True,
+                text=True,
+                timeout=300,
+                cwd=str(work_dir),
             )
 
             passed = build_result.returncode == 0
@@ -514,7 +585,10 @@ class SourceVerifier:
                 try:
                     lint_result = subprocess.run(
                         [pkg_manager, "run", "lint"],
-                        capture_output=True, text=True, timeout=120, cwd=str(work_dir),
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                        cwd=str(work_dir),
                     )
                     lint_passed = lint_result.returncode == 0
                     # Count lint issues from output
@@ -525,15 +599,22 @@ class SourceVerifier:
                     compile_details["lint_passed"] = lint_passed
                     compile_details["lint_errors"] = error_count
                     compile_details["lint_warnings"] = warning_count
-                    console.print(f"  Lint: {'PASS' if lint_passed else 'FAIL'} ({error_count} errors, {warning_count} warnings)")
+                    lint_status = "PASS" if lint_passed else "FAIL"
+                    console.print(
+                        f"  Lint: {lint_status} ({error_count} errors, {warning_count} warnings)"
+                    )
                 except (subprocess.TimeoutExpired, FileNotFoundError):
                     console.print("  [dim]Lint: skipped (timed out or not available)[/dim]")
                 except Exception:
                     pass
 
-            self.results.append(VerificationResult(
-                "compile", passed, compile_details,
-            ))
+            self.results.append(
+                VerificationResult(
+                    "compile",
+                    passed,
+                    compile_details,
+                )
+            )
 
             # Clean up node_modules to save disk space
             node_modules = work_dir / "node_modules"
@@ -543,14 +624,22 @@ class SourceVerifier:
 
         except subprocess.TimeoutExpired:
             console.print("[red]  Build timed out[/red]")
-            self.results.append(VerificationResult(
-                "compile", False, {"error": "Build timed out"},
-            ))
+            self.results.append(
+                VerificationResult(
+                    "compile",
+                    False,
+                    {"error": "Build timed out"},
+                )
+            )
         except Exception as e:
             console.print(f"[red]  Build error: {e}[/red]")
-            self.results.append(VerificationResult(
-                "compile", False, {"error": str(e)},
-            ))
+            self.results.append(
+                VerificationResult(
+                    "compile",
+                    False,
+                    {"error": str(e)},
+                )
+            )
 
     def _find_stylus_root(self) -> Optional[Path]:
         """Find the directory containing the Stylus Cargo.toml."""
@@ -586,41 +675,67 @@ class SourceVerifier:
 
         if not self.enable_deploy:
             console.print("  [yellow]Deploy check skipped (use --deploy to enable)[/yellow]")
-            self.results.append(VerificationResult(
-                "deploy", True, {"note": "Skipped — use --deploy flag to enable"}, skipped=True,
-            ))
+            self.results.append(
+                VerificationResult(
+                    "deploy",
+                    True,
+                    {"note": "Skipped — use --deploy flag to enable"},
+                    skipped=True,
+                )
+            )
             return
 
         if self.repo_type != "stylus":
-            console.print(f"  [yellow]Deploy only supported for Stylus repos[/yellow]")
-            self.results.append(VerificationResult(
-                "deploy", True, {"note": f"Deploy not applicable for: {self.repo_type}"}, skipped=True,
-            ))
+            console.print("  [yellow]Deploy only supported for Stylus repos[/yellow]")
+            self.results.append(
+                VerificationResult(
+                    "deploy",
+                    True,
+                    {"note": f"Deploy not applicable for: {self.repo_type}"},
+                    skipped=True,
+                )
+            )
             return
 
         if not DEPLOY_PRIVATE_KEY:
             console.print("  [yellow]DEPLOY_PRIVATE_KEY not set, skipping deploy[/yellow]")
-            self.results.append(VerificationResult(
-                "deploy", True, {"note": "No DEPLOY_PRIVATE_KEY configured"}, skipped=True,
-            ))
+            self.results.append(
+                VerificationResult(
+                    "deploy",
+                    True,
+                    {"note": "No DEPLOY_PRIVATE_KEY configured"},
+                    skipped=True,
+                )
+            )
             return
 
         work_dir = self._find_stylus_root()
         if not work_dir:
-            self.results.append(VerificationResult(
-                "deploy", False, {"error": "No Stylus project root found"},
-            ))
+            self.results.append(
+                VerificationResult(
+                    "deploy",
+                    False,
+                    {"error": "No Stylus project root found"},
+                )
+            )
             return
 
-        console.print(f"  Deploying to Arbitrum Sepolia...")
+        console.print("  Deploying to Arbitrum Sepolia...")
         try:
             result = subprocess.run(
                 [
-                    "cargo", "stylus", "deploy",
-                    "--private-key", DEPLOY_PRIVATE_KEY,
-                    "--endpoint", SEPOLIA_RPC,
+                    "cargo",
+                    "stylus",
+                    "deploy",
+                    "--private-key",
+                    DEPLOY_PRIVATE_KEY,
+                    "--endpoint",
+                    SEPOLIA_RPC,
                 ],
-                capture_output=True, text=True, timeout=300, cwd=str(work_dir),
+                capture_output=True,
+                text=True,
+                timeout=300,
+                cwd=str(work_dir),
             )
 
             passed = result.returncode == 0
@@ -636,25 +751,36 @@ class SourceVerifier:
             if contract_address:
                 console.print(f"  Contract: {contract_address}")
 
-            self.results.append(VerificationResult(
-                "deploy", passed,
-                {
-                    "exit_code": result.returncode,
-                    "contract_address": contract_address,
-                    "stderr_tail": result.stderr.strip()[-500:] if not passed else "",
-                },
-            ))
+            self.results.append(
+                VerificationResult(
+                    "deploy",
+                    passed,
+                    {
+                        "exit_code": result.returncode,
+                        "contract_address": contract_address,
+                        "stderr_tail": result.stderr.strip()[-500:] if not passed else "",
+                    },
+                )
+            )
 
         except subprocess.TimeoutExpired:
             console.print("[red]  Deploy timed out (300s)[/red]")
-            self.results.append(VerificationResult(
-                "deploy", False, {"error": "Deploy timed out after 300s"},
-            ))
+            self.results.append(
+                VerificationResult(
+                    "deploy",
+                    False,
+                    {"error": "Deploy timed out after 300s"},
+                )
+            )
         except Exception as e:
             console.print(f"[red]  Deploy error: {e}[/red]")
-            self.results.append(VerificationResult(
-                "deploy", False, {"error": str(e)},
-            ))
+            self.results.append(
+                VerificationResult(
+                    "deploy",
+                    False,
+                    {"error": str(e)},
+                )
+            )
 
     # ──────────────────────────────────────────────────────────────
     # Step 4: Tests & GitHub Health
@@ -685,9 +811,13 @@ class SourceVerifier:
         )
         passed = not hard_fail and not tests_failed
 
-        self.results.append(VerificationResult(
-            "tests_and_health", passed, combined,
-        ))
+        self.results.append(
+            VerificationResult(
+                "tests_and_health",
+                passed,
+                combined,
+            )
+        )
 
     def _run_tests(self) -> dict:
         """Run tests if they exist."""
@@ -724,7 +854,10 @@ class SourceVerifier:
             try:
                 test_run = subprocess.run(
                     ["cargo", "test"],
-                    capture_output=True, text=True, timeout=180, cwd=str(work_dir),
+                    capture_output=True,
+                    text=True,
+                    timeout=180,
+                    cwd=str(work_dir),
                 )
                 result["tests_pass"] = test_run.returncode == 0
                 result["test_output"] = test_run.stdout[-500:]
@@ -741,21 +874,33 @@ class SourceVerifier:
                 # 3. Runtime crashes from undefined symbols via dynamic_lookup
                 # The WASM compile check (step 2) is the real quality signal.
                 stderr_combined = test_run.stderr + test_run.stdout
-                native_test_failure = any(s in stderr_combined for s in [
-                    "symbol not found", "undefined symbol",
-                    "dyld: missing symbol", "SIGILL", "SIGSEGV",
-                    "signal: 4", "signal: 11",
-                    "process didn't exit successfully",
-                    "could not compile",  # compile-time failure
-                    "build failed",  # workspace build failure
-                    "ld: symbol(s) not found",  # macOS linker
-                    "undefined reference",  # Linux linker
-                ])
+                native_test_failure = any(
+                    s in stderr_combined
+                    for s in [
+                        "symbol not found",
+                        "undefined symbol",
+                        "dyld: missing symbol",
+                        "SIGILL",
+                        "SIGSEGV",
+                        "signal: 4",
+                        "signal: 11",
+                        "process didn't exit successfully",
+                        "could not compile",  # compile-time failure
+                        "build failed",  # workspace build failure
+                        "ld: symbol(s) not found",  # macOS linker
+                        "undefined reference",  # Linux linker
+                    ]
+                )
                 if not result["tests_pass"] and native_test_failure and result["test_count"] == 0:
                     result["host_fn_crash"] = True
-                    console.print("  Tests: [yellow]SKIP[/yellow] (native test build fails — expected for Stylus)")
+                    console.print(
+                        "  Tests: [yellow]SKIP[/yellow] "
+                        "(native test build fails "
+                        "— expected for Stylus)"
+                    )
                 else:
-                    console.print(f"  Tests: {'PASS' if result['tests_pass'] else 'FAIL'} ({result['test_count']} passed)")
+                    test_status = "PASS" if result["tests_pass"] else "FAIL"
+                    console.print(f"  Tests: {test_status} ({result['test_count']} passed)")
 
             except subprocess.TimeoutExpired:
                 console.print("  [yellow]Tests timed out (180s) — inconclusive[/yellow]")
@@ -775,7 +920,9 @@ class SourceVerifier:
                         console.print("  Running npm test...")
                         test_run = subprocess.run(
                             ["npm", "test", "--", "--passWithNoTests"],
-                            capture_output=True, text=True, timeout=180,
+                            capture_output=True,
+                            text=True,
+                            timeout=180,
                             cwd=str(self.clone_dir),
                         )
                         result["tests_pass"] = test_run.returncode == 0
@@ -843,7 +990,13 @@ class SourceVerifier:
                     else:
                         result["health_score"] = "abandoned"
 
-                console.print(f"  Health: {result['health_score']} | Stars: {result['stars']} | Issues: {result['open_issues']} | Last push: {result['last_commit'][:10] if result['last_commit'] else 'unknown'}")
+                last = result["last_commit"][:10] if result["last_commit"] else "unknown"
+                console.print(
+                    f"  Health: {result['health_score']}"
+                    f" | Stars: {result['stars']}"
+                    f" | Issues: {result['open_issues']}"
+                    f" | Last push: {last}"
+                )
 
         except Exception as e:
             console.print(f"  [yellow]GitHub API error: {e}[/yellow]")
@@ -870,7 +1023,10 @@ class SourceVerifier:
             try:
                 subprocess.run(
                     ["cargo", "generate-lockfile"],
-                    capture_output=True, text=True, timeout=120, cwd=str(work_dir),
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                    cwd=str(work_dir),
                 )
             except Exception:
                 pass
@@ -881,7 +1037,10 @@ class SourceVerifier:
         try:
             result = subprocess.run(
                 ["cargo", "audit", "--json"],
-                capture_output=True, text=True, timeout=120, cwd=str(work_dir),
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=str(work_dir),
             )
 
             try:
@@ -889,7 +1048,9 @@ class SourceVerifier:
             except json.JSONDecodeError:
                 # Fallback to text parsing
                 vuln_count = result.stdout.count("vulnerability found")
-                console.print(f"  Dependency audit: {'CLEAN' if vuln_count == 0 else f'{vuln_count} issues'}")
+                console.print(
+                    f"  Dependency audit: {'CLEAN' if vuln_count == 0 else f'{vuln_count} issues'}"
+                )
                 return {
                     "audit_run": True,
                     "tool": "cargo audit",
@@ -908,7 +1069,8 @@ class SourceVerifier:
                 for v in vulnerabilities[:10]
             ]
 
-            console.print(f"  Dependency audit: {'CLEAN' if vuln_count == 0 else f'{vuln_count} vulnerabilities'}")
+            audit_status = "CLEAN" if vuln_count == 0 else f"{vuln_count} vulnerabilities"
+            console.print(f"  Dependency audit: {audit_status}")
             return {
                 "audit_run": True,
                 "tool": "cargo audit",
@@ -918,7 +1080,11 @@ class SourceVerifier:
             }
 
         except FileNotFoundError:
-            console.print("  [yellow]cargo-audit not installed (install with: cargo install cargo-audit)[/yellow]")
+            console.print(
+                "  [yellow]cargo-audit not installed "
+                "(install with: cargo install "
+                "cargo-audit)[/yellow]"
+            )
             return {"audit_run": False, "reason": "cargo-audit not installed"}
         except subprocess.TimeoutExpired:
             return {"audit_run": False, "reason": "cargo audit timed out"}
@@ -937,7 +1103,9 @@ class SourceVerifier:
             try:
                 subprocess.run(
                     ["npm", "install", "--package-lock-only"],
-                    capture_output=True, text=True, timeout=120,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
                     cwd=str(self.clone_dir),
                 )
             except Exception:
@@ -949,7 +1117,9 @@ class SourceVerifier:
         try:
             result = subprocess.run(
                 ["npm", "audit", "--json"],
-                capture_output=True, text=True, timeout=60,
+                capture_output=True,
+                text=True,
+                timeout=60,
                 cwd=str(self.clone_dir),
             )
 
@@ -975,8 +1145,15 @@ class SourceVerifier:
             if total == 0:
                 console.print("  Dependency audit: CLEAN")
             else:
-                c, h, m, l = severity["critical"], severity["high"], severity["moderate"], severity["low"]
-                console.print(f"  Dependency audit: {total} vulnerabilities (C:{c} H:{h} M:{m} L:{l})")
+                c, h, m, lo = (
+                    severity["critical"],
+                    severity["high"],
+                    severity["moderate"],
+                    severity["low"],
+                )
+                console.print(
+                    f"  Dependency audit: {total} vulnerabilities (C:{c} H:{h} M:{m} L:{lo})"
+                )
             return {
                 "audit_run": True,
                 "tool": "npm audit",
@@ -1002,18 +1179,28 @@ class SourceVerifier:
 
         if not OPENROUTER_API_KEY:
             console.print("  [yellow]OPENROUTER_API_KEY not set, skipping AI review[/yellow]")
-            self.results.append(VerificationResult(
-                "code_review", True, {"note": "Skipped — no OPENROUTER_API_KEY"}, skipped=True,
-            ))
+            self.results.append(
+                VerificationResult(
+                    "code_review",
+                    True,
+                    {"note": "Skipped — no OPENROUTER_API_KEY"},
+                    skipped=True,
+                )
+            )
             return
 
         # Collect code files for review
         code_content = self._collect_review_code()
         if not code_content:
             console.print("  [yellow]No code files found to review[/yellow]")
-            self.results.append(VerificationResult(
-                "code_review", True, {"note": "No code files found"}, skipped=True,
-            ))
+            self.results.append(
+                VerificationResult(
+                    "code_review",
+                    True,
+                    {"note": "No code files found"},
+                    skipped=True,
+                )
+            )
             return
 
         console.print(f"  Reviewing {len(code_content)} files with {REVIEW_MODEL}...")
@@ -1034,9 +1221,14 @@ class SourceVerifier:
             passed = review.get("security_score", 0) >= 50
             self.results.append(VerificationResult("code_review", passed, review))
         else:
-            self.results.append(VerificationResult(
-                "code_review", True, {"note": "AI review failed, skipped"}, skipped=True,
-            ))
+            self.results.append(
+                VerificationResult(
+                    "code_review",
+                    True,
+                    {"note": "AI review failed, skipped"},
+                    skipped=True,
+                )
+            )
 
     def _collect_review_code(self) -> list[dict]:
         """Collect source files for AI review (limited to key files)."""
@@ -1055,14 +1247,17 @@ class SourceVerifier:
 
         for pattern in patterns:
             for path in self.clone_dir.glob(pattern):
-                if any(skip in path.parts for skip in ("node_modules", "target", ".git", "dist")):
+                skip_dirs = ("node_modules", "target", ".git", "dist")
+                if any(s in path.parts for s in skip_dirs):
                     continue
                 try:
                     content = path.read_text()[:max_chars_per_file]
-                    files.append({
-                        "path": str(path.relative_to(self.clone_dir)),
-                        "content": content,
-                    })
+                    files.append(
+                        {
+                            "path": str(path.relative_to(self.clone_dir)),
+                            "content": content,
+                        }
+                    )
                     if len(files) >= max_files:
                         return files
                 except Exception:
@@ -1072,33 +1267,46 @@ class SourceVerifier:
 
     def _call_ai_review(self, files: list[dict]) -> Optional[dict]:
         """Send code to AI model for review."""
-        files_text = "\n\n".join(
-            f"--- {f['path']} ---\n{f['content']}" for f in files
+        files_text = "\n\n".join(f"--- {f['path']} ---\n{f['content']}" for f in files)
+
+        prompt = (
+            "You are a code quality reviewer for "
+            "Arbitrum Stylus smart contracts and "
+            "SDK code.\n\n"
+            "Review the following code files and "
+            "provide a JSON assessment:\n\n"
+            f"{files_text}\n\n"
+            "Respond with ONLY a valid JSON object "
+            "(no markdown, no explanation):\n"
+            "{\n"
+            '  "security_score": <0-100>,\n'
+            '  "quality_score": <0-100>,\n'
+            '  "teaching_value": "high" | "medium"'
+            ' | "low",\n'
+            '  "recommendation": "include" | '
+            '"include_with_caveats" | "exclude",\n'
+            '  "issues": [\n'
+            '    {"severity": "critical"|"warning"'
+            '|"info", "file": "<path>", '
+            '"message": "<description>"}\n'
+            "  ],\n"
+            '  "summary": "<1-2 sentence summary>"\n'
+            "}\n\n"
+            "Scoring guide:\n"
+            "- security_score: 90+ = no issues, "
+            "70-89 = minor issues, "
+            "50-69 = moderate, <50 = critical\n"
+            "- quality_score: 90+ = production-ready"
+            ", 70-89 = good, "
+            "50-69 = acceptable, <50 = poor\n"
+            '- teaching_value: "high" = clean '
+            "patterns worth teaching, "
+            '"medium" = acceptable, '
+            '"low" = anti-patterns\n'
+            '- recommendation: "include" = add to '
+            "knowledge base, "
+            '"exclude" = skip entirely'
         )
-
-        prompt = f"""You are a code quality reviewer for Arbitrum Stylus smart contracts and SDK code.
-
-Review the following code files and provide a JSON assessment:
-
-{files_text}
-
-Respond with ONLY a valid JSON object (no markdown, no explanation):
-{{
-  "security_score": <0-100>,
-  "quality_score": <0-100>,
-  "teaching_value": "high" | "medium" | "low",
-  "recommendation": "include" | "include_with_caveats" | "exclude",
-  "issues": [
-    {{"severity": "critical"|"warning"|"info", "file": "<path>", "message": "<description>"}}
-  ],
-  "summary": "<1-2 sentence summary>"
-}}
-
-Scoring guide:
-- security_score: 90+ = no issues, 70-89 = minor issues, 50-69 = moderate, <50 = critical
-- quality_score: 90+ = production-ready, 70-89 = good, 50-69 = acceptable, <50 = poor
-- teaching_value: "high" = clean patterns worth teaching, "medium" = acceptable, "low" = anti-patterns
-- recommendation: "include" = add to knowledge base, "exclude" = skip entirely"""
 
         for attempt in range(3):
             try:
@@ -1133,7 +1341,10 @@ Scoring guide:
             except Exception as e:
                 if attempt < 2:
                     wait = (attempt + 1) * 10
-                    console.print(f"  [yellow]AI review attempt {attempt + 1} failed: {e}. Retrying in {wait}s...[/yellow]")
+                    console.print(
+                        f"  [yellow]AI review attempt {attempt + 1}"
+                        f" failed: {e}. Retrying in {wait}s...[/yellow]"
+                    )
                     time.sleep(wait)
                 else:
                     console.print(f"  [yellow]AI review error after 3 attempts: {e}[/yellow]")
@@ -1148,16 +1359,26 @@ Scoring guide:
 
         if not self.enable_fork:
             console.print("  [yellow]Fork skipped (use --fork to enable)[/yellow]")
-            self.results.append(VerificationResult(
-                "fork", True, {"note": "Skipped — use --fork flag to enable"}, skipped=True,
-            ))
+            self.results.append(
+                VerificationResult(
+                    "fork",
+                    True,
+                    {"note": "Skipped — use --fork flag to enable"},
+                    skipped=True,
+                )
+            )
             return
 
         if not GITHUB_TOKEN:
             console.print("  [yellow]GITHUB_TOKEN not set, cannot fork[/yellow]")
-            self.results.append(VerificationResult(
-                "fork", True, {"note": "Skipped — no GITHUB_TOKEN"}, skipped=True,
-            ))
+            self.results.append(
+                VerificationResult(
+                    "fork",
+                    True,
+                    {"note": "Skipped — no GITHUB_TOKEN"},
+                    skipped=True,
+                )
+            )
             return
 
         owner, repo = self._get_github_owner_repo()
@@ -1183,33 +1404,48 @@ Scoring guide:
                     fork_url = fork_data.get("html_url", "")
                     console.print(f"  [green]Forked to: {fork_url}[/green]")
 
-                    self.results.append(VerificationResult(
-                        "fork", True,
-                        {"fork_url": fork_url},
-                    ))
+                    self.results.append(
+                        VerificationResult(
+                            "fork",
+                            True,
+                            {"fork_url": fork_url},
+                        )
+                    )
                 elif resp.status_code == 422:
                     # Already forked
                     console.print("  [yellow]Fork already exists[/yellow]")
-                    self.results.append(VerificationResult(
-                        "fork", True, {"note": "Fork already exists"},
-                    ))
+                    self.results.append(
+                        VerificationResult(
+                            "fork",
+                            True,
+                            {"note": "Fork already exists"},
+                        )
+                    )
                 else:
                     console.print(f"  [red]Fork failed: {resp.status_code} {resp.text}[/red]")
-                    self.results.append(VerificationResult(
-                        "fork", False,
-                        {"error": f"GitHub API {resp.status_code}: {resp.text[:200]}"},
-                    ))
+                    self.results.append(
+                        VerificationResult(
+                            "fork",
+                            False,
+                            {"error": f"GitHub API {resp.status_code}: {resp.text[:200]}"},
+                        )
+                    )
 
         except Exception as e:
             console.print(f"  [red]Fork error: {e}[/red]")
-            self.results.append(VerificationResult(
-                "fork", False, {"error": str(e)},
-            ))
+            self.results.append(
+                VerificationResult(
+                    "fork",
+                    False,
+                    {"error": str(e)},
+                )
+            )
 
 
 # ──────────────────────────────────────────────────────────────────
 # CLI
 # ──────────────────────────────────────────────────────────────────
+
 
 def verify_all_config_repos(
     steps: list[int],

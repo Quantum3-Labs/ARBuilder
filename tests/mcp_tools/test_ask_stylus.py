@@ -5,8 +5,6 @@ Tests Q&A quality, debugging help, and explanation accuracy.
 """
 
 import pytest
-from typing import Optional
-
 
 # Test case definitions
 ASK_STYLUS_TEST_CASES = [
@@ -69,7 +67,6 @@ ASK_STYLUS_TEST_CASES = [
         "priority": "P0",
         "category": "concept",
     },
-
     # ===== Code Debugging (P0) =====
     {
         "id": "ask_debug_001",
@@ -152,7 +149,6 @@ pub fn transfer(&mut self, to: Address, amount: u64) {
         "priority": "P0",
         "category": "debugging",
     },
-
     # ===== Best Practice Guidance (P0) =====
     {
         "id": "ask_best_001",
@@ -196,7 +192,6 @@ pub fn transfer(&mut self, to: Address, amount: u64) {
         "priority": "P0",
         "category": "best_practice",
     },
-
     # ===== Comparison: Stylus vs Solidity (P1) =====
     {
         "id": "ask_compare_001",
@@ -227,7 +222,6 @@ pub fn transfer(&mut self, to: Address, amount: u64) {
         "priority": "P1",
         "category": "comparison",
     },
-
     # ===== Architecture Advice (P1) =====
     {
         "id": "ask_arch_001",
@@ -257,7 +251,6 @@ pub fn transfer(&mut self, to: Address, amount: u64) {
         "priority": "P1",
         "category": "architecture",
     },
-
     # ===== How-to Questions (P0) =====
     {
         "id": "ask_howto_001",
@@ -302,7 +295,6 @@ pub fn transfer(&mut self, to: Address, amount: u64) {
         "priority": "P0",
         "category": "howto",
     },
-
     # ===== Follow-up Questions =====
     {
         "id": "ask_followup_001",
@@ -318,7 +310,6 @@ pub fn transfer(&mut self, to: Address, amount: u64) {
         "priority": "P1",
         "category": "follow_up",
     },
-
     # ===== Edge Cases =====
     {
         "id": "ask_edge_001",
@@ -369,6 +360,7 @@ class TestAskStylus:
     def tool(self):
         """Initialize the tool for testing."""
         from src.mcp.tools import AskStylusTool
+
         return AskStylusTool()
 
     @pytest.mark.parametrize(
@@ -413,39 +405,33 @@ class TestAskStylus:
         if "answer_contains" in expected:
             answer_lower = answer.lower()
             for keyword in expected["answer_contains"]:
-                assert keyword.lower() in answer_lower, \
-                    f"Answer missing keyword: {keyword}"
+                assert keyword.lower() in answer_lower, f"Answer missing keyword: {keyword}"
 
         # Check answer should mention (at least one)
         if "answer_should_mention" in expected:
             answer_lower = answer.lower()
-            found = any(
-                kw.lower() in answer_lower
-                for kw in expected["answer_should_mention"]
-            )
-            assert found, \
-                f"Answer doesn't mention any of: {expected['answer_should_mention']}"
+            found = any(kw.lower() in answer_lower for kw in expected["answer_should_mention"])
+            assert found, f"Answer doesn't mention any of: {expected['answer_should_mention']}"
 
         # Check should contain one of
         if "should_contain_one_of" in expected:
             answer_lower = answer.lower()
-            found = any(
-                kw.lower() in answer_lower
-                for kw in expected["should_contain_one_of"]
-            )
-            assert found, \
-                f"Answer doesn't contain any of: {expected['should_contain_one_of']}"
+            found = any(kw.lower() in answer_lower for kw in expected["should_contain_one_of"])
+            assert found, f"Answer doesn't contain any of: {expected['should_contain_one_of']}"
 
         # Check minimum length
         if "answer_min_length" in expected:
-            assert len(answer) >= expected["answer_min_length"], \
+            assert len(answer) >= expected["answer_min_length"], (
                 f"Answer too short: {len(answer)} < {expected['answer_min_length']}"
+            )
 
         # Check for code examples
         if expected.get("should_have_code_example"):
             has_code = (
-                "code_examples" in result and len(result["code_examples"]) > 0
-            ) or "```" in answer or "fn " in answer
+                ("code_examples" in result and len(result["code_examples"]) > 0)
+                or "```" in answer
+                or "fn " in answer
+            )
             assert has_code, "Missing code example"
 
         # Check for references
@@ -454,10 +440,7 @@ class TestAskStylus:
 
         # Check for follow-up questions
         if expected.get("should_have_follow_up_questions"):
-            assert (
-                "follow_up_questions" in result
-                and len(result["follow_up_questions"]) > 0
-            )
+            assert "follow_up_questions" in result and len(result["follow_up_questions"]) > 0
 
         # Check debugging results
         if expected.get("should_identify_issue"):
@@ -477,9 +460,7 @@ def analyze_answer_quality(result: dict) -> dict:
     return {
         "length": len(answer),
         "word_count": len(answer.split()),
-        "has_code_examples": (
-            len(result.get("code_examples", [])) > 0 or "```" in answer
-        ),
+        "has_code_examples": (len(result.get("code_examples", [])) > 0 or "```" in answer),
         "has_references": len(result.get("references", [])) > 0,
         "has_follow_ups": len(result.get("follow_up_questions", [])) > 0,
         "paragraph_count": answer.count("\n\n") + 1,
