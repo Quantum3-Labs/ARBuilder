@@ -275,7 +275,13 @@ GET_CONTEXT_TEST_CASES = [
         "id": "ctx_edge_002",
         "name": "Edge: very long query",
         "input": {
-            "query": "How do I create a Stylus smart contract that implements an ERC20 token with custom transfer logic that checks if the sender has sufficient balance and also emits events for tracking "
+            "query": (
+                "How do I create a Stylus smart contract"
+                " that implements an ERC20 token with"
+                " custom transfer logic that checks if"
+                " the sender has sufficient balance and"
+                " also emits events for tracking "
+            )
             * 10,
             "n_results": 5,
         },
