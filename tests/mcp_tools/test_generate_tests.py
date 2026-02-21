@@ -441,6 +441,7 @@ sol_storage! {
 
 
 @requires_api_key
+@pytest.mark.integration
 class TestGenerateTests:
     """Test suite for generate_tests tool."""
 

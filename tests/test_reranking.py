@@ -61,6 +61,7 @@ class TestBM25Reranker:
 
 
 @requires_api_key
+@pytest.mark.integration
 class TestLLMReranker:
     """Test LLM-based reranking."""
 
@@ -96,6 +97,7 @@ class TestLLMReranker:
 
 
 @requires_api_key
+@pytest.mark.integration
 class TestHybridReranker:
     """Test hybrid reranking combining vector + BM25."""
 
@@ -129,6 +131,7 @@ class TestHybridReranker:
 
 
 @requires_api_key
+@pytest.mark.integration
 class TestRerankerIntegration:
     """Integration tests with actual vector database."""
 

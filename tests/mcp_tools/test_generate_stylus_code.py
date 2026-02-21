@@ -338,6 +338,7 @@ GENERATE_CODE_TEST_CASES = [
 
 
 @requires_api_key
+@pytest.mark.integration
 class TestGenerateStylusCode:
     """Test suite for generate_stylus_code tool."""
 

@@ -63,6 +63,7 @@ class MCPClient:
 
 
 @requires_api_key
+@pytest.mark.integration
 class TestGenerateBackend:
     """Tests for the generate_backend tool."""
 
@@ -150,6 +151,7 @@ class TestGenerateBackend:
 
 
 @requires_api_key
+@pytest.mark.integration
 class TestGenerateFrontend:
     """Tests for the generate_frontend tool."""
 
@@ -233,6 +235,7 @@ class TestGenerateFrontend:
 
 
 @requires_api_key
+@pytest.mark.integration
 class TestGenerateIndexer:
     """Tests for the generate_indexer tool."""
 
@@ -323,6 +326,7 @@ class TestGenerateIndexer:
 
 
 @requires_api_key
+@pytest.mark.integration
 class TestGenerateOracle:
     """Tests for the generate_oracle tool."""
 
@@ -416,6 +420,7 @@ class TestGenerateOracle:
 
 
 @requires_api_key
+@pytest.mark.integration
 class TestOrchestrateDapp:
     """Tests for the orchestrate_dapp tool."""
 
@@ -500,6 +505,7 @@ class TestOrchestrateDapp:
 
 
 @requires_api_key
+@pytest.mark.integration
 class TestM3Integration:
     """Integration tests for M3 tools working together."""
 

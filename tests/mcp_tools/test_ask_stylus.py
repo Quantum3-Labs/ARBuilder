@@ -356,6 +356,7 @@ pub fn transfer(&mut self, to: Address, amount: u64) {
 
 
 @requires_api_key
+@pytest.mark.integration
 class TestAskStylus:
     """Test suite for ask_stylus tool."""
 

@@ -46,6 +46,7 @@ class MCPClient:
 
 
 @requires_api_key
+@pytest.mark.integration
 class TestM2BridgingE2E:
     """End-to-end tests for bridging code generation."""
 
@@ -228,6 +229,7 @@ class TestM2BridgingE2E:
 
 
 @requires_api_key
+@pytest.mark.integration
 class TestM2MessagingE2E:
     """End-to-end tests for messaging code generation."""
 
@@ -389,6 +391,7 @@ class TestM2MessagingE2E:
 
 
 @requires_api_key
+@pytest.mark.integration
 class TestM2AskBridgingE2E:
     """End-to-end tests for ask_bridging tool via MCP."""
 

@@ -323,6 +323,7 @@ GET_CONTEXT_TEST_CASES = [
 
 
 @requires_api_key
+@pytest.mark.integration
 class TestGetStylusContext:
     """Test suite for get_stylus_context tool."""
 

@@ -99,6 +99,7 @@ class RetrievalMetrics:
 
 
 @requires_api_key
+@pytest.mark.integration
 class TestRetrievalQuality:
     """Test suite for retrieval quality."""
 
@@ -245,6 +246,7 @@ class TestRetrievalQuality:
 
 
 @requires_api_key
+@pytest.mark.integration
 class TestRetrievalBenchmark:
     """Comprehensive retrieval benchmark."""
 
