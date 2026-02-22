@@ -11,9 +11,9 @@ ARBuilder uses automated verification to ensure only working, SDK-compatible cod
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      SOURCE REGISTRY                         │
-│  scraper/config.py                                           │
-│  PROJECT_EXAMPLES (19 repos) + M3_GITHUB_REPOS (12 repos)   │
+│                      SOURCE REGISTRY                       │
+│  sources.json — single source of truth                     │
+│  84 sources: docs (53) + GitHub repos (31)                 │
 └──────────────────────┬──────────────────────────────────────┘
                        │
          ┌─────────────┼──────────────┐
@@ -87,9 +87,9 @@ Results stored under `dependency_audit` key in report:
 
 ### Source Coverage
 
-The `--all` flag verifies repos from both registries:
-- **PROJECT_EXAMPLES** — M1 Stylus (13 repos) + M2 SDK (5 repos) + Orbit (1 repo)
-- **M3_GITHUB_REPOS** — M3 dApp Builder (12 repos: wagmi, viem, nestjs, chainlink, etc.)
+The `--all` flag verifies all GitHub repos from `sources.json`:
+- **M1 Stylus** (13 repos) + **M2 SDK** (5 repos) + **Orbit** (1 repo)
+- **M3 dApp Builder** (12 repos: wagmi, viem, nestjs, chainlink, etc.)
 
 ### Usage
 
@@ -135,7 +135,7 @@ python scripts/maintain_sources.py health
 
 ### D. Auto-Remediation
 
-Removes **critical** (archived/deleted) repos from `scraper/config.py` automatically. Flags **abandoned** (>365 days stale) repos for manual review but does not auto-remove them.
+Removes **critical** (archived/deleted) repos from `sources.json` automatically. Flags **abandoned** (>365 days stale) repos for manual review but does not auto-remove them.
 
 ```bash
 python scripts/maintain_sources.py remediate
@@ -158,6 +158,7 @@ python scripts/maintain_sources.py all --output reports/maintenance.json
 | `discover` | Manual only | Searches GitHub for new community repos |
 | `reverify` | On SDK update OR manual | Runs `verify_source.py --all` to re-check all repos |
 | `remediate` | Manual only | Runs `maintain_sources.py remediate` to auto-remove critical repos |
+| `sync-sources` | Weekly + manual | Syncs `sources.json` to CF KV registry |
 | `create-issue` | When problems found | Creates GitHub issue with maintenance label |
 
 ## Handling Scenarios
@@ -177,7 +178,7 @@ python scripts/maintain_sources.py remediate
 
 # Option B: Manual
 python scripts/maintain_sources.py health
-# Review results, manually edit scraper/config.py
+# Review results, manually edit sources.json
 python scripts/audit_data.py --prune --confirm
 ```
 
@@ -190,7 +191,7 @@ python scripts/maintain_sources.py discover
 # 2. Verify it
 python scripts/verify_source.py https://github.com/org/repo --steps 1,2,4
 
-# 3. If passes, add to scraper/config.py
+# 3. If passes, add to sources.json
 # 4. Run pipeline to ingest
 ```
 
@@ -228,7 +229,9 @@ All repos scored ≥75 security and received "include" or "include_with_caveats"
 
 | File | Purpose |
 |------|---------|
-| `scraper/config.py` | Source of truth — PROJECT_EXAMPLES (19 repos) + M3_GITHUB_REPOS (12 repos) |
+| `sources.json` | Single source of truth for all data sources (84 entries) |
+| `scraper/config.py` | Thin wrapper — backward-compat helpers for Python consumers |
+| `scripts/sync_sources.ts` | Sync sources.json to CF KV registry |
 | `scraper/version_extractor.py` | SDK version parsing from Cargo.toml/package.json |
 | `scripts/verify_source.py` | 6-step repo verification pipeline |
 | `scripts/maintain_sources.py` | SDK monitoring, discovery, health checks, auto-remediation |

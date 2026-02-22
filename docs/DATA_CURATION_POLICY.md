@@ -42,10 +42,10 @@ ARBuilder's knowledge base must only contain **verified, working code** that com
 
 ## Verification Coverage
 
-The verification pipeline (`scripts/verify_source.py --all`) covers all source registries:
+The verification pipeline (`scripts/verify_source.py --all`) covers all GitHub repos in `sources.json`:
 
-- **PROJECT_EXAMPLES** (19 repos): M1 Stylus (13) + M2 SDK (5) + Orbit (1)
-- **M3_GITHUB_REPOS** (12 repos): wagmi, viem, nestjs, chainlink, etc.
+- **M1 Stylus** (13 repos) + **M2 SDK** (5 repos) + **Orbit** (1 repo)
+- **M3 dApp Builder** (12 repos): wagmi, viem, nestjs, chainlink, etc.
 
 **Verification includes:**
 - SDK version check (stylus-sdk >= 0.8.0 or @arbitrum/sdk >= 4.0.0)
@@ -245,7 +245,7 @@ BGE-M3 supports multi-lingual text and dense/sparse/multi-vector retrieval. Usin
 
 The pipeline supports both SDK 0.9.x and 0.10.0 code through two complementary approaches:
 
-1. **Dual-chunk ingestion**: Original 0.9.x code is preserved alongside a modernized 0.10.0 copy
+1. **Branch-per-version**: Each SDK version is a separate entry in `sources.json` with its own `branch` field, ingested as a distinct source
 2. **Forked repos**: Community repos are forked and fully migrated to SDK 0.10.0
 
 ### Fork Strategy
@@ -289,25 +289,30 @@ The script:
 
 The 7 blocked repos all depend on OpenZeppelin's rust-contracts-stylus or its test helpers (motsu), which pin `alloy-primitives = "=0.8.20"` — incompatible with stylus-sdk 0.10.0's requirement for alloy-primitives 1.0.1. These will unblock when OZ releases a compatible version.
 
-All Stylus repos in `scraper/config.py` now point to ARBuilder-Forks URLs. Each entry includes a `forked_from` field tracking the original repo:
-```python
-{"url": "https://github.com/ARBuilder-Forks/stylus-hello-world",
- "sdk_version": "0.10.0", "verified": "2026-02-16",
- "forked_from": "OffchainLabs/stylus-hello-world"},
+All Stylus repos in `sources.json` now point to ARBuilder-Forks URLs. Each entry includes a `forkedFrom` field tracking the original repo:
+```json
+{
+  "url": "https://github.com/ARBuilder-Forks/stylus-hello-world",
+  "type": "github",
+  "category": "stylus",
+  "subcategory": "forked_0_10_0",
+  "sdkVersion": "0.10.0",
+  "forkedFrom": "OffchainLabs/stylus-hello-world"
+}
 ```
 
-Repos that couldn't be migrated to 0.10.0 retain their original `sdk_version` and use the dual-chunk strategy for 0.10.0 coverage.
-
-### Dual-Chunk Ingestion
-
-During preprocessing, legacy 0.9.x `.rs` chunks get both their original form and a modernized copy:
-
+Repos with multiple SDK versions use the `versions` array with separate branches:
+```json
+{
+  "url": "https://github.com/ARBuilder-Forks/stylus-hello-world",
+  "versions": [
+    { "sdkVersion": "0.10.0", "branch": "main" },
+    { "sdkVersion": "0.9.2", "branch": "sdk-0.9.2" }
+  ]
+}
 ```
-Original chunk (sdk_version: "0.9.0")  → kept as-is
-  └── Modernized copy (sdk_version: "0.10.0", modernized: true)  → new chunk with _mod ID suffix
-```
 
-The modernized copy uses `apply_version_transforms()` from `version_manager.py` (centralized transform rules).
+Each version is ingested as a separate source with a branch-aware source ID (`url#branch`), ensuring both versions coexist in the vector database without conflicts.
 
 ### Transform Rules (0.9.x → 0.10.0)
 
@@ -327,7 +332,6 @@ The modernized copy uses `apply_version_transforms()` from `version_manager.py` 
 | `print_abi()` | `print_from_args()` |
 
 These transforms are defined centrally in `VERSION_TRANSFORMS` in `src/utils/version_manager.py` and consumed by:
-- `src/preprocessing/processor.py` (dual-chunk creation)
 - `src/templates/stylus_templates.py` (template adaptation)
 - `src/mcp/tools/generate_stylus_code.py` (`_fix_code()`)
 - `src/mcp/tools/ask_stylus.py` (`_fix_code_in_response()`)
@@ -366,11 +370,11 @@ The RAG pipeline applies version-aware scoring during retrieval:
 
 The `remediate` command performs automatic cleanup of the source registry:
 
-- **Critical (archived/deleted/404)**: Automatically removed from `scraper/config.py`
+- **Critical (archived/deleted/404)**: Automatically removed from `sources.json`
 - **Abandoned (>365 days without update)**: Flagged for manual review but NOT auto-removed
 - **Stale (90-365 days)**: Informational only, no action taken
 
-In CI (`maintenance.yml`), remediation is **manual trigger only** — config changes always need human review. When triggered, it auto-commits the cleaned config.
+In CI (`maintenance.yml`), remediation is **manual trigger only** — changes to `sources.json` always need human review. When triggered, it auto-commits the cleaned config.
 
 ### Scenario 1: Adding New Sources
 
@@ -378,38 +382,34 @@ In CI (`maintenance.yml`), remediation is **manual trigger only** — config cha
 # 1. Verify the repo
 python scripts/verify_source.py https://github.com/org/repo --steps 1,2,4
 
-# 2. Add to scraper/config.py under the right section
-#    Each repo entry needs: url, sdk_version, verified (date)
+# 2. Add to sources.json (single source of truth)
+#    Each repo entry needs: url, type, category, subcategory, milestone
 
-# 3. Run the pipeline
+# 3. Sync to CF KV registry
+ARBBUILDER_ADMIN_SECRET=xxx npx tsx scripts/sync_sources.ts
+
+# 4. Run the pipeline (local)
 python -m scraper.run --skip-web
 python -m src.preprocessing.processor
 python -m src.embeddings.vectordb --reset
-
-# 4. Sync remote (production)
-python scripts/sync_remote_db.py --dry-run
-python scripts/sync_remote_db.py --reingest
 ```
 
 ### Scenario 2: Removing Unmaintained Sources
 
 ```bash
-# Option A: Auto-remediate (removes archived/deleted from config)
+# Option A: Auto-remediate (removes archived/deleted from sources.json)
 python scripts/maintain_sources.py remediate
 
 # Option B: Manual
 # 1. Run health check to identify issues
 python scripts/maintain_sources.py health
 
-# 2. Remove from scraper/config.py
-# 3. Prune orphan repos from disk
-python scripts/audit_data.py --prune --confirm
+# 2. Remove from sources.json
+# 3. Sync to CF KV registry
+ARBBUILDER_ADMIN_SECRET=xxx npx tsx scripts/sync_sources.ts
 
-# 4. Re-run pipeline and sync remote
-python -m src.preprocessing.processor
-python -m src.embeddings.vectordb --reset
-python scripts/sync_remote_db.py --delete-stale
-python scripts/sync_remote_db.py --reingest
+# 4. Prune orphan repos from disk
+python scripts/audit_data.py --prune --confirm
 ```
 
 ### Scenario 3: New SDK Version Released
@@ -418,25 +418,27 @@ python scripts/sync_remote_db.py --reingest
 # 1. Check what's outdated
 python scripts/maintain_sources.py monitor
 
-# 2. Update scraper/config.py version constants
+# 2. Update sdkConfig in sources.json
 # 3. Re-verify all repos with new SDK
 python scripts/verify_source.py --all --steps 1,2,4
 
-# 4. Update config, re-run pipeline, sync remote
+# 4. Sync to CF KV and re-run pipeline
+ARBBUILDER_ADMIN_SECRET=xxx npx tsx scripts/sync_sources.ts
 ```
 
 ### Quick Reference: Key Files
 
 | File | Purpose |
 |------|---------|
-| `scraper/config.py` | Source of truth for all data sources |
+| `sources.json` | Single source of truth for all data sources |
+| `scraper/config.py` | Thin wrapper — backward-compat helpers for Python consumers |
+| `scripts/sync_sources.ts` | Sync sources.json to CF KV registry |
 | `shared/stylus-versions.json` | SDK version metadata, patterns, and compatibility |
 | `src/utils/version_manager.py` | Version transforms, cargo deps, pattern lookup |
 | `scripts/verify_source.py` | 6-step repo verification pipeline |
 | `scripts/fork_and_migrate.py` | Fork repos to ARBuilder-Forks + migrate to SDK 0.10.0 |
-| `scripts/maintain_sources.py` | SDK monitoring, repo discovery, health checks |
+| `scripts/maintain_sources.py` | SDK monitoring, repo discovery, health checks, remediation |
 | `scripts/audit_data.py` | Detect orphans and config drift |
-| `scripts/sync_remote_db.py` | Sync remote Cloudflare DB with local config |
 
 ### Quick Reference: Environment Variables
 

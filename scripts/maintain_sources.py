@@ -31,7 +31,6 @@ Usage:
 import argparse
 import json
 import os
-import re
 import sys
 import time
 from datetime import datetime
@@ -469,10 +468,10 @@ def _check_repo_health(owner: str, repo: str) -> dict:
 
 
 def remediate() -> dict:
-    """Auto-remove critical (archived/deleted) repos from config.
+    """Auto-remove critical (archived/deleted) repos from sources.json.
 
     Runs a health check first, then removes any critical repos from
-    scraper/config.py. Abandoned repos (>365 days stale) are flagged
+    sources.json. Abandoned repos (>365 days stale) are flagged
     but NOT auto-removed — they may be complete/stable projects.
     """
     console.print("\n[bold blue]═══ Auto-Remediation ═══[/bold blue]")
@@ -513,11 +512,12 @@ def remediate() -> dict:
         console.print("[green]No critical repos to remove.[/green]")
         return results
 
-    # Remove critical repos from config.py
-    config_path = PROJECT_ROOT / "scraper" / "config.py"
-    config_text = config_path.read_text()
-    original_text = config_text
+    # Remove critical repos from sources.json
+    sources_path = PROJECT_ROOT / "sources.json"
+    data = json.loads(sources_path.read_text())
+    original_count = len(data["sources"])
 
+    critical_urls = set()
     for repo in critical_repos:
         url = repo.get("url", "")
         name = repo.get("full_name", url.split("/")[-1])
@@ -526,43 +526,30 @@ def remediate() -> dict:
         if not url:
             continue
 
-        # Remove the dict entry containing this URL from PROJECT_EXAMPLES
-        # Match pattern: {  ...  "url": "https://github.com/owner/repo",  ...  },
-        escaped_url = re.escape(url)
-        pattern = re.compile(
-            r'\s*\{[^}]*"url":\s*"' + escaped_url + r'"[^}]*\},?\n?',
-            re.DOTALL,
+        critical_urls.add(url)
+        results["removed"].append(
+            {
+                "url": url,
+                "name": name,
+                "reason": reason,
+            }
         )
-        new_text, count = pattern.subn("", config_text)
+        console.print(f"  [red]REMOVED: {name} — {reason}[/red]")
 
-        # Also try M3_GITHUB_REPOS format (plain URL strings in a list)
-        if count == 0:
-            pattern2 = re.compile(
-                r'\s*"' + escaped_url + r'",?\n?',
-            )
-            new_text, count = pattern2.subn("", config_text)
-
-        if count > 0:
-            config_text = new_text
-            results["removed"].append(
-                {
-                    "url": url,
-                    "name": name,
-                    "reason": reason,
-                }
-            )
-            console.print(f"  [red]REMOVED: {name} — {reason}[/red]")
+    # Filter out critical sources
+    data["sources"] = [s for s in data["sources"] if s["url"] not in critical_urls]
 
     # Write back if modified
-    if config_text != original_text:
-        config_path.write_text(config_text)
+    if len(data["sources"]) < original_count:
+        sources_path.write_text(json.dumps(data, indent=2) + "\n")
         results["config_modified"] = True
         removed_count = len(results["removed"])
         console.print(
-            f"\n[bold red]Removed {removed_count} critical repo(s) from config.py[/bold red]"
+            f"\n[bold red]Removed {removed_count} critical repo(s) "
+            "from sources.json[/bold red]"
         )
     else:
-        console.print("[green]No changes needed to config.py[/green]")
+        console.print("[green]No changes needed to sources.json[/green]")
 
     return results
 
