@@ -16,6 +16,7 @@ on:
           - health
           - remediate
           - reverify
+          - sync-sources
         default: all
 
 env:
@@ -248,13 +249,13 @@ jobs:
 
       - name: Commit config changes if any
         run: |
-          if git diff --quiet scraper/config.py; then
+          if git diff --quiet sources.json; then
             echo "No config changes needed"
           else
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add scraper/config.py
-            git commit -m "fix: auto-remove archived/deleted repos from config
+            git add sources.json
+            git commit -m "fix: auto-remove archived/deleted repos from sources.json
 
           Co-Authored-By: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
             git push
@@ -267,6 +268,29 @@ jobs:
           name: remediation-report
           path: reports/remediation.json
           retention-days: 30
+
+  sync-sources:
+    name: Sync Sources to CF KV
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.inputs.task == 'sync-sources' ||
+      github.event.inputs.task == 'all' ||
+      github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install tsx
+        run: npm install -g tsx
+
+      - name: Sync sources to KV
+        run: npx tsx scripts/sync_sources.ts
+        env:
+          ARBBUILDER_ADMIN_SECRET: ${{ secrets.AUTH_SECRET }}
+          ARBBUILDER_API_URL: https://arbuilder.app
 
   summary:
     name: Generate Summary

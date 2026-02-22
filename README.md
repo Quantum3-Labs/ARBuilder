@@ -126,8 +126,9 @@ Watch the tutorial to see ARBuilder in action:
 
 ```
 ArbBuilder/
+├── sources.json          # Single source of truth for all data sources
 ├── scraper/              # Data collection module
-│   ├── config.py         # URLs and source configuration (M1-M3 sources)
+│   ├── config.py         # Thin wrapper around sources.json (backward-compat helpers)
 │   ├── scraper.py        # Web scraping with crawl4ai
 │   ├── github_scraper.py # GitHub repository cloning
 │   └── run.py            # Pipeline entry point
@@ -204,6 +205,7 @@ ArbBuilder/
 ├── scripts/
 │   ├── run_benchmarks.py     # Benchmark runner
 │   ├── diff-migrate.ts       # Push chunks to CF Vectorize
+│   ├── sync_sources.ts       # Sync sources.json to CF KV registry
 │   └── ingest_m3_sources.py  # M3 source ingestion
 ├── data/
 │   ├── raw/              # Raw scraped data (docs + curated repos)
@@ -436,55 +438,67 @@ AUTH_SECRET=xxx npx tsx scripts/diff-migrate.ts --full
 
 ### Data Sources
 
-Data sources are split into **Documentation** (web pages) and **Project Examples** (GitHub repos with runnable code). Each project repo entry tracks its SDK version in `scraper/config.py` as the source of truth.
+All data sources are defined in `sources.json` — the single source of truth for both the local Python pipeline and the hosted CF Worker ingestion. The file contains 84 curated sources (53 documentation pages + 31 GitHub repos) across 4 milestones.
 
-The scraper collects data from 135+ curated sources across 4 milestones:
+Versioned repos (with multiple SDK branches) use a `versions` array:
+```json
+{
+  "url": "https://github.com/ARBuilder-Forks/stylus-hello-world",
+  "versions": [
+    { "sdkVersion": "0.10.0", "branch": "main" },
+    { "sdkVersion": "0.9.0", "branch": "v0.9.0" }
+  ]
+}
+```
 
-**Stylus (M1)**
+**Sync to hosted service:**
+```bash
+ARBBUILDER_ADMIN_SECRET=xxx npx tsx scripts/sync_sources.ts
+ARBBUILDER_ADMIN_SECRET=xxx npx tsx scripts/sync_sources.ts --dry-run
+ARBBUILDER_ADMIN_SECRET=xxx npx tsx scripts/sync_sources.ts --remove-stale
+```
+
+**Stylus (M1)** — 17 docs + 19 repos
 - Official documentation: [docs.arbitrum.io](https://docs.arbitrum.io/stylus/stylus-overview) (7 pages + gas-metering)
-- **All 13 Stylus repos are sourced from [ARBuilder-Forks](https://github.com/ARBuilder-Forks)** for resilience against upstream deletions
-- 6 forks fully migrated to SDK 0.10.0: hello-world, vending-machine, erc6909, fortune-generator, ethbuc2025-gyges, WalletNaming
-- 7 forks retain original code (SDK 0.8.4–0.9.0) with dual-chunk strategy for 0.10.0 coverage
+- **All Stylus repos sourced from [ARBuilder-Forks](https://github.com/ARBuilder-Forks)** for resilience against upstream deletions
+- 6 forks with SDK 0.10.0 branches: hello-world, vending-machine, erc6909, fortune-generator, ethbuc2025-gyges, WalletNaming
+- 7 forks at original SDK version (0.8.4–0.9.0) with separate branch per version
 - Production codebases: OpenZeppelin rust-contracts-stylus, stylus-test-helpers, stylusport, stylus-provider
-- Blog articles
 
 **Curation Policy:**
 - No meta-lists (awesome-stylus) — causes outdated code ingestion
 - No unverified community submissions
 - All code repos must compile with stylus-sdk >= 0.8.0
-- SDK version tracked per-repo in config (not extracted at runtime)
-- All Stylus repos forked to ARBuilder-Forks org with `forked_from` provenance tracking
+- SDK version tracked per-repo in `sources.json`
+- All Stylus repos forked to ARBuilder-Forks org with `forkedFrom` provenance tracking
 
 **Stylus SDK Version Support:**
 
 | Version | Status | Notes |
 |---------|--------|-------|
 | 0.10.0 | **Main** (default) | Latest stable, recommended for new projects |
-| 0.9.x | Supported | Original + modernized copies in knowledge base |
-| 0.8.x | Supported | Minimum supported version, dual-chunk strategy |
+| 0.9.x | Supported | Separate branches in forked repos |
+| 0.8.x | Supported | Minimum supported version |
 | < 0.8.0 | Deprecated | Excluded from knowledge base |
 
 **Multi-Version Strategy:**
-- **Dual-chunk ingestion**: Original 0.9.x code is preserved as-is alongside a modernized 0.10.0 copy
-- **Forked repos**: Community repos are forked to [ARBuilder-Forks](https://github.com/ARBuilder-Forks) and migrated to SDK 0.10.0 for high-quality training data
+- **Branch-per-version**: Forked repos maintain separate Git branches per SDK version (e.g., `main` for 0.10.0, `v0.9.0` for original)
+- **Branch-aware scraping**: CF Worker ingests each branch as a separate source entry
 - **Version-aware generation**: `generate_stylus_code` and `ask_stylus` accept `target_version` to produce code for any supported SDK version
 - **Version-aware retrieval**: Vector search boosts chunks matching the requested SDK version
-- Config: `shared/stylus-versions.json` is the single source of truth for version patterns
 
-**Arbitrum SDK (M2)**
-- [arbitrum-sdk](https://github.com/OffchainLabs/arbitrum-sdk)
-- [arbitrum-tutorials](https://github.com/OffchainLabs/arbitrum-tutorials)
+**Arbitrum SDK (M2)** — 6 docs + 5 repos
+- [arbitrum-sdk](https://github.com/OffchainLabs/arbitrum-sdk), [arbitrum-tutorials](https://github.com/OffchainLabs/arbitrum-tutorials)
 - 3 community repos: arbitrum-api, orbit-bridging, cross-messaging
 - Official bridging and messaging documentation (6 pages)
 
-**Full dApp Builder (M3)** — 36 doc pages + 12 GitHub repos
+**Full dApp Builder (M3)** — 30 docs + 11 repos
 - Backend: NestJS (5 docs), Express (3 docs), nestjs/nest, arbitrum-token-bridge
 - Frontend: wagmi (5 docs), viem (4 docs), RainbowKit (4 docs), DaisyUI (5 docs) + 5 repos
 - Indexer: The Graph (5 docs), graph-tooling, messari/subgraphs
-- Oracle: Chainlink (5 docs), smart-contract-examples, chainlink
+- Oracle: Chainlink (4 docs), smart-contract-examples, chainlink
 
-**Orbit SDK (M4)**
-- [arbitrum-orbit-sdk](https://github.com/OffchainLabs/arbitrum-orbit-sdk)
+**Orbit SDK (M4)** — planned
 
 ## API Access
 
@@ -656,7 +670,7 @@ ARBuilder uses **template-based code generation** to ensure generated code compi
 | Version | Status | Notes |
 |---------|--------|-------|
 | 0.10.0 | **Main** (default) | Recommended for new projects |
-| 0.9.x | Supported | Use `target_version: "0.9.0"` for 0.9.x output |
+| 0.9.x | Supported | Use `target_version: "0.9.0"` for 0.9.x output. Separate branches in forks |
 | 0.8.x | Supported | Minimum supported version |
 | < 0.8.0 | Deprecated | Warning shown, may not compile |
 
@@ -965,7 +979,8 @@ python -m src.embeddings.vectordb --reset
 | `health-check` | Weekly + manual | Checks all repos for archived/deleted status |
 | `discover` | Manual only | Searches GitHub for new community repos |
 | `reverify` | On SDK update or manual | Re-verifies all repos with `verify_source.py --all` |
-| `remediate` | Manual only | Auto-removes archived/deleted repos from config |
+| `remediate` | Manual only | Auto-removes archived/deleted repos from `sources.json` |
+| `sync-sources` | Weekly + manual | Syncs `sources.json` to CF KV registry |
 | `create-issue` | When problems found | Creates GitHub issue with maintenance label |
 
 ## License

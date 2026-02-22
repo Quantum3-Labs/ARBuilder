@@ -47,6 +47,7 @@ export async function POST(request: NextRequest) {
       url?: string;
       category?: string;
       subcategory?: string;
+      branch?: string;
       action?: "process_next";
       queueMessage?: QueueMessage;
     };
@@ -89,6 +90,7 @@ export async function POST(request: NextRequest) {
           category: source.category,
           subcategory: source.subcategory,
           sourceType: source.sourceType,
+          branch: source.branch,
         },
         env,
         options
@@ -110,6 +112,7 @@ export async function POST(request: NextRequest) {
         url: body.url,
         category: body.category || "stylus",
         subcategory: body.subcategory,
+        branch: body.branch,
       },
       env,
       options

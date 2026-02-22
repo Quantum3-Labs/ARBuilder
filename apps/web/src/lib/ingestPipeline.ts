@@ -49,6 +49,7 @@ interface Source {
   subcategory: string;
   stylusVersion?: string;
   isVersionDeprecated?: boolean;
+  branch?: string;
   status: "active" | "pending" | "error" | "removed" | "processing";
   lastScraped?: string;
   lastProcessed?: string;
@@ -111,6 +112,7 @@ interface ContinueMessage {
   fileOffset: number;
   totalFiles: number;
   sdkVersion?: string;
+  branch?: string;
   token?: string;
 }
 
@@ -126,12 +128,13 @@ interface FinalizeMessage {
  * Uses sync path for small sources, async queue path for large repos.
  */
 export async function ingestSource(
-  source: { url: string; category: string; subcategory?: string; sourceType?: string },
+  source: { url: string; category: string; subcategory?: string; sourceType?: string; branch?: string },
   env: PipelineEnv,
   options: IngestOptions = {}
 ): Promise<IngestResult> {
   const startTime = Date.now();
-  const sourceId = generateSourceId(source.url);
+  const idKey = source.branch ? `${source.url}#${source.branch}` : source.url;
+  const sourceId = generateSourceId(idKey);
   const {
     githubToken,
     embeddingBatchSize = 5,
@@ -158,7 +161,9 @@ export async function ingestSource(
       const repo: ScrapedRepo = await scrapeGithubRepo(
         source.url,
         githubToken,
-        SYNC_FILE_LIMIT
+        SYNC_FILE_LIMIT,
+        undefined, // fileOffset
+        source.branch
       );
 
       result.sdkVersion = repo.sdkVersion;
@@ -215,6 +220,7 @@ export async function ingestSource(
             fileOffset: SYNC_FILE_LIMIT,
             totalFiles: repo.totalFiles,
             sdkVersion: repo.sdkVersion,
+            branch: source.branch,
             token: githubToken,
           } satisfies ContinueMessage);
           messageCount++;
@@ -358,14 +364,14 @@ export async function handleContinueMessage(
   msg: ContinueMessage,
   env: PipelineEnv
 ): Promise<void> {
-  const { sourceId, url, category, subcategory, fileOffset, sdkVersion, token } = msg;
+  const { sourceId, url, category, subcategory, fileOffset, sdkVersion, branch, token } = msg;
   const progressKey = PROGRESS_PREFIX + sourceId;
 
   let newChunks = 0;
   let newMessages = 0;
 
   try {
-    const repo = await scrapeGithubRepo(url, token, CONTINUE_FILE_BATCH, fileOffset);
+    const repo = await scrapeGithubRepo(url, token, CONTINUE_FILE_BATCH, fileOffset, branch);
     const chunks = await chunkRepoFiles(repo, { url, category, subcategory });
     newChunks = chunks.length;
 
@@ -405,6 +411,7 @@ export async function handleContinueMessage(
           fileOffset: nextOffset,
           totalFiles: msg.totalFiles,
           sdkVersion,
+          branch,
           token,
         } satisfies ContinueMessage);
         newMessages++;
@@ -698,11 +705,11 @@ async function updateSourceProcessing(
  */
 async function updateSourceStatus(
   env: PipelineEnv,
-  url: string,
+  _url: string,
   result: IngestResult
 ): Promise<void> {
   const registry = await loadRegistry(env.KV);
-  const sourceId = generateSourceId(url);
+  const sourceId = result.sourceId;
   const now = new Date().toISOString();
 
   const existing = registry.sources[sourceId];

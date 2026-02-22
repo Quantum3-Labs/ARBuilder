@@ -109,7 +109,8 @@ export function parseRepoUrl(url: string): { owner: string; repo: string } {
 export async function listRepoFiles(
   owner: string,
   repo: string,
-  token?: string
+  token?: string,
+  branch?: string
 ): Promise<TreeEntry[]> {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
@@ -119,8 +120,9 @@ export async function listRepoFiles(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
+  const ref = branch || "HEAD";
   const response = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/git/trees/HEAD?recursive=1`,
+    `https://api.github.com/repos/${owner}/${repo}/git/trees/${ref}?recursive=1`,
     { headers }
   );
 
@@ -228,14 +230,15 @@ export async function scrapeGithubRepo(
   url: string,
   token?: string,
   maxFiles?: number,
-  fileOffset?: number
+  fileOffset?: number,
+  branch?: string
 ): Promise<ScrapedRepo> {
   const { owner, repo } = parseRepoUrl(url);
   const limit = maxFiles ?? 50;
   const offset = fileOffset ?? 0;
 
   // List all matching files
-  const tree = await listRepoFiles(owner, repo, token);
+  const tree = await listRepoFiles(owner, repo, token, branch);
 
   // Fetch files in order, respecting limits
   const files: GitHubFile[] = [];

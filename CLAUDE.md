@@ -342,14 +342,16 @@ let success = token.transfer(self.vm(), Call::new(), recipient, amount)?;
 3. Click "Refresh" on the source to trigger ingestion
 
 **Via Local Pipeline**:
-1. Add URLs to `scraper/config.py`
+1. Add sources to `sources.json`
 2. Run `python -m scraper.run`
 3. Run `python -m src.preprocessing.processor`
 4. Run `AUTH_SECRET=xxx npx tsx scripts/diff-migrate.ts --full`
 
-### Bulk Registering M3 Sources
+### Syncing Sources to CF KV
 ```bash
-ARBBUILDER_ADMIN_SECRET=xxx npx tsx scripts/register_m3_sources.ts
+ARBBUILDER_ADMIN_SECRET=xxx npx tsx scripts/sync_sources.ts
+ARBBUILDER_ADMIN_SECRET=xxx npx tsx scripts/sync_sources.ts --dry-run
+ARBBUILDER_ADMIN_SECRET=xxx npx tsx scripts/sync_sources.ts --remove-stale
 ```
 
 ### Running QA Checks Locally
