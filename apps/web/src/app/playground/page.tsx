@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 
 type Tool =
@@ -428,6 +428,22 @@ const tools: Record<Tool, ToolConfig> = {
   },
 };
 
+interface ApiKey {
+  id: string;
+  keyPrefix: string;
+  name: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+interface SessionUser {
+  id: string;
+  email: string;
+  name?: string | null;
+}
+
+type AuthMode = "session" | "apikey";
+
 export default function PlaygroundPage() {
   const [selectedTool, setSelectedTool] = useState<Tool>("context");
   const [inputs, setInputs] = useState<Record<string, string>>({});
@@ -436,6 +452,40 @@ export default function PlaygroundPage() {
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Auth state
+  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const [userKeys, setUserKeys] = useState<ApiKey[]>([]);
+  const [selectedKeyId, setSelectedKeyId] = useState<string>("session");
+  const [authMode, setAuthMode] = useState<AuthMode>("session");
+
+  // Check session and fetch keys on mount
+  useEffect(() => {
+    async function init() {
+      try {
+        const res = await fetch("/api/auth/session");
+        const data = (await res.json()) as { user: SessionUser | null };
+        if (data.user) {
+          setSessionUser(data.user);
+          setAuthMode("session");
+          // Fetch user's API keys
+          const keysRes = await fetch("/api/keys");
+          if (keysRes.ok) {
+            const keysData = (await keysRes.json()) as { keys: ApiKey[] };
+            setUserKeys(keysData.keys || []);
+          }
+        } else {
+          setAuthMode("apikey");
+        }
+      } catch {
+        setAuthMode("apikey");
+      } finally {
+        setSessionLoading(false);
+      }
+    }
+    init();
+  }, []);
+
   const currentTool = tools[selectedTool];
 
   function handleInputChange(name: string, value: string) {
@@ -443,8 +493,9 @@ export default function PlaygroundPage() {
   }
 
   async function handleSubmit() {
-    if (!apiKey) {
-      setError("Please enter your API key");
+    // Check auth
+    if (authMode === "apikey" && !apiKey) {
+      setError("Please enter your API key or sign in");
       return;
     }
 
@@ -461,12 +512,19 @@ export default function PlaygroundPage() {
     setResult(null);
 
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      // Use API key auth if in apikey mode, or if user selected a specific key
+      if (authMode === "apikey" && apiKey) {
+        headers["Authorization"] = `Bearer ${apiKey}`;
+      }
+      // Session auth: cookies are sent automatically, no header needed
+
       const res = await fetch(currentTool.endpoint, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
+        headers,
         body: JSON.stringify(inputs),
       });
 
@@ -499,12 +557,24 @@ export default function PlaygroundPage() {
             <span className="text-gray-300 hidden sm:block">/</span>
             <span className="text-gray-600 font-medium">Playground</span>
           </div>
-          <Link
-            href="/login"
-            className="text-blue-600 hover:text-blue-700 font-medium transition-colors"
-          >
-            Get API Key
-          </Link>
+          {sessionUser ? (
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-600 hidden sm:block">{sessionUser.email}</span>
+              <Link
+                href="/dashboard/keys"
+                className="text-blue-600 hover:text-blue-700 font-medium transition-colors text-sm"
+              >
+                Manage Keys
+              </Link>
+            </div>
+          ) : (
+            <Link
+              href="/login"
+              className="text-blue-600 hover:text-blue-700 font-medium transition-colors"
+            >
+              Sign In
+            </Link>
+          )}
         </div>
       </header>
 
@@ -551,22 +621,136 @@ export default function PlaygroundPage() {
               </div>
             </div>
 
-            {/* API Key Input */}
+            {/* Authentication */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-              <h2 className="font-semibold text-gray-900 mb-4 px-2">API Key</h2>
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="arb_..."
-                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
-              />
-              <p className="text-xs text-gray-500 mt-3 px-2">
-                Get your API key from the{" "}
-                <Link href="/dashboard/keys" className="text-blue-600 hover:text-blue-700">
-                  dashboard
-                </Link>
-              </p>
+              <h2 className="font-semibold text-gray-900 mb-4 px-2">Authentication</h2>
+              {sessionLoading ? (
+                <div className="flex items-center gap-2 px-2 py-2 text-sm text-gray-500">
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Checking session...
+                </div>
+              ) : sessionUser ? (
+                <div className="space-y-3">
+                  {/* Auth mode selector */}
+                  <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+                    <button
+                      onClick={() => setAuthMode("session")}
+                      className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-all ${
+                        authMode === "session"
+                          ? "bg-white text-gray-900 shadow-sm"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      Session
+                    </button>
+                    <button
+                      onClick={() => setAuthMode("apikey")}
+                      className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-all ${
+                        authMode === "apikey"
+                          ? "bg-white text-gray-900 shadow-sm"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      API Key
+                    </button>
+                  </div>
+
+                  {authMode === "session" ? (
+                    <div className="flex items-center gap-2 px-2 py-2 bg-green-50 border border-green-100 rounded-xl">
+                      <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                      </svg>
+                      <span className="text-sm text-green-700">Signed in as {sessionUser.email}</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {userKeys.length > 0 ? (
+                        <>
+                          <select
+                            value={selectedKeyId}
+                            onChange={(e) => {
+                              setSelectedKeyId(e.target.value);
+                              if (e.target.value !== "manual") {
+                                setApiKey("");
+                              }
+                            }}
+                            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all bg-white"
+                          >
+                            {userKeys.map((key) => (
+                              <option key={key.id} value={key.id}>
+                                {key.name || key.keyPrefix}
+                              </option>
+                            ))}
+                            <option value="manual">Enter key manually...</option>
+                          </select>
+                          {selectedKeyId === "manual" && (
+                            <input
+                              type="password"
+                              value={apiKey}
+                              onChange={(e) => setApiKey(e.target.value)}
+                              placeholder="arb_..."
+                              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                            />
+                          )}
+                          <p className="text-xs text-gray-500 px-2">
+                            Note: API key mode requires the full key. Use session mode for automatic auth.
+                          </p>
+                        </>
+                      ) : (
+                        <div className="space-y-2">
+                          <input
+                            type="password"
+                            value={apiKey}
+                            onChange={(e) => setApiKey(e.target.value)}
+                            placeholder="arb_..."
+                            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                          />
+                          <p className="text-xs text-gray-500 px-2">
+                            No keys yet.{" "}
+                            <Link href="/dashboard/keys" className="text-blue-600 hover:text-blue-700">
+                              Create one
+                            </Link>
+                            {" "}or use session mode.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="px-2 py-3 bg-amber-50 border border-amber-100 rounded-xl">
+                    <p className="text-sm text-amber-800 font-medium">Sign in to get started</p>
+                    <p className="text-xs text-amber-600 mt-1">
+                      Sign in to use the playground with your session, or enter an API key manually.
+                    </p>
+                  </div>
+                  <Link
+                    href="/login"
+                    className="block w-full text-center bg-blue-600 text-white py-2.5 rounded-xl text-sm font-medium hover:bg-blue-700 transition-all"
+                  >
+                    Sign In
+                  </Link>
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-gray-200" />
+                    </div>
+                    <div className="relative flex justify-center text-xs">
+                      <span className="bg-white px-2 text-gray-500">or use API key</span>
+                    </div>
+                  </div>
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder="arb_..."
+                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                  />
+                </div>
+              )}
             </div>
           </div>
 
