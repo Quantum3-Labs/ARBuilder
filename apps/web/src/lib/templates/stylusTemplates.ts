@@ -756,10 +756,13 @@ pub enum VaultError {
     Unauthorized(Unauthorized),
 }
 
-// Cross-contract interface — use sol_interface! (NOT sol!) for external calls
+// Cross-contract interfaces — use sol_interface! (NOT sol!) for external calls
 sol_interface! {
     interface IPriceFeed {
         function latestPrice() external view returns (uint256);
+    }
+    interface IToken {
+        function transfer(address to, uint256 amount) external returns (bool);
     }
 }
 
@@ -830,13 +833,27 @@ impl Vault {
         Ok(())
     }
 
-    /// Read price from external oracle — sol_interface! call pattern
+    /// Read price from external oracle — VIEW call uses Call::new()
     pub fn get_price(&mut self) -> Result<U256, Vec<u8>> {
         let feed_addr = self.price_feed.get();
         let feed = IPriceFeed::new(feed_addr);
-        // Cross-contract call: (self.vm(), Call::new(), ...args)
+        // VIEW (read-only) cross-contract call: Call::new() is fine
         let price = feed.latest_price(self.vm(), Call::new())?;
         Ok(price)
+    }
+
+    /// Transfer tokens via external contract (state-modifying)
+    pub fn transfer_tokens(
+        &mut self,
+        token: Address,
+        to: Address,
+        amount: U256,
+    ) -> Result<bool, Vec<u8>> {
+        let tok = IToken::new(token);
+        // State-modifying call: extract Call first to avoid borrow conflict
+        let call = Call::new_mutating(self);
+        let success = tok.transfer(self.vm(), call, to, amount)?;
+        Ok(success)
     }
 
     /// Get balance for a user
@@ -933,6 +950,302 @@ fn main() {
 };
 
 /**
+ * NFT Registry template - Dynamic arrays and mappings
+ * Demonstrates push() for StorageVec, sol! events with camelCase fields
+ */
+export const NFT_REGISTRY_TEMPLATE: StylusTemplate = {
+  name: "NftRegistry",
+  description: "NFT registry with minting, ownership tracking, and dynamic token ID array",
+  contractType: "nft",
+  sdkVersion: "0.10.0",
+  features: ["dynamic arrays", "mappings", "events", "access control", "mint"],
+  libRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+#![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
+#[macro_use]
+extern crate alloc;
+
+use alloc::{vec, vec::Vec};
+use stylus_sdk::{
+    alloy_primitives::{Address, U256},
+    alloy_sol_types::{sol, SolError},
+    prelude::*,
+};
+
+// Events — use camelCase for field names (Solidity convention)
+sol! {
+    event Transfer(address indexed from, address indexed to, uint256 tokenId);
+    event Approval(address indexed owner, address indexed approved, uint256 tokenId);
+}
+
+// Errors
+sol! {
+    error TokenNotFound(uint256 tokenId);
+    error NotOwner(address caller, address owner);
+    error AlreadyMinted(uint256 tokenId);
+    error ZeroAddress();
+}
+
+#[derive(SolidityError)]
+pub enum NftError {
+    TokenNotFound(TokenNotFound),
+    NotOwner(NotOwner),
+    AlreadyMinted(AlreadyMinted),
+    ZeroAddress(ZeroAddress),
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct NftRegistry {
+        address owner;
+        uint256 next_token_id;
+        mapping(uint256 => address) owners;
+        mapping(address => uint256) balances;
+        mapping(uint256 => address) token_approvals;
+        uint256[] all_token_ids;
+    }
+}
+
+#[public]
+impl NftRegistry {
+    /// Initialize the registry with deployer as owner
+    pub fn initialize(&mut self) {
+        self.owner.set(self.vm().msg_sender());
+    }
+
+    /// Mint a new NFT to the given address
+    pub fn mint(&mut self, to: Address) -> Result<U256, Vec<u8>> {
+        if to == Address::ZERO {
+            return Err(ZeroAddress {}.abi_encode());
+        }
+
+        // Get and increment token ID
+        let token_id = self.next_token_id.get();
+        self.next_token_id.set(token_id + U256::from(1));
+
+        // Set ownership
+        self.owners.setter(token_id).set(to);
+
+        // Update balance
+        let balance = self.balances.get(to);
+        self.balances.setter(to).set(balance + U256::from(1));
+
+        // Track token ID in dynamic array — use push() for primitives
+        self.all_token_ids.push(token_id);
+
+        self.vm().log(Transfer {
+            from: Address::ZERO,
+            to,
+            tokenId: token_id,
+        });
+
+        Ok(token_id)
+    }
+
+    /// Transfer NFT from one address to another
+    pub fn transfer_from(
+        &mut self,
+        from: Address,
+        to: Address,
+        token_id: U256,
+    ) -> Result<(), Vec<u8>> {
+        let token_owner = self.owners.get(token_id);
+        if token_owner == Address::ZERO {
+            return Err(TokenNotFound { tokenId: token_id }.abi_encode());
+        }
+
+        let caller = self.vm().msg_sender();
+        let approved = self.token_approvals.get(token_id);
+        if caller != token_owner && caller != approved {
+            return Err(NotOwner {
+                caller,
+                owner: token_owner,
+            }
+            .abi_encode());
+        }
+
+        if to == Address::ZERO {
+            return Err(ZeroAddress {}.abi_encode());
+        }
+
+        // Update ownership
+        self.owners.setter(token_id).set(to);
+
+        // Update balances
+        let from_balance = self.balances.get(from);
+        self.balances.setter(from).set(from_balance - U256::from(1));
+        let to_balance = self.balances.get(to);
+        self.balances.setter(to).set(to_balance + U256::from(1));
+
+        // Clear approval
+        self.token_approvals.setter(token_id).set(Address::ZERO);
+
+        self.vm().log(Transfer {
+            from,
+            to,
+            tokenId: token_id,
+        });
+
+        Ok(())
+    }
+
+    /// Approve another address to transfer a specific token
+    pub fn approve(&mut self, to: Address, token_id: U256) -> Result<(), Vec<u8>> {
+        let token_owner = self.owners.get(token_id);
+        if token_owner == Address::ZERO {
+            return Err(TokenNotFound { tokenId: token_id }.abi_encode());
+        }
+
+        let caller = self.vm().msg_sender();
+        if caller != token_owner {
+            return Err(NotOwner {
+                caller,
+                owner: token_owner,
+            }
+            .abi_encode());
+        }
+
+        self.token_approvals.setter(token_id).set(to);
+        self.vm().log(Approval {
+            owner: token_owner,
+            approved: to,
+            tokenId: token_id,
+        });
+
+        Ok(())
+    }
+
+    /// Get the owner of a token
+    pub fn owner_of(&self, token_id: U256) -> Address {
+        self.owners.get(token_id)
+    }
+
+    /// Get token balance for an address
+    pub fn balance_of(&self, owner: Address) -> U256 {
+        self.balances.get(owner)
+    }
+
+    /// Get total number of minted tokens
+    pub fn total_supply(&self) -> U256 {
+        self.next_token_id.get()
+    }
+
+    /// Get token ID at a specific index in the all_token_ids array
+    pub fn token_by_index(&self, index: U256) -> U256 {
+        self.all_token_ids.get(index).unwrap_or_default()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use stylus_sdk::testing::*;
+    use stylus_sdk::alloy_primitives::address;
+
+    #[test]
+    fn test_mint_and_transfer() {
+        let vm = TestVM::default();
+        let mut contract = NftRegistry::from(&vm);
+
+        let owner = address!("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266");
+        let recipient = address!("0x70997970C51812dc3A010C7d01b50e0d17dc79C8");
+
+        vm.set_sender(owner);
+        contract.initialize();
+
+        // Mint first token
+        let token_id = contract.mint(owner).unwrap();
+        assert_eq!(token_id, U256::ZERO);
+        assert_eq!(contract.owner_of(U256::ZERO), owner);
+        assert_eq!(contract.balance_of(owner), U256::from(1));
+        assert_eq!(contract.total_supply(), U256::from(1));
+
+        // Check dynamic array tracking
+        assert_eq!(contract.token_by_index(U256::ZERO), U256::ZERO);
+
+        // Mint second token
+        let token_id_2 = contract.mint(owner).unwrap();
+        assert_eq!(token_id_2, U256::from(1));
+        assert_eq!(contract.balance_of(owner), U256::from(2));
+
+        // Transfer token 0 to recipient
+        assert!(contract
+            .transfer_from(owner, recipient, U256::ZERO)
+            .is_ok());
+        assert_eq!(contract.owner_of(U256::ZERO), recipient);
+        assert_eq!(contract.balance_of(owner), U256::from(1));
+        assert_eq!(contract.balance_of(recipient), U256::from(1));
+    }
+
+    #[test]
+    fn test_approve_and_transfer() {
+        let vm = TestVM::default();
+        let mut contract = NftRegistry::from(&vm);
+
+        let owner = address!("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266");
+        let approved = address!("0x70997970C51812dc3A010C7d01b50e0d17dc79C8");
+
+        vm.set_sender(owner);
+        contract.initialize();
+
+        // Mint and approve
+        contract.mint(owner).unwrap();
+        assert!(contract.approve(approved, U256::ZERO).is_ok());
+
+        // Approved address can transfer
+        vm.set_sender(approved);
+        assert!(contract
+            .transfer_from(owner, approved, U256::ZERO)
+            .is_ok());
+        assert_eq!(contract.owner_of(U256::ZERO), approved);
+    }
+}`,
+  cargoToml: `[package]
+name = "stylus_nft_registry"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+stylus-sdk = "0.10.0"
+alloy-primitives = "1.0.1"
+alloy-sol-types = "1.0.1"
+[dev-dependencies]
+stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
+
+[features]
+default = ["mini-alloc"]
+export-abi = ["stylus-sdk/export-abi"]
+debug = ["stylus-sdk/debug"]
+mini-alloc = ["stylus-sdk/mini-alloc"]
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[[bin]]
+name = "stylus_nft_registry"
+path = "src/main.rs"
+
+[profile.release]
+codegen-units = 1
+strip = true
+lto = true
+panic = "abort"
+opt-level = "s"`,
+  mainRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+
+#[cfg(not(any(test, feature = "export-abi")))]
+#[unsafe(no_mangle)]
+pub extern "C" fn main() {}
+
+#[cfg(feature = "export-abi")]
+fn main() {
+    stylus_nft_registry::print_from_args();
+}`,
+  stylusToml: `[workspace]\n\n[workspace.networks]\n\n[contract]\n`,
+  rustToolchainToml: `[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
+};
+
+/**
  * All available templates indexed by contract type
  */
 export const TEMPLATES: Record<string, StylusTemplate> = {
@@ -943,6 +1256,9 @@ export const TEMPLATES: Record<string, StylusTemplate> = {
   defi: DEFI_VAULT_TEMPLATE,
   token: SIMPLE_ERC20_TEMPLATE,
   erc20: SIMPLE_ERC20_TEMPLATE,
+  nft: NFT_REGISTRY_TEMPLATE,
+  erc721: NFT_REGISTRY_TEMPLATE,
+  registry: NFT_REGISTRY_TEMPLATE,
   access_control: ACCESS_CONTROL_TEMPLATE,
   ownable: ACCESS_CONTROL_TEMPLATE,
 };
@@ -955,6 +1271,19 @@ export function selectTemplate(
   prompt: string
 ): StylusTemplate {
   const lowerPrompt = prompt.toLowerCase();
+
+  // NFT keywords — check BEFORE ERC20 (both have "transfer"/"balance")
+  if (
+    lowerPrompt.includes("nft") ||
+    lowerPrompt.includes("erc721") ||
+    lowerPrompt.includes("erc-721") ||
+    lowerPrompt.includes("mint") ||
+    lowerPrompt.includes("token id") ||
+    lowerPrompt.includes("collectible") ||
+    lowerPrompt.includes("registry")
+  ) {
+    return NFT_REGISTRY_TEMPLATE;
+  }
 
   // Check for specific keywords in prompt
   if (
@@ -1015,6 +1344,7 @@ export function listTemplates(): StylusTemplate[] {
     VENDING_MACHINE_TEMPLATE,
     DEFI_VAULT_TEMPLATE,
     SIMPLE_ERC20_TEMPLATE,
+    NFT_REGISTRY_TEMPLATE,
     ACCESS_CONTROL_TEMPLATE,
   ];
 }

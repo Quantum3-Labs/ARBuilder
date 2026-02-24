@@ -664,6 +664,8 @@ ARBuilder uses **template-based code generation** to ensure generated code compi
 | VendingMachine | defi | Mappings with time-based rate limiting |
 | SimpleERC20 | token | Basic ERC20 with transfer, approve, transferFrom |
 | AccessControl | utility | Owner-only functions with ownership transfer |
+| DeFiVault | defi | Cross-contract calls (sol_interface!), transfer_eth, Call::new_in(self) |
+| NftRegistry | nft | Dynamic arrays (push), sol! events with camelCase, mint/transfer |
 
 **Stylus SDK Version Support:**
 

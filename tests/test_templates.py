@@ -95,11 +95,14 @@ class TestTemplateSelection:
         assert get_template("unknown") is None
 
     def test_list_templates_returns_all(self):
-        """list_templates should return all 5 templates."""
+        """list_templates should return all 6 templates."""
         templates = list_templates()
-        assert len(templates) == 5
+        assert len(templates) == 6
         names = {t.name for t in templates}
-        assert names == {"Counter", "VendingMachine", "DeFiVault", "SimpleERC20", "AccessControl"}
+        assert names == {
+            "Counter", "VendingMachine", "DeFiVault",
+            "SimpleERC20", "AccessControl", "NftRegistry",
+        }
 
 
 class TestTemplateContent:
@@ -257,14 +260,14 @@ class TestSystemPromptsAndDisclaimer:
         fixed = tool._fix_code(code, None)
         assert "SolError" in fixed, f"SolError was stripped: {fixed}"
 
-    def test_fix_code_strips_standalone_sol_import(self):
-        """_fix_code should strip standalone alloy_sol_types::sol import."""
+    def test_fix_code_preserves_sol_import(self):
+        """_fix_code should preserve alloy_sol_types::sol import (it's required, NOT in prelude)."""
         from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
 
         tool = GenerateStylusCodeTool()
         code = "use alloy_sol_types::sol;\nuse stylus_sdk::prelude::*;"
         fixed = tool._fix_code(code, None)
-        assert "alloy_sol_types::sol" not in fixed
+        assert "alloy_sol_types::sol" in fixed
 
     def test_disclaimer_exists(self):
         """TEMPLATE_DISCLAIMER should exist and contain 'starting entrypoint'."""
@@ -540,17 +543,21 @@ impl MyContract {
         assert "Rename the contract struct" in prompt
 
     def test_template_prompt_has_reference_code_snippets(self):
-        """Template system prompt must include code snippets for transfer_eth and sol_interface!."""
+        """Template system prompt must include code snippets for transfer_eth, sol_interface!, and dynamic arrays."""
         from src.mcp.tools.generate_stylus_code import get_template_system_prompt
 
         prompt = get_template_system_prompt(COUNTER_TEMPLATE, "0.10.0")
         # Must have actual ETH transfer code snippet
         assert "transfer_eth(self.vm(), to, amount)?" in prompt
         assert "use stylus_sdk::call::transfer::transfer_eth;" in prompt
-        # Must have actual sol_interface! code snippet
+        # Must have VIEW call snippet
         assert "sol_interface! {" in prompt
+        assert "Call::new()" in prompt
+        # Must have state-modifying call snippet with Call::new_mutating and IToken
+        assert "Call::new_mutating(self)" in prompt
         assert "IToken::new(token)" in prompt
-        assert "token.balance_of(self.vm(), Call::new(), account)?" in prompt
+        # Must have dynamic array snippet
+        assert "self.items.push(" in prompt
         # Must be labeled as REFERENCE CODE
         assert "REFERENCE CODE" in prompt
 

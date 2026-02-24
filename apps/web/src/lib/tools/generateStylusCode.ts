@@ -58,10 +58,8 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     );
   }
 
-  // Fix 4: Remove standalone sol! imports (sol! is in prelude)
-  // Only remove standalone import — preserve combined imports like {sol, SolError}
-  fixed = fixed.replace(/^use alloy_sol_types::sol;\s*$/gm, "");
-  fixed = fixed.replace(/^use stylus_sdk::alloy_sol_types::sol;\s*$/gm, "");
+  // Fix 4: REMOVED — sol! is NOT in prelude, the explicit import is correct.
+  // Previously this removed `use alloy_sol_types::sol;` which broke sol! events/errors.
 
   // Fix 5: Handle Vec imports - avoid duplicates
   if (fixed.includes("use alloc::vec::Vec;") && fixed.includes("use alloc::{") && fixed.includes("vec::Vec")) {

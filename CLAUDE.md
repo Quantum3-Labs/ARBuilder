@@ -283,17 +283,61 @@ fn main() {
 // Or explicitly: use stylus_sdk::call::Call;
 
 sol_interface! {
+    interface IPriceFeed {
+        function latestPrice() external view returns (uint256);
+    }
     interface IToken {
         function transfer(address to, uint256 amount) external returns (bool);
         function balanceOf(address account) external view returns (uint256);
     }
 }
 
-// Generated methods take: (self.vm(), Call context, ...solidity_args)
+// VIEW call — Call::new() is fine (read-only, no state changes)
 let balance = token.balance_of(self.vm(), Call::new(), account)?;
-let success = token.transfer(self.vm(), Call::new(), recipient, amount)?;
+let price = feed.latest_price(self.vm(), Call::new())?;
 
-// Call::new() for non-reentrant contracts, Call::new_in(self) for reentrant contracts
+// STATE-MODIFYING call — extract Call first to avoid borrow conflict
+let call = Call::new_mutating(self);
+let success = token.transfer(self.vm(), call, recipient, amount)?;
+```
+
+### Events and Errors (sol! macro)
+```rust
+// sol! is NOT in prelude — MUST import explicitly
+use alloy_sol_types::{sol, SolError};
+
+sol! {
+    event Transfer(address indexed from, address indexed to, uint256 tokenId);
+    error InsufficientBalance(uint256 available, uint256 required);
+}
+
+// Use camelCase in sol! field names (Solidity convention)
+// tokenId NOT token_id, fromAddress NOT from_address
+
+// Emit event:
+self.vm().log(Transfer { from, to, tokenId: token_id });
+
+// Return error:
+return Err(InsufficientBalance { available: bal, required: amount }.abi_encode());
+```
+
+### Dynamic Arrays (StorageVec)
+```rust
+sol_storage! {
+    #[entrypoint]
+    pub struct MyContract {
+        uint256[] items;         // Dynamic array
+        // mapping(uint256 => MyStruct) structs;
+    }
+}
+
+// Append to dynamic array:
+self.items.push(value);          // For primitive types (uint256, address, bool)
+// self.structs.grow();          // For struct types — grow() adds empty slot
+
+// Read length and elements:
+let len = self.items.len();
+let val = self.items.get(index).unwrap();
 ```
 
 ### Key Constraints
@@ -312,6 +356,11 @@ let success = token.transfer(self.vm(), Call::new(), recipient, amount)?;
 - **RawCall::new_with_value(self.vm(), amount)** — needs self.vm() as first arg + unsafe block
 - **transfer_eth** — `use stylus_sdk::call::transfer::transfer_eth;` then `transfer_eth(self.vm(), to, amount)?` (needs `self.vm()` not `self`)
 - **sol_interface! for interfaces** — use `sol_interface!` (NOT `sol!`) to define external contract interfaces for cross-contract calls
+- **Call contexts** — `Call::new()` for VIEW calls, `Call::new_mutating(self)` for STATE-MODIFYING calls. Extract Call to local var to avoid borrow conflict: `let call = Call::new_mutating(self);`
+- **sol! needs explicit import** — `use alloy_sol_types::{sol, SolError};` — sol! is NOT in prelude
+- **sol! uses camelCase fields** — `tokenId` not `token_id`, `fromAddress` not `from_address` (Solidity convention)
+- **Dynamic arrays** — `uint256[] items;` in sol_storage!, append with `.push(val)` for primitives, `.grow()` for structs. Never `.setter(len).unwrap()`
+- **Borrow checker** — extract `.get()` values to local vars before combining with `.set()`. Never `self.field.setter(self.vm().something())`
 - **ABI uses camelCase** — Stylus exports snake_case Rust fns as camelCase (`create_market` → `createMarket`). Frontend must use camelCase in `functionName`
 - **View functions can't call external contracts** — `&self` view fns revert on cross-contract calls (unlike Solidity). Use `&mut self` or read from frontend
 - **Arbitrum L2 gas** — MetaMask may underestimate `maxFeePerGas` on Arbitrum Sepolia. Add explicit gas overrides if "max fee per gas less than block base fee"

@@ -9,21 +9,24 @@ from typing import Optional
 
 from .base import BaseTool
 
-
-SYSTEM_PROMPT = """You are an expert at writing tests for Stylus smart contracts. You write comprehensive, well-structured tests that cover:
+SYSTEM_PROMPT = """You are an expert at writing tests for Stylus smart contracts (SDK 0.10.0).
+You write comprehensive, well-structured tests that cover:
 
 1. Happy path scenarios (normal operation)
 2. Error cases (invalid inputs, unauthorized access)
 3. Edge cases (zero values, max values, boundary conditions)
 4. State transitions (before/after comparisons)
 
-For Rust native tests:
-- Use #[cfg(test)] module
+For Rust native tests (stylus-sdk 0.10.0):
+- Use #[cfg(test)] module with `use super::*;` and `use stylus_sdk::testing::*;`
+- SETUP: `let vm = TestVM::default(); let mut contract = MyContract::from(&vm);`
+  Do NOT use MyContract::default() — it does not exist in SDK 0.10.0.
+- Use vm.set_sender(addr) to set msg.sender for tests
+- Use vm.set_value(amount) to set msg.value for payable tests
+- Use vm.set_block_timestamp(ts) to set block.timestamp
 - Use #[test] attribute for test functions
-- Use assert!, assert_eq!, assert_ne! macros
-- Mock contract state appropriately
+- Use assert!, assert_eq!, assert_ne! macros with descriptive messages
 - Test each public function
-- Include descriptive test names
 
 Test naming convention: test_<function>_<scenario>
 Example: test_transfer_insufficient_balance
@@ -33,6 +36,10 @@ Best practices:
 - Descriptive error messages in assertions
 - Test both success and failure paths
 - Consider reentrancy and other security tests
+
+Cargo.toml needs:
+[dev-dependencies]
+stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
 """
 
 FOUNDRY_TEMPLATE = """// SPDX-License-Identifier: MIT
@@ -84,7 +91,10 @@ class GenerateTestsTool(BaseTool):
         # Validate contract has basic structure
         if not self._is_valid_contract(contract_code):
             return {
-                "error": "Invalid contract code. Please provide valid Stylus/Rust code with struct and impl blocks.",
+                "error": (
+                    "Invalid contract code. Please provide valid"
+                    " Stylus/Rust code with struct and impl blocks."
+                ),
                 "warnings": ["Could not parse contract structure"],
             }
 
@@ -184,19 +194,26 @@ class GenerateTestsTool(BaseTool):
         return info
 
     def _generate_rust_tests(self, contract_info: dict, test_types: list[str]) -> str:
-        """Generate Rust native tests."""
+        """Generate Rust native tests (SDK 0.10.0 TestVM pattern)."""
+        name = contract_info["name"]
         parts = []
 
         # Test module header
         parts.append("#[cfg(test)]")
         parts.append("mod tests {")
         parts.append("    use super::*;")
+        parts.append("    use stylus_sdk::testing::*;")
         parts.append("")
 
-        # Helper function to create contract instance
-        parts.append("    fn setup() -> {} {{".format(contract_info["name"]))
-        parts.append("        // Initialize contract for testing")
-        parts.append("        {}::default()".format(contract_info["name"]))
+        # Helper function using TestVM (SDK 0.10.0 pattern)
+        parts.append(
+            "    fn setup() -> ({}, TestVM) {{".format(name)
+        )
+        parts.append("        let vm = TestVM::default();")
+        parts.append(
+            "        let contract = {}::from(&vm);".format(name)
+        )
+        parts.append("        (contract, vm)")
         parts.append("    }")
         parts.append("")
 
@@ -225,12 +242,14 @@ class GenerateTestsTool(BaseTool):
 
         # Unit tests
         if "unit" in test_types:
+            mut_prefix = "mut " if fn["is_mut"] else ""
+
             # Happy path test
-            tests.append(f"    #[test]")
+            tests.append("    #[test]")
             tests.append(f"    fn test_{fn_name}_success() {{")
-            tests.append(f"        let {'mut ' if fn['is_mut'] else ''}contract = setup();")
-            tests.append(f"        // TODO: Setup test preconditions")
-            tests.append(f"        ")
+            tests.append(f"        let ({mut_prefix}contract, _vm) = setup();")
+            tests.append("        // TODO: Setup test preconditions")
+            tests.append("        ")
 
             if fn["params"]:
                 params_str = ", ".join([f"/* {p} */" for p in fn["params"]])
@@ -238,45 +257,46 @@ class GenerateTestsTool(BaseTool):
             else:
                 tests.append(f"        // Call: contract.{fn_name}();")
 
-            tests.append(f"        ")
-            tests.append(f"        // TODO: Assert expected outcomes")
-            tests.append(f"        // assert_eq!(result, expected);")
-            tests.append(f"    }}")
+            tests.append("        ")
+            tests.append("        // TODO: Assert expected outcomes")
+            tests.append("        // assert_eq!(result, expected);")
+            tests.append("    }")
             tests.append("")
 
             # Error case test if function might fail
             if fn["is_mut"] or "Result" in fn["return_type"] or fn["params"]:
-                tests.append(f"    #[test]")
+                tests.append("    #[test]")
                 tests.append(f"    fn test_{fn_name}_error_case() {{")
-                tests.append(f"        let {'mut ' if fn['is_mut'] else ''}contract = setup();")
-                tests.append(f"        // TODO: Setup conditions that should cause failure")
-                tests.append(f"        ")
-                tests.append(f"        // TODO: Assert error is returned or state unchanged")
-                tests.append(f"    }}")
+                tests.append(f"        let ({mut_prefix}contract, _vm) = setup();")
+                tests.append("        // TODO: Setup conditions that should cause failure")
+                tests.append("        ")
+                tests.append("        // TODO: Assert error is returned or state unchanged")
+                tests.append("    }")
                 tests.append("")
 
         # Edge case tests
         if "unit" in test_types and fn["params"]:
-            tests.append(f"    #[test]")
+            mut_prefix = "mut " if fn["is_mut"] else ""
+            tests.append("    #[test]")
             tests.append(f"    fn test_{fn_name}_edge_cases() {{")
-            tests.append(f"        let {'mut ' if fn['is_mut'] else ''}contract = setup();")
-            tests.append(f"        ")
-            tests.append(f"        // Test with zero values")
-            tests.append(f"        // Test with max values")
-            tests.append(f"        // Test with boundary conditions")
-            tests.append(f"    }}")
+            tests.append(f"        let ({mut_prefix}contract, _vm) = setup();")
+            tests.append("        ")
+            tests.append("        // Test with zero values")
+            tests.append("        // Test with max values")
+            tests.append("        // Test with boundary conditions")
+            tests.append("    }")
             tests.append("")
 
         # Fuzz tests
         if "fuzz" in test_types:
             tests.append(f"    // Fuzz test for {fn_name}")
-            tests.append(f"    // #[test]")
+            tests.append("    // #[test]")
             tests.append(f"    // fn test_{fn_name}_fuzz() {{")
-            tests.append(f"    //     use proptest::prelude::*;")
-            tests.append(f"    //     proptest!(|(input: /* type */)| {{")
-            tests.append(f"    //         // Test property invariants")
-            tests.append(f"    //     }});")
-            tests.append(f"    // }}")
+            tests.append("    //     use proptest::prelude::*;")
+            tests.append("    //     proptest!(|(input: /* type */)| {")
+            tests.append("    //         // Test property invariants")
+            tests.append("    //     });")
+            tests.append("    // }")
             tests.append("")
 
         return tests
@@ -301,7 +321,12 @@ class GenerateTestsTool(BaseTool):
             sol_return = self._rust_to_sol_type(fn["return_type"])
             view_modifier = " view" if not fn["is_mut"] else ""
 
-            parts.append(f"    function {fn['name']}({sol_params}) external{view_modifier} returns ({sol_return});")
+            sig = (
+                f"    function {fn['name']}({sol_params})"
+                f" external{view_modifier}"
+                f" returns ({sol_return});"
+            )
+            parts.append(sig)
 
         parts.append("}")
         parts.append("")
@@ -404,28 +429,36 @@ class GenerateTestsTool(BaseTool):
 
     def _get_rust_setup(self) -> str:
         """Get Rust test setup instructions."""
-        return """# Running Rust Tests
+        return """# Running Rust Tests (stylus-sdk 0.10.0)
 
 1. Ensure your Cargo.toml has test dependencies:
 ```toml
 [dev-dependencies]
-# Add any test dependencies
+stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
 ```
 
-2. Run tests:
+2. Run tests (use --target to run on host, not WASM):
 ```bash
-cargo test
+cargo test --target=x86_64-unknown-linux-gnu
+```
+Or on macOS:
+```bash
+cargo test --target=aarch64-apple-darwin
 ```
 
 3. Run with output:
 ```bash
-cargo test -- --nocapture
+cargo test --target=x86_64-unknown-linux-gnu -- --nocapture
 ```
 
 4. Run specific test:
 ```bash
-cargo test test_function_name
+cargo test --target=x86_64-unknown-linux-gnu test_function_name
 ```
+
+Note: The --target flag is needed because Stylus contracts compile to
+wasm32-unknown-unknown by default (via rust-toolchain.toml), but tests
+must run on the host platform. TestVM simulates the Stylus environment.
 """
 
     def _get_foundry_setup(self) -> str:

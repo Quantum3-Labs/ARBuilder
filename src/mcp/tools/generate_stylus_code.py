@@ -179,11 +179,11 @@ uses `cargo run` to check for constructors
 — "lib" is needed for bin target linking
 24. EXTERNAL INTERFACES: use `sol_interface!` \
 (NOT `sol!`) for external contract interfaces. \
-CALL PATTERN: `ifoo.method(self.vm(), \
-Call::new(), arg1, arg2)?` — first arg is ALWAYS \
-self.vm(), second is a Call context \
-(`Call::new()` for non-reentrant, \
-`Call::new_in(self)` for reentrant contracts).
+CALL PATTERN: VIEW calls use \
+`ifoo.method(self.vm(), Call::new(), args)?`. \
+STATE-MODIFYING calls: extract Call first: \
+`let call = Call::new_mutating(self);` then \
+`ifoo.method(self.vm(), call, args)?`.
 25. Stylus exports snake_case Rust fn names as \
 camelCase in the ABI (create_market -> \
 createMarket). Frontend must use camelCase \
@@ -191,6 +191,35 @@ in functionName.
 26. Stylus &self view functions CANNOT make \
 external contract calls (they revert). \
 Use &mut self for cross-contract calls.
+27. DYNAMIC ARRAYS: In sol_storage!, declare as \
+`uint256[] items;` (Solidity syntax). \
+Append primitives with `self.items.push(val)`. \
+For struct arrays, use `self.items.grow()` then \
+set fields on the returned accessor. \
+Do NOT use `.setter(len).unwrap()` — it panics.
+28. sol! MACRO IMPORT: When using sol! for events \
+or errors, you MUST explicitly import it: \
+`use alloy_sol_types::sol;` or combined \
+`use alloy_sol_types::{{sol, SolError}};`. \
+The sol! macro is NOT available from prelude::*.
+29. BORROW CHECKER: Never combine .get() and \
+.setter() on the same storage root in one expression. \
+Extract values to local variables first: \
+`let sender = self.vm().msg_sender(); \
+self.balances.setter(sender).set(amount);`
+30. sol! EVENT/ERROR FIELDS: Use camelCase for \
+field names in sol! {{ }} blocks (Solidity convention). \
+Example: `event Transfer(address indexed from, \
+address indexed to, uint256 tokenId);` \
+NOT snake_case like `token_id`.
+31. Cross-contract CALL CONTEXTS: \
+`Call::new()` for VIEW (read-only) calls. \
+`Call::new_mutating(self)` for STATE-MODIFYING \
+calls (transfer, approve, etc.). \
+IMPORTANT: extract the Call to a local variable \
+before using it: `let call = Call::new_mutating(self);` \
+then `tok.transfer(self.vm(), call, to, amount)?;` \
+— this avoids borrow checker conflicts.
 
 Dependencies for v{target_version}:
 - stylus-sdk = "{target_version}"
@@ -247,12 +276,12 @@ you may ADD more but NEVER remove
 NEVER create empty sol_storage! blocks
 4. KEEP the #[entrypoint] attribute in sol_storage!
 5. KEEP the #[public] attribute on the impl block
-6. The sol! macro is available via prelude — do NOT \
-add standalone "use alloy_sol_types::sol;". BUT if \
-using .abi_encode() on errors, MUST import \
-SolError: use alloy_sol_types::SolError; \
-(or combined: \
-alloy_sol_types::{{sol, SolError}})
+6. When using sol! for events or errors, you MUST \
+explicitly import it: \
+`use alloy_sol_types::{{sol, SolError}};` — \
+sol! is NOT available from prelude::*. \
+If only using events (no .abi_encode()), \
+`use alloy_sol_types::sol;` is sufficient.
 7. If adding events/errors with sol! macro, they \
 must be BEFORE sol_storage!
 8. KEEP the Cargo.toml [profile.release] section \
@@ -271,16 +300,25 @@ Do NOT use `self.transfer_eth()`, \
 `call::transfer_eth()`, or any other path.
 - EXTERNAL INTERFACES: use `sol_interface!` macro \
 (NOT `sol!`). `sol!` is ONLY for events and errors.
-- CROSS-CONTRACT CALLS: pattern is \
-`ifoo.method(self.vm(), Call::new(), \
-arg1, arg2)?`. The first arg is ALWAYS \
-`self.vm()`, second is a Call context \
-(`Call::new()` for non-reentrant, \
-`Call::new_in(self)` for reentrant). Do NOT use \
-`ifoo.method(self, arg1, arg2)` or \
-`ifoo.method(arg1, arg2)`.
+- CROSS-CONTRACT CALLS: VIEW calls: \
+`ifoo.method(self.vm(), Call::new(), args)?`. \
+STATE-MODIFYING calls: extract Call first: \
+`let call = Call::new_mutating(self);` then \
+`ifoo.method(self.vm(), call, args)?` — this \
+avoids borrow checker conflicts.
 - External calls require `&mut self` \
 (NOT `&self` — view functions revert)
+- DYNAMIC ARRAYS: In sol_storage!, declare as \
+`uint256[] items;`. Append with \
+`self.items.push(val)` for primitives, \
+`self.items.grow()` for structs. \
+Do NOT use `.setter(len).unwrap()`.
+- BORROW CHECKER: Extract values to local vars \
+before combining storage reads and writes: \
+`let sender = self.vm().msg_sender(); \
+self.balances.setter(sender).set(amount);`
+- sol! EVENT/ERROR FIELDS: Use camelCase \
+(Solidity convention): `tokenId` NOT `token_id`.
 
 WHAT YOU MAY DO:
 - Rename the contract struct in sol_storage! to \
@@ -298,7 +336,8 @@ sol_interface! (NOT sol!) for cross-contract calls
 IMPORTS - USE THESE PATTERNS:
 - Types from \
 stylus_sdk::alloy_primitives::{{Address, U256, ...}}
-- sol! macro is available from stylus_sdk::prelude::*
+- sol! macro: use alloy_sol_types::sol; \
+(NOT from prelude)
 - For events: \
 self.vm().log(EventName {{ field1, field2 }}) \
 (NOT evm::log)
@@ -314,8 +353,8 @@ return Err(ErrorName {{ ... }}.abi_encode()) \
 sol_interface! {{ interface IFoo {{ \
 function bar(address) external returns (uint256); \
 }} }}
-- Call pattern: `ifoo.bar(self.vm(), Call::new(), addr)?` — self.vm() is ALWAYS first arg
-- For reentrant contracts use `Call::new_in(self)` instead of `Call::new()`
+- VIEW call: `ifoo.bar(self.vm(), Call::new(), addr)?`
+- STATE-MODIFYING call: `let call = Call::new_mutating(self); ifoo.bar(self.vm(), call, args)?`
 - External calls require &mut self (NOT &self — view functions revert on external calls)
 - Do NOT use stylus_sdk::evm (removed in 0.10.0) or stylus_sdk::msg
 
@@ -331,21 +370,45 @@ pub fn withdraw(&mut self, to: Address, amount: U256) -> Result<(), Vec<u8>> {{
 }}
 ```
 
-Cross-contract call (interact with another deployed contract):
+Cross-contract VIEW call (read-only — Call::new() is fine):
+```rust
+sol_interface! {{
+    interface IPriceFeed {{
+        function latestPrice() external view returns (uint256);
+    }}
+}}
+
+pub fn get_price(&mut self, feed_addr: Address) -> Result<U256, Vec<u8>> {{
+    let feed = IPriceFeed::new(feed_addr);
+    let price = feed.latest_price(self.vm(), Call::new())?;
+    Ok(price)
+}}
+```
+
+Cross-contract state-modifying call (extract Call to avoid borrow conflict):
 ```rust
 sol_interface! {{
     interface IToken {{
-        function balanceOf(address account) external view returns (uint256);
         function transfer(address to, uint256 amount) external returns (bool);
     }}
 }}
 
-// In a #[public] &mut self method:
-pub fn get_token_balance(&mut self, token: Address, account: Address) -> Result<U256, Vec<u8>> {{
-    let token = IToken::new(token);
-    let balance = token.balance_of(self.vm(), Call::new(), account)?;
-    Ok(balance)
+pub fn transfer_tokens(
+    &mut self, token: Address, to: Address, amount: U256,
+) -> Result<bool, Vec<u8>> {{
+    let tok = IToken::new(token);
+    let call = Call::new_mutating(self);
+    let success = tok.transfer(self.vm(), call, to, amount)?;
+    Ok(success)
 }}
+```
+
+Dynamic array (append to sol_storage! array):
+```rust
+// In sol_storage!: uint256[] items;
+// Append primitive:
+self.items.push(new_val);
+// For structs: let mut entry = self.items.grow(); entry.field.set(val);
 ```
 
 Output format:
@@ -929,9 +992,8 @@ class GenerateStylusCodeTool(BaseTool):
                 flags=re.MULTILINE,
             )
 
-        # Fix 4: Remove standalone sol! imports (sol! is in prelude)
-        fixed = re.sub(r"^use alloy_sol_types::sol;\s*$", "", fixed, flags=re.MULTILINE)
-        fixed = re.sub(r"^use stylus_sdk::alloy_sol_types::sol;\s*$", "", fixed, flags=re.MULTILINE)
+        # Fix 4: REMOVED — sol! is NOT in prelude, the explicit import is correct.
+        # Previously this removed `use alloy_sol_types::sol;` which broke sol! events/errors.
 
         # Fix 5: Handle Vec imports - avoid duplicates
         if "use alloc::vec::Vec;" in fixed and "use alloc::{" in fixed and "vec::Vec" in fixed:

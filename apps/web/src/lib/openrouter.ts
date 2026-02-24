@@ -135,9 +135,13 @@ Key patterns for v${targetVersion}:
 - Package name in Cargo.toml MUST use underscores (e.g., "my_contract") — hyphens break cargo-stylus
 - src/main.rs is REQUIRED — use print_from_args() (NOT print_abi()) for ABI export
 - crate-type in [lib] must be ["lib", "cdylib"]
-- EXTERNAL INTERFACES: use \`sol_interface!\` (NOT \`sol!\`) for external contract interfaces. CALL PATTERN: \`ifoo.method(self.vm(), Call::new(), arg1, arg2)?\` — first arg is ALWAYS self.vm(), second is a Call context (\`Call::new()\` for non-reentrant, \`Call::new_in(self)\` for reentrant contracts).
+- EXTERNAL INTERFACES: use \`sol_interface!\` (NOT \`sol!\`) for external contract interfaces. VIEW calls: \`ifoo.method(self.vm(), Call::new(), args)?\`. STATE-MODIFYING calls: extract Call first: \`let call = Call::new_mutating(self);\` then \`ifoo.method(self.vm(), call, args)?\` — avoids borrow conflict.
 - Stylus exports snake_case Rust fn names as camelCase in the ABI (create_market → createMarket). Frontend must use camelCase in functionName.
 - Stylus &self view functions CANNOT make external contract calls (they revert). Use &mut self or read from frontend.
+- DYNAMIC ARRAYS: In sol_storage!, declare as \`uint256[] items;\`. Append primitives with \`self.items.push(val)\`. For struct arrays, use \`self.items.grow()\` then set fields. Do NOT use \`.setter(len).unwrap()\`.
+- sol! MACRO IMPORT: When using sol! for events/errors, you MUST import it: \`use alloy_sol_types::{sol, SolError};\` — sol! is NOT in prelude.
+- BORROW CHECKER: Extract values to local vars before combining storage reads/writes. Never \`self.field.setter(self.vm().something())\`.
+- sol! EVENT/ERROR FIELDS: Use camelCase (Solidity convention): \`tokenId\` NOT \`token_id\`.
 - On Arbitrum Sepolia, MetaMask may underestimate maxFeePerGas — add explicit gas overrides if "max fee per gas less than block base fee"
 
 Security best practices:
@@ -221,7 +225,7 @@ ABSOLUTE RULES - NEVER VIOLATE THESE:
 3. There must be EXACTLY ONE sol_storage! block - NEVER create empty sol_storage! blocks
 4. KEEP the #[entrypoint] attribute inside sol_storage!
 5. KEEP the #[public] attribute on the impl block
-6. The sol! macro is available via prelude — do NOT add standalone "use alloy_sol_types::sol;". BUT if using .abi_encode() on errors, MUST import SolError: use alloy_sol_types::SolError;
+6. When using sol! for events or errors, you MUST explicitly import it: \`use alloy_sol_types::{sol, SolError};\` — sol! is NOT available from prelude. If only using events (no .abi_encode()), \`use alloy_sol_types::sol;\` is sufficient.
 7. If adding events/errors with sol! macro, they must be BEFORE sol_storage!
 8. KEEP the Cargo.toml [profile.release] section exactly as provided
 
@@ -229,8 +233,11 @@ COMPILATION-CRITICAL — these mistakes WILL break the build:
 - STORAGE ACCESS: ALWAYS use .get() to read storage: \`self.field.get()\` NOT \`self.field\`. ALWAYS use .set(val) to write: \`self.field.set(val)\`. For mappings: read with \`self.map.get(key)\`, write with \`self.map.setter(key).set(val)\`.
 - TRANSFER ETH: \`use stylus_sdk::call::transfer::transfer_eth;\` then \`transfer_eth(self.vm(), to, amount)?;\`. Do NOT use \`self.transfer_eth()\`, \`call::transfer_eth()\`, or any other path.
 - EXTERNAL INTERFACES: use \`sol_interface!\` macro (NOT \`sol!\`). \`sol!\` is ONLY for events and errors.
-- CROSS-CONTRACT CALLS: pattern is \`ifoo.method(self.vm(), Call::new(), arg1, arg2)?\`. The first arg is ALWAYS \`self.vm()\`, second is a Call context (\`Call::new()\` for non-reentrant, \`Call::new_in(self)\` for reentrant contracts). Do NOT use \`ifoo.method(self, arg1, arg2)\` or \`ifoo.method(arg1, arg2)\`.
+- CROSS-CONTRACT CALLS: VIEW calls: \`ifoo.method(self.vm(), Call::new(), args)?\`. STATE-MODIFYING calls: extract Call first: \`let call = Call::new_mutating(self);\` then \`ifoo.method(self.vm(), call, args)?\` — avoids borrow conflict.
 - External calls require \`&mut self\` (NOT \`&self\` — view functions revert on external calls)
+- DYNAMIC ARRAYS: In sol_storage!, declare as \`uint256[] items;\`. Append with \`self.items.push(val)\` for primitives, \`self.items.grow()\` for structs. Do NOT use \`.setter(len).unwrap()\`.
+- BORROW CHECKER: Extract values to local vars before combining storage reads and writes.
+- sol! EVENT/ERROR FIELDS: Use camelCase (Solidity convention): \`tokenId\` NOT \`token_id\`.
 
 WHAT YOU MAY DO:
 - Rename the contract struct in sol_storage! to match the user's request (e.g., PredictionMarket, Lottery, etc.)
@@ -243,14 +250,14 @@ WHAT YOU MAY DO:
 
 IMPORTS - USE THESE PATTERNS:
 - Types from stylus_sdk::alloy_primitives::{Address, U256, U8, ...}
-- sol! macro is available from stylus_sdk::prelude::*
+- sol! macro: \`use alloy_sol_types::sol;\` (NOT from prelude)
 - For events: self.vm().log(EventName { field1, field2 }) (NOT evm::log)
 - For caller: self.vm().msg_sender() (NOT msg::sender())
 - For ETH transfers: \`use stylus_sdk::call::transfer::transfer_eth;\` then \`transfer_eth(self.vm(), to, amount)?;\`
 - For errors: return Err(ErrorName { ... }.abi_encode()) — requires use alloy_sol_types::SolError;
 - For cross-contract calls: define with sol_interface! { interface IFoo { function bar(address) external returns (uint256); } }
-- Call pattern: \`ifoo.bar(self.vm(), Call::new(), addr)?\` — self.vm() is ALWAYS first arg
-- For reentrant contracts use \`Call::new_in(self)\` instead of \`Call::new()\`
+- VIEW calls: \`ifoo.bar(self.vm(), Call::new(), addr)?\`
+- STATE-MODIFYING calls: \`let call = Call::new_mutating(self); ifoo.bar(self.vm(), call, args)?\`
 - External calls require &mut self (NOT &self — view functions revert on external calls)
 - Do NOT use stylus_sdk::evm (removed in 0.10.0) or stylus_sdk::msg
 
@@ -266,21 +273,45 @@ pub fn withdraw(&mut self, to: Address, amount: U256) -> Result<(), Vec<u8>> {
 }
 \`\`\`
 
-Cross-contract call (interact with another deployed contract):
+Cross-contract VIEW call (read-only — Call::new() is fine):
+\`\`\`rust
+sol_interface! {
+    interface IPriceFeed {
+        function latestPrice() external view returns (uint256);
+    }
+}
+
+pub fn get_price(&mut self, feed_addr: Address) -> Result<U256, Vec<u8>> {
+    let feed = IPriceFeed::new(feed_addr);
+    let price = feed.latest_price(self.vm(), Call::new())?;
+    Ok(price)
+}
+\`\`\`
+
+Cross-contract state-modifying call (extract Call to avoid borrow conflict):
 \`\`\`rust
 sol_interface! {
     interface IToken {
-        function balanceOf(address account) external view returns (uint256);
         function transfer(address to, uint256 amount) external returns (bool);
     }
 }
 
-// In a #[public] &mut self method:
-pub fn get_token_balance(&mut self, token: Address, account: Address) -> Result<U256, Vec<u8>> {
-    let token = IToken::new(token);
-    let balance = token.balance_of(self.vm(), Call::new(), account)?;
-    Ok(balance)
+pub fn transfer_tokens(
+    &mut self, token: Address, to: Address, amount: U256,
+) -> Result<bool, Vec<u8>> {
+    let tok = IToken::new(token);
+    let call = Call::new_mutating(self);
+    let success = tok.transfer(self.vm(), call, to, amount)?;
+    Ok(success)
 }
+\`\`\`
+
+Dynamic array (append to sol_storage! array):
+\`\`\`rust
+// In sol_storage!: uint256[] items;
+// Append primitive:
+self.items.push(new_val);
+// For structs: let mut entry = self.items.grow(); entry.field.set(val);
 \`\`\`
 
 Output format:
@@ -488,18 +519,23 @@ export async function generateTests(
   const messages: Message[] = [
     {
       role: "system",
-      content: `You are a Stylus testing expert.
+      content: `You are a Stylus testing expert for SDK 0.10.0.
 Generate comprehensive tests for the provided contract.
 Framework: ${testFramework === "rust_native" ? "Rust native #[test] with stylus-test" : "Foundry Solidity tests"}
 
-For Rust native tests:
-- Use #[cfg(test)] module
-- Import stylus_sdk::testing if needed
-- Test all public functions
-- Include edge cases and error conditions
+For Rust native tests (stylus-sdk 0.10.0):
+- Use #[cfg(test)] module with \`use super::*;\` and \`use stylus_sdk::testing::*;\`
+- SETUP: \`let vm = TestVM::default(); let mut contract = MyContract::from(&vm);\`
+  Do NOT use MyContract::default() — it does not exist in SDK 0.10.0
+- Use vm.set_sender(addr) to set msg.sender for tests
+- Use vm.set_value(amount) to set msg.value for payable tests
+- Use vm.set_block_timestamp(ts) to set block.timestamp
+- Test all public functions with happy path, error cases, and edge cases
+- Use assert!, assert_eq!, assert_ne! with descriptive messages
+- Cargo.toml needs: [dev-dependencies] stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
 
 For Foundry tests:
-- Create Solidity interface matching the contract ABI
+- Create Solidity interface matching the contract ABI (use camelCase function names)
 - Use forge-std Test contract
 - Mock contract deployment`,
     },
