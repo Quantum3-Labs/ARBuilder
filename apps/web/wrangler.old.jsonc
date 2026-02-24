@@ -1,0 +1,67 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "arbbuilder",
+	"main": ".open-next/worker.js",
+	"compatibility_date": "2025-12-01",
+	"compatibility_flags": [
+		"nodejs_compat",
+		"global_fetch_strictly_public"
+	],
+	"assets": {
+		"binding": "ASSETS",
+		"directory": ".open-next/assets"
+	},
+	"images": {
+		"binding": "IMAGES"
+	},
+	"services": [
+		{
+			"binding": "WORKER_SELF_REFERENCE",
+			"service": "arbbuilder"
+		}
+	],
+	"observability": {
+		"enabled": true
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "arbbuilder",
+			"database_id": "1a6bb2b5-98f9-4578-aa23-b570ce297ca7"
+		}
+	],
+	"vectorize": [
+		{
+			"binding": "VECTORIZE",
+			"index_name": "arbbuilder"
+		}
+	],
+	"ai": {
+		"binding": "AI"
+	},
+	"kv_namespaces": [
+		{
+			"binding": "KV",
+			"id": "58e7ca1020924439be4d058ac29b2dfa"
+		}
+	],
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["ScraperContainer"]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": ["BatchJobDO"]
+		},
+		{
+			"tag": "v3",
+			"deleted_classes": ["ScraperContainer", "BatchJobDO"]
+		}
+	],
+	"vars": {
+		"NEXTJS_ENV": "production",
+		"NEXT_PUBLIC_TURNSTILE_SITE_KEY": "0x4AAAAAACfG3f3JlJLMeZSq",
+		"AUTH_TRUST_HOST": "true"
+	}
+}

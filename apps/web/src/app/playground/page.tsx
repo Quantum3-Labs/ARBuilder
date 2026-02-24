@@ -456,7 +456,6 @@ export default function PlaygroundPage() {
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [userKeys, setUserKeys] = useState<ApiKey[]>([]);
-  const [selectedKeyId, setSelectedKeyId] = useState<string>("session");
   const [authMode, setAuthMode] = useState<AuthMode>("session");
 
   // Check session and fetch keys on mount
@@ -493,8 +492,13 @@ export default function PlaygroundPage() {
   }
 
   async function handleSubmit() {
-    // Check auth
-    if (authMode === "apikey" && !apiKey) {
+    // Determine effective auth: if API key mode with a stored key (no raw value),
+    // fall back to session auth since the user is logged in
+    const useApiKeyAuth = authMode === "apikey" && apiKey;
+    const useSessionAuth = authMode === "session" || (authMode === "apikey" && !apiKey && sessionUser);
+
+    // Block only if truly unauthenticated: no session AND no API key
+    if (!useApiKeyAuth && !useSessionAuth) {
       setError("Please enter your API key or sign in");
       return;
     }
@@ -516,22 +520,50 @@ export default function PlaygroundPage() {
         "Content-Type": "application/json",
       };
 
-      // Use API key auth if in apikey mode, or if user selected a specific key
-      if (authMode === "apikey" && apiKey) {
+      // Use API key auth only if a raw key value is available
+      if (useApiKeyAuth) {
         headers["Authorization"] = `Bearer ${apiKey}`;
       }
-      // Session auth: cookies are sent automatically, no header needed
+      // Otherwise session auth: cookies are sent automatically
 
       const res = await fetch(currentTool.endpoint, {
         method: "POST",
         headers,
+        credentials: "include", // Ensure cookies are sent for session auth
         body: JSON.stringify(inputs),
       });
+
+      // Handle auth expiration: try to refresh session and retry once
+      if (res.status === 401 && !useApiKeyAuth && sessionUser) {
+        // Access token may have expired — try refreshing the session
+        const refreshRes = await fetch("/api/auth/session");
+        const refreshData = (await refreshRes.json()) as { user: SessionUser | null; refreshed?: boolean };
+        if (refreshData.user && refreshData.refreshed) {
+          // Session refreshed — retry the request with new cookies
+          const retryRes = await fetch(currentTool.endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify(inputs),
+          });
+          const retryData = (await retryRes.json()) as { error?: string; [key: string]: unknown };
+          if (!retryRes.ok) {
+            throw new Error(retryData.error || `Request failed (${retryRes.status})`);
+          }
+          setResult(JSON.stringify(retryData, null, 2));
+          return;
+        } else {
+          // Session truly expired — clear session state
+          setSessionUser(null);
+          setAuthMode("apikey");
+          throw new Error("Session expired. Please sign in again or use an API key.");
+        }
+      }
 
       const data = (await res.json()) as { error?: string; [key: string]: unknown };
 
       if (!res.ok) {
-        throw new Error(data.error || "Request failed");
+        throw new Error(data.error || `Request failed (${res.status})`);
       }
 
       setResult(JSON.stringify(data, null, 2));
@@ -667,56 +699,40 @@ export default function PlaygroundPage() {
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {userKeys.length > 0 ? (
-                        <>
-                          <select
-                            value={selectedKeyId}
-                            onChange={(e) => {
-                              setSelectedKeyId(e.target.value);
-                              if (e.target.value !== "manual") {
-                                setApiKey("");
-                              }
-                            }}
-                            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all bg-white"
-                          >
-                            {userKeys.map((key) => (
-                              <option key={key.id} value={key.id}>
-                                {key.name || key.keyPrefix}
-                              </option>
-                            ))}
-                            <option value="manual">Enter key manually...</option>
-                          </select>
-                          {selectedKeyId === "manual" && (
-                            <input
-                              type="password"
-                              value={apiKey}
-                              onChange={(e) => setApiKey(e.target.value)}
-                              placeholder="arb_..."
-                              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
-                            />
-                          )}
-                          <p className="text-xs text-gray-500 px-2">
-                            Note: API key mode requires the full key. Use session mode for automatic auth.
+                      <input
+                        type="password"
+                        value={apiKey}
+                        onChange={(e) => setApiKey(e.target.value)}
+                        placeholder="arb_..."
+                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                      />
+                      {!apiKey && (
+                        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-blue-50 border border-blue-100 rounded-lg">
+                          <svg className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <p className="text-xs text-blue-600">
+                            No key entered — will use your session automatically.
                           </p>
-                        </>
-                      ) : (
-                        <div className="space-y-2">
-                          <input
-                            type="password"
-                            value={apiKey}
-                            onChange={(e) => setApiKey(e.target.value)}
-                            placeholder="arb_..."
-                            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
-                          />
-                          <p className="text-xs text-gray-500 px-2">
+                        </div>
+                      )}
+                      <p className="text-xs text-gray-500 px-2">
+                        {userKeys.length > 0 ? (
+                          <>
+                            You have {userKeys.length} key{userKeys.length > 1 ? "s" : ""}.{" "}
+                            <Link href="/dashboard/keys" className="text-blue-600 hover:text-blue-700">
+                              Manage keys
+                            </Link>
+                          </>
+                        ) : (
+                          <>
                             No keys yet.{" "}
                             <Link href="/dashboard/keys" className="text-blue-600 hover:text-blue-700">
                               Create one
                             </Link>
-                            {" "}or use session mode.
-                          </p>
-                        </div>
-                      )}
+                          </>
+                        )}
+                      </p>
                     </div>
                   )}
                 </div>

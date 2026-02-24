@@ -38,9 +38,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error("Error in askBridging:", error);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Error in askBridging:", message, error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: `Tool error: ${message}` },
       { status: 500 }
     );
   }

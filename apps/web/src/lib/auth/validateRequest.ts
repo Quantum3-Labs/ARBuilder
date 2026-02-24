@@ -120,9 +120,21 @@ export async function validateRequest(
           };
         }
       }
-    } catch {
+    } catch (err) {
+      console.error("Session auth error:", err);
       // Session token invalid, fall through to error
     }
+  }
+
+  // If we had a session token but it failed, return a specific message
+  if (sessionToken) {
+    return {
+      success: false,
+      response: NextResponse.json(
+        { error: "Session expired - please refresh the page to re-authenticate" },
+        { status: 401 }
+      ),
+    };
   }
 
   // No valid auth found
