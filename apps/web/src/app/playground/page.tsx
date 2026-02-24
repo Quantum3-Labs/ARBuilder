@@ -3,7 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 
-type Tool = "context" | "generate" | "ask" | "tests" | "workflow" | "bridge" | "messaging" | "askBridging";
+type Tool =
+  | "context" | "generate" | "ask" | "tests" | "workflow"
+  | "bridge" | "messaging" | "askBridging"
+  | "backend" | "frontend" | "indexer" | "oracle" | "orchestrate";
 
 interface ToolConfig {
   name: string;
@@ -41,7 +44,7 @@ const tools: Record<Tool, ToolConfig> = {
         required: true,
       },
       {
-        name: "top_k",
+        name: "nResults",
         label: "Number of Results",
         type: "select",
         options: [
@@ -63,14 +66,14 @@ const tools: Record<Tool, ToolConfig> = {
     iconColor: "text-emerald-600",
     inputs: [
       {
-        name: "description",
+        name: "prompt",
         label: "Contract Description",
         type: "textarea",
         placeholder: "Describe the contract you want to generate...",
         required: true,
       },
       {
-        name: "context",
+        name: "contextQuery",
         label: "Additional Context",
         type: "textarea",
         placeholder: "Additional context or requirements (optional)",
@@ -107,14 +110,14 @@ const tools: Record<Tool, ToolConfig> = {
     iconColor: "text-amber-600",
     inputs: [
       {
-        name: "code",
+        name: "contractCode",
         label: "Contract Code",
         type: "textarea",
         placeholder: "Paste your Stylus contract code here...",
         required: true,
       },
       {
-        name: "test_type",
+        name: "testTypes",
         label: "Test Type",
         type: "select",
         options: [
@@ -136,7 +139,7 @@ const tools: Record<Tool, ToolConfig> = {
     iconColor: "text-rose-600",
     inputs: [
       {
-        name: "workflow_type",
+        name: "workflowType",
         label: "Workflow Type",
         type: "select",
         options: [
@@ -169,7 +172,7 @@ const tools: Record<Tool, ToolConfig> = {
     iconColor: "text-purple-600",
     inputs: [
       {
-        name: "bridge_type",
+        name: "bridgeType",
         label: "Bridge Type",
         type: "select",
         options: [
@@ -189,7 +192,7 @@ const tools: Record<Tool, ToolConfig> = {
         placeholder: "e.g., 0.1",
       },
       {
-        name: "token_address",
+        name: "tokenAddress",
         label: "Token Address (for ERC20)",
         type: "text",
         placeholder: "0x...",
@@ -207,7 +210,7 @@ const tools: Record<Tool, ToolConfig> = {
     iconColor: "text-cyan-600",
     inputs: [
       {
-        name: "message_type",
+        name: "messageType",
         label: "Message Type",
         type: "select",
         options: [
@@ -238,13 +241,188 @@ const tools: Record<Tool, ToolConfig> = {
         required: true,
       },
       {
-        name: "include_code",
+        name: "includeCodeExample",
         label: "Include Code Example",
         type: "select",
         options: [
           { value: "false", label: "No" },
           { value: "true", label: "Yes" },
         ],
+      },
+    ],
+  },
+  backend: {
+    name: "Generate Backend",
+    description: "NestJS/Express backend with viem integration",
+    endpoint: "/api/v1/tools/backend",
+    icon: (
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+    ),
+    iconBg: "bg-orange-100",
+    iconColor: "text-orange-600",
+    inputs: [
+      {
+        name: "prompt",
+        label: "Backend Description",
+        type: "textarea",
+        placeholder: "Describe the backend you want to generate...",
+        required: true,
+      },
+      {
+        name: "framework",
+        label: "Framework",
+        type: "select",
+        options: [
+          { value: "nestjs", label: "NestJS" },
+          { value: "express", label: "Express" },
+        ],
+      },
+      {
+        name: "contractAbi",
+        label: "Contract ABI (optional)",
+        type: "textarea",
+        placeholder: "Paste contract ABI JSON for auto-generated endpoints...",
+      },
+    ],
+  },
+  frontend: {
+    name: "Generate Frontend",
+    description: "Next.js + wagmi + RainbowKit frontend",
+    endpoint: "/api/v1/tools/frontend",
+    icon: (
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+    ),
+    iconBg: "bg-sky-100",
+    iconColor: "text-sky-600",
+    inputs: [
+      {
+        name: "prompt",
+        label: "Frontend Description",
+        type: "textarea",
+        placeholder: "Describe the frontend you want to generate...",
+        required: true,
+      },
+      {
+        name: "uiFramework",
+        label: "UI Framework",
+        type: "select",
+        options: [
+          { value: "daisyui", label: "DaisyUI (Tailwind)" },
+          { value: "shadcn", label: "shadcn/ui" },
+          { value: "none", label: "None (plain Tailwind)" },
+        ],
+      },
+      {
+        name: "contractAbi",
+        label: "Contract ABI (optional)",
+        type: "textarea",
+        placeholder: "Paste contract ABI JSON for auto-generated hooks...",
+      },
+    ],
+  },
+  indexer: {
+    name: "Generate Indexer",
+    description: "The Graph subgraph for on-chain data",
+    endpoint: "/api/v1/tools/indexer",
+    icon: (
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+    ),
+    iconBg: "bg-indigo-100",
+    iconColor: "text-indigo-600",
+    inputs: [
+      {
+        name: "contractAddress",
+        label: "Contract Address",
+        type: "text",
+        placeholder: "0x...",
+        required: true,
+      },
+      {
+        name: "subgraphType",
+        label: "Subgraph Type",
+        type: "select",
+        options: [
+          { value: "erc20", label: "ERC20 Token" },
+          { value: "erc721", label: "ERC721 NFT" },
+          { value: "defi", label: "DeFi Protocol" },
+          { value: "custom", label: "Custom" },
+        ],
+      },
+      {
+        name: "network",
+        label: "Network",
+        type: "select",
+        options: [
+          { value: "arbitrum-sepolia", label: "Arbitrum Sepolia" },
+          { value: "arbitrum-one", label: "Arbitrum One" },
+        ],
+      },
+    ],
+  },
+  oracle: {
+    name: "Generate Oracle",
+    description: "Chainlink oracle integrations",
+    endpoint: "/api/v1/tools/oracle",
+    icon: (
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+    ),
+    iconBg: "bg-yellow-100",
+    iconColor: "text-yellow-600",
+    inputs: [
+      {
+        name: "oracleType",
+        label: "Oracle Type",
+        type: "select",
+        options: [
+          { value: "price_feed", label: "Price Feed" },
+          { value: "vrf", label: "VRF (Random Numbers)" },
+          { value: "automation", label: "Automation (Keepers)" },
+          { value: "functions", label: "Functions (Off-chain Compute)" },
+        ],
+        required: true,
+      },
+      {
+        name: "network",
+        label: "Network",
+        type: "select",
+        options: [
+          { value: "arbitrum-sepolia", label: "Arbitrum Sepolia" },
+          { value: "arbitrum-one", label: "Arbitrum One" },
+        ],
+      },
+    ],
+  },
+  orchestrate: {
+    name: "Orchestrate dApp",
+    description: "Full-stack dApp scaffolding",
+    endpoint: "/api/v1/tools/orchestrate",
+    icon: (
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+    ),
+    iconBg: "bg-pink-100",
+    iconColor: "text-pink-600",
+    inputs: [
+      {
+        name: "prompt",
+        label: "dApp Description",
+        type: "textarea",
+        placeholder: "Describe your full-stack dApp (e.g., 'A token vending machine with admin dashboard')...",
+        required: true,
+      },
+      {
+        name: "network",
+        label: "Network",
+        type: "select",
+        options: [
+          { value: "arbitrum-sepolia", label: "Arbitrum Sepolia" },
+          { value: "arbitrum-one", label: "Arbitrum One" },
+        ],
+      },
+      {
+        name: "contractAbi",
+        label: "Contract ABI (optional)",
+        type: "textarea",
+        placeholder: "Paste contract ABI JSON to auto-inject into backend and frontend...",
       },
     ],
   },

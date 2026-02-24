@@ -1,0 +1,41 @@
+import { NextRequest, NextResponse } from "next/server";
+import { generateBridgeCode } from "@/lib/tools/generateBridgeCode";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { validateRequest } from "@/lib/auth/validateRequest";
+
+export async function POST(request: NextRequest) {
+  try {
+    const { env } = getCloudflareContext();
+    const auth = await validateRequest(request, env.DB, env.AUTH_SECRET);
+    if (!auth.success) return auth.response;
+
+    const body = (await request.json()) as {
+      bridgeType?: string;
+      amount?: string;
+      tokenAddress?: string;
+      destinationAddress?: string;
+    };
+
+    if (!body.bridgeType) {
+      return NextResponse.json(
+        { error: "Missing required field: bridgeType" },
+        { status: 400 }
+      );
+    }
+
+    const result = generateBridgeCode({
+      bridgeType: body.bridgeType as Parameters<typeof generateBridgeCode>[0]["bridgeType"],
+      amount: body.amount,
+      tokenAddress: body.tokenAddress,
+      destinationAddress: body.destinationAddress,
+    });
+
+    return NextResponse.json(result);
+  } catch (error) {
+    console.error("Error in generateBridgeCode:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
