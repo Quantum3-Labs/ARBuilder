@@ -251,7 +251,7 @@ opt-level = "s"
 **rust-toolchain.toml** (required):
 ```toml
 [toolchain]
-channel = "1.88.0"
+channel = "1.91.0"
 targets = ["wasm32-unknown-unknown"]
 ```
 
@@ -342,7 +342,7 @@ let val = self.items.get(index).unwrap();
 
 ### Key Constraints
 - **24KB size limit** (Brotli-compressed WASM)
-- **Rust 1.88.0** (via rust-toolchain.toml)
+- **Rust 1.91.0** (via rust-toolchain.toml)
 - **No floating point** operations
 - **Yearly reactivation** required
 - **Stylus.toml required** since SDK 0.10.0

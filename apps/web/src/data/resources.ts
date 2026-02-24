@@ -74,7 +74,7 @@ export const STYLUS_CLI = {
   installation: {
     command: "cargo install --force cargo-stylus",
     prerequisites: [
-      "Rust toolchain v1.88.0 (via rust-toolchain.toml)",
+      "Rust toolchain v1.91.0 (via rust-toolchain.toml)",
       "WASM target: rustup target add wasm32-unknown-unknown",
       "Docker (for reproducible builds)",
     ],
@@ -140,7 +140,7 @@ export const BUILD_WORKFLOW = {
   description: "Complete workflow for building a Stylus smart contract",
   prerequisites: [
     { check: "rustup --version", install: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh" },
-    { check: "rustup default", install: "rustup default 1.88.0", note: "Rust 1.88.0 recommended (use rust-toolchain.toml)" },
+    { check: "rustup default", install: "rustup default 1.91.0", note: "Rust 1.91.0 recommended (use rust-toolchain.toml)" },
     { check: "cargo stylus --version", install: "cargo install --force cargo-stylus" },
   ],
   steps: [

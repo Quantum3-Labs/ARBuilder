@@ -372,7 +372,7 @@ ALWAYS use these versions - ignore any outdated version info in retrieved contex
 - stylus-sdk: ${mainVersion} (latest stable, recommended for new projects)
 - alloy-primitives: ${alloyVersion}
 - alloy-sol-types: ${alloyVersion}
-- Rust version: 1.88.0 (via rust-toolchain.toml)
+- Rust version: 1.91.0 (via rust-toolchain.toml)
 
 IMPORTANT SDK 0.10.0 changes:
 - msg::sender() is replaced by self.vm().msg_sender()
@@ -384,7 +384,7 @@ IMPORTANT SDK 0.10.0 changes:
 - For .abi_encode() on errors: import use alloy_sol_types::SolError;
 - Nested mapping writes: chain in one expression: self.map.setter(k1).setter(k2).set(v). Do NOT split into separate variables (causes multiple active borrows)
 - Projects MUST include Stylus.toml with [workspace], [workspace.networks], and [contract] sections
-- Projects MUST include rust-toolchain.toml with channel = "1.88.0"
+- Projects MUST include rust-toolchain.toml with channel = "1.91.0"
 - Projects MUST include src/main.rs — cargo stylus deploy uses cargo run to check constructors
 - ABI export function in 0.10.0 is print_from_args() (NOT print_abi())
 - Package name MUST use underscores (e.g., "my_contract") — hyphens break cargo-stylus WASM lookup

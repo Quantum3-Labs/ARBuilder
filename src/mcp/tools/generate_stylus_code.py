@@ -228,7 +228,7 @@ Dependencies for v{target_version}:
 Required project files (SDK 0.10.0+):
 - Stylus.toml with [workspace], \
 [workspace.networks], and [contract] sections
-- rust-toolchain.toml with channel = "1.88.0"
+- rust-toolchain.toml with channel = "1.91.0"
 - src/main.rs with print_from_args() for ABI export
 
 When generating code:

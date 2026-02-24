@@ -108,7 +108,7 @@ function extractFunctionNames(code: string): string[] {
 }
 
 function generateRustTestInstructions(): string {
-  return `# Running Rust Tests
+  return `# Running Rust Tests (stylus-sdk 0.10.0)
 
 1. Ensure your Cargo.toml has test dependencies:
 \`\`\`toml
@@ -116,20 +116,28 @@ function generateRustTestInstructions(): string {
 stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
 \`\`\`
 
-2. Run tests:
+2. Run tests (use --target to run on host, not WASM):
 \`\`\`bash
-cargo test
+cargo test --target=x86_64-unknown-linux-gnu
+\`\`\`
+Or on macOS:
+\`\`\`bash
+cargo test --target=aarch64-apple-darwin
 \`\`\`
 
 3. Run with output:
 \`\`\`bash
-cargo test -- --nocapture
+cargo test --target=x86_64-unknown-linux-gnu -- --nocapture
 \`\`\`
 
 4. Run specific test:
 \`\`\`bash
-cargo test test_function_name
-\`\`\``;
+cargo test --target=x86_64-unknown-linux-gnu test_function_name
+\`\`\`
+
+Note: The --target flag is needed because Stylus contracts compile to
+wasm32-unknown-unknown by default (via rust-toolchain.toml), but tests
+must run on the host platform. TestVM simulates the Stylus environment.`;
 }
 
 function generateFoundryTestInstructions(): string {
@@ -151,5 +159,15 @@ cargo stylus export-abi > abi.json
 4. Run tests:
 \`\`\`bash
 forge test --fork-url <RPC_URL>
+\`\`\`
+
+5. Run with verbosity:
+\`\`\`bash
+forge test -vvv
+\`\`\`
+
+6. Run specific test:
+\`\`\`bash
+forge test --match-test test_function_name
 \`\`\``;
 }

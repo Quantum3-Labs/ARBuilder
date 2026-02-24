@@ -209,7 +209,7 @@ class TestTemplateVersionConsistency:
         """All templates should have rust_toolchain_toml field (SDK 0.10.0+)."""
         for template in list_templates():
             assert template.rust_toolchain_toml, f"{template.name} missing rust_toolchain_toml"
-            assert "1.88.0" in template.rust_toolchain_toml
+            assert "1.91.0" in template.rust_toolchain_toml
 
     def test_no_deprecated_api_in_templates(self):
         """No template should use deprecated msg::sender() or evm::log() APIs."""
@@ -760,7 +760,7 @@ class TestTemplateCompilation:
         else:
             rust_toolchain = project_dir / "rust-toolchain.toml"
             rust_toolchain.write_text(
-                '[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n'
+                '[toolchain]\nchannel = "1.91.0"\ntargets = ["wasm32-unknown-unknown"]\n'
             )
 
         # Generate Cargo.lock by running cargo update
@@ -869,9 +869,9 @@ class TestTemplateCompilation:
         output = result.stdout + result.stderr
 
         # Skip if failure is from upstream dependency (not template code)
-        # Known issue: alloy-consensus doesn't compile on Rust nightly 1.88.0
+        # Known issue: alloy-consensus doesn't compile on Rust nightly 1.91.0
         if result.returncode != 0 and "alloy-consensus" in output:
-            pytest.skip("Upstream alloy-consensus crate incompatible with Rust nightly 1.88.0")
+            pytest.skip("Upstream alloy-consensus crate incompatible with Rust nightly 1.91.0")
 
         assert result.returncode == 0, (
             f"Template {template.name} tests failed:\n"

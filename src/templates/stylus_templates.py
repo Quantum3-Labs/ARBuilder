@@ -151,7 +151,7 @@ fn main() {
     stylus_counter::print_from_args();
 }""",
     stylus_toml="[workspace]\n\n[workspace.networks]\n\n[contract]\n",
-    rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
+    rust_toolchain_toml='[toolchain]\nchannel = "1.91.0"\ntargets = ["wasm32-unknown-unknown"]\n',
 )
 
 # Vending Machine template - Mappings and time-based logic
@@ -295,7 +295,7 @@ fn main() {
     stylus_vending_machine::print_from_args();
 }""",
     stylus_toml="[workspace]\n\n[workspace.networks]\n\n[contract]\n",
-    rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
+    rust_toolchain_toml='[toolchain]\nchannel = "1.91.0"\ntargets = ["wasm32-unknown-unknown"]\n',
 )
 
 # Simple ERC20 template - Basic token without OpenZeppelin
@@ -524,7 +524,7 @@ fn main() {
     stylus_erc20::print_from_args();
 }""",
     stylus_toml="[workspace]\n\n[workspace.networks]\n\n[contract]\n",
-    rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
+    rust_toolchain_toml='[toolchain]\nchannel = "1.91.0"\ntargets = ["wasm32-unknown-unknown"]\n',
 )
 
 # Access Control template - Owner-only functions
@@ -709,7 +709,7 @@ fn main() {
     stylus_ownable::print_from_args();
 }""",
     stylus_toml="[workspace]\n\n[workspace.networks]\n\n[contract]\n",
-    rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
+    rust_toolchain_toml='[toolchain]\nchannel = "1.91.0"\ntargets = ["wasm32-unknown-unknown"]\n',
 )
 
 # DeFi Vault template - ETH deposits, withdrawals, cross-contract calls
@@ -954,7 +954,7 @@ fn main() {
     stylus_vault::print_from_args();
 }""",
     stylus_toml="[workspace]\n\n[workspace.networks]\n\n[contract]\n",
-    rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
+    rust_toolchain_toml='[toolchain]\nchannel = "1.91.0"\ntargets = ["wasm32-unknown-unknown"]\n',
 )
 
 # NFT Registry template - Dynamic arrays and mappings
@@ -1249,7 +1249,7 @@ fn main() {
     stylus_nft_registry::print_from_args();
 }""",
     stylus_toml="[workspace]\n\n[workspace.networks]\n\n[contract]\n",
-    rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
+    rust_toolchain_toml='[toolchain]\nchannel = "1.91.0"\ntargets = ["wasm32-unknown-unknown"]\n',
 )
 
 # All available templates indexed by contract type

@@ -144,7 +144,7 @@ fn main() {
     stylus_counter::print_from_args();
 }`,
   stylusToml: `[workspace]\n\n[workspace.networks]\n\n[contract]\n`,
-  rustToolchainToml: `[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
+  rustToolchainToml: `[toolchain]\nchannel = "1.91.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
 };
 
 /**
@@ -290,7 +290,7 @@ fn main() {
     stylus_vending_machine::print_from_args();
 }`,
   stylusToml: `[workspace]\n\n[workspace.networks]\n\n[contract]\n`,
-  rustToolchainToml: `[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
+  rustToolchainToml: `[toolchain]\nchannel = "1.91.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
 };
 
 /**
@@ -521,7 +521,7 @@ fn main() {
     stylus_erc20::print_from_args();
 }`,
   stylusToml: `[workspace]\n\n[workspace.networks]\n\n[contract]\n`,
-  rustToolchainToml: `[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
+  rustToolchainToml: `[toolchain]\nchannel = "1.91.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
 };
 
 /**
@@ -707,7 +707,7 @@ fn main() {
     stylus_ownable::print_from_args();
 }`,
   stylusToml: `[workspace]\n\n[workspace.networks]\n\n[contract]\n`,
-  rustToolchainToml: `[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
+  rustToolchainToml: `[toolchain]\nchannel = "1.91.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
 };
 
 /**
@@ -946,7 +946,7 @@ fn main() {
     stylus_vault::print_from_args();
 }`,
   stylusToml: `[workspace]\n\n[workspace.networks]\n\n[contract]\n`,
-  rustToolchainToml: `[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
+  rustToolchainToml: `[toolchain]\nchannel = "1.91.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
 };
 
 /**
@@ -1242,7 +1242,7 @@ fn main() {
     stylus_nft_registry::print_from_args();
 }`,
   stylusToml: `[workspace]\n\n[workspace.networks]\n\n[contract]\n`,
-  rustToolchainToml: `[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
+  rustToolchainToml: `[toolchain]\nchannel = "1.91.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
 };
 
 /**

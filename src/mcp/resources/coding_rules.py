@@ -14,8 +14,8 @@ STYLUS_CODING_RULES = {
         "stylus_sdk": "0.10.0",
         "alloy_primitives": "1.0.1",
         "alloy_sol_types": "1.0.1",
-        "rust_version": "1.88.0",
-        "rust_version_note": "Requires rust-toolchain.toml with channel 1.88.0",
+        "rust_version": "1.91.0",
+        "rust_version_note": "Requires rust-toolchain.toml with channel 1.91.0",
     },
 
     "file_header": '''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
@@ -260,7 +260,7 @@ mod tests {
     "common_pitfalls": [
         "Storage not initialized - Use StorageType::default()",
         "Exceeding 24KB - Optimize release profile, reduce dependencies",
-        "Wrong Rust version - Use 1.88.0 via rust-toolchain.toml",
+        "Wrong Rust version - Use 1.91.0 via rust-toolchain.toml",
         "Missing WASM target - rustup target add wasm32-unknown-unknown",
         "Floating point operations - Not supported in Stylus WASM",
         "Direct std usage - Use #![no_std] with alloc",
@@ -292,7 +292,7 @@ mod tests {
 
     "required_files": {
         "Stylus.toml": '[workspace]\n\n[workspace.networks]\n\n[contract]\n',
-        "rust-toolchain.toml": '[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
+        "rust-toolchain.toml": '[toolchain]\nchannel = "1.91.0"\ntargets = ["wasm32-unknown-unknown"]\n',
     },
 
     "cli_commands": {

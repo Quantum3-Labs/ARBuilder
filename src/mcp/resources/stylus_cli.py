@@ -18,12 +18,12 @@ STYLUS_CLI_RESOURCE = {
     "installation": {
         "command": "cargo install --force cargo-stylus",
         "prerequisites": [
-            "Rust toolchain v1.88.0 (via rust-toolchain.toml)",
+            "Rust toolchain v1.91.0 (via rust-toolchain.toml)",
             "WASM target: rustup target add wasm32-unknown-unknown",
             "Docker (required for reproducible builds and some commands)",
         ],
         "setup_commands": [
-            "rustup default 1.88.0",
+            "rustup default 1.91.0",
             "rustup target add wasm32-unknown-unknown",
             "cargo install --force cargo-stylus",
         ],
@@ -262,8 +262,8 @@ opt-level = "s"
         },
     },
     "rust_requirements": {
-        "version": "1.88.0 (via rust-toolchain.toml)",
-        "note": "SDK 0.10.0 requires rust-toolchain.toml with channel 1.88.0",
+        "version": "1.91.0 (via rust-toolchain.toml)",
+        "note": "SDK 0.10.0 requires rust-toolchain.toml with channel 1.91.0",
         "target": "wasm32-unknown-unknown",
     },
     "size_limits": {
@@ -303,9 +303,9 @@ opt-level = "s"
         "rust_version": {
             "symptoms": ["Compilation errors", "WASM build fails"],
             "solutions": [
-                "Use Rust 1.88.0 via rust-toolchain.toml",
+                "Use Rust 1.91.0 via rust-toolchain.toml",
                 "Ensure WASM target is installed: rustup target add wasm32-unknown-unknown",
-                "Verify rust-toolchain.toml exists with channel = \"1.88.0\"",
+                "Verify rust-toolchain.toml exists with channel = \"1.91.0\"",
             ],
         },
         "docker_required": {

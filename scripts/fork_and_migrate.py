@@ -79,7 +79,7 @@ for _subcat, entries in PROJECT_EXAMPLES.get("stylus", {}).items():
 
 # Required files for SDK 0.10.0
 STYLUS_TOML_CONTENT = "[workspace]\n\n[workspace.networks]\n\n[contract]\n"
-RUST_TOOLCHAIN_CONTENT = '[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n'
+RUST_TOOLCHAIN_CONTENT = '[toolchain]\nchannel = "1.91.0"\ntargets = ["wasm32-unknown-unknown"]\n'
 
 
 def _generate_main_rs(crate_name: str) -> str:
