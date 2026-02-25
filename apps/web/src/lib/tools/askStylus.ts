@@ -196,16 +196,24 @@ function fixCodeInResponse(content: string): string {
       );
     }
 
-    // Fix sol! struct shorthand with camelCase fields
+    // Fix 23: REMOVED — corrupts sol! event/error declarations.
+
+    // Fix 24: .unwrap_or_else(VALUE) → .unwrap_or(VALUE)
     fixed = fixed.replace(
-      /\b([a-z]+[A-Z]\w*)\b(?!\s*:)(?=\s*[,}\n])/g,
-      (_match, ident: string) => {
-        const snake = ident.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
-        if (snake !== ident) {
-          return `${ident}: ${snake}`;
-        }
-        return ident;
-      }
+      /\.unwrap_or_else\((\w+::(?:ZERO|MAX|MIN|ONE))\)/g,
+      ".unwrap_or($1)"
+    );
+
+    // Fix 25: self.vm().log(...)? → self.vm().log(...)
+    fixed = fixed.replace(
+      /(self\.vm\(\)\.log\([^;]*\))\?/g,
+      "$1"
+    );
+
+    // Fix 26: .as_usize() → .to::<usize>()
+    fixed = fixed.replace(
+      /\.as_usize\(\)/g,
+      ".to::<usize>()"
     );
 
     return `\`\`\`${lang}\n${fixed}\`\`\``;

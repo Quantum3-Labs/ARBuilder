@@ -531,19 +531,26 @@ class AskStylusTool(BaseTool):
                         code,
                     )
 
-                # Fix sol! struct shorthand with camelCase fields
-                def _fix_shorthand(m):
-                    ident = m.group(1)
-                    snake = re.sub(
-                        r"([a-z])([A-Z])", r"\1_\2", ident
-                    ).lower()
-                    if snake != ident:
-                        return f"{ident}: {snake}"
-                    return ident
+                # Fix 23: REMOVED — corrupts sol! event/error declarations.
 
+                # Fix 24: .unwrap_or_else(VALUE) → .unwrap_or(VALUE)
                 code = re.sub(
-                    r"\b([a-z]+[A-Z]\w*)\b(?!\s*:)(?=\s*[,}\n])",
-                    _fix_shorthand,
+                    r"\.unwrap_or_else\((\w+::(?:ZERO|MAX|MIN|ONE))\)",
+                    r".unwrap_or(\1)",
+                    code,
+                )
+
+                # Fix 25: self.vm().log(...)? → self.vm().log(...)
+                code = re.sub(
+                    r"(self\.vm\(\)\.log\([^;]*\))\?",
+                    r"\1",
+                    code,
+                )
+
+                # Fix 26: .as_usize() → .to::<usize>()
+                code = re.sub(
+                    r"\.as_usize\(\)",
+                    ".to::<usize>()",
                     code,
                 )
             else:

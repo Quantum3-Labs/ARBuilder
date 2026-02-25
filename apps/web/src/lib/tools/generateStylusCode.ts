@@ -213,19 +213,27 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     );
   }
 
-  // Fix 23: sol! struct shorthand with camelCase fields
-  // LLMs write `Event { fieldName }` (Rust shorthand) but the local
-  // variable is snake_case `field_name`, not camelCase `fieldName`.
-  // Convert shorthand to explicit: `fieldName` → `fieldName: field_name`
+  // Fix 23: REMOVED — corrupts sol! event/error declarations.
+
+  // Fix 24: .unwrap_or_else(VALUE) → .unwrap_or(VALUE)
+  // unwrap_or_else takes a closure, not a value.
   fixed = fixed.replace(
-    /\b([a-z]+[A-Z]\w*)\b(?!\s*:)(?=\s*[,}\n])/g,
-    (_match, ident: string) => {
-      const snake = ident.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
-      if (snake !== ident) {
-        return `${ident}: ${snake}`;
-      }
-      return ident;
-    }
+    /\.unwrap_or_else\((\w+::(?:ZERO|MAX|MIN|ONE))\)/g,
+    ".unwrap_or($1)"
+  );
+
+  // Fix 25: self.vm().log(...)? → self.vm().log(...)
+  // vm().log() returns (), not Result — cannot use ? operator
+  fixed = fixed.replace(
+    /(self\.vm\(\)\.log\([^;]*\))\?/g,
+    "$1"
+  );
+
+  // Fix 26: .as_usize() → .to::<usize>()
+  // U256 does not have as_usize(). Use Uint::to() method.
+  fixed = fixed.replace(
+    /\.as_usize\(\)/g,
+    ".to::<usize>()"
   );
 
   // Fix 13: Remove deprecated stylus_sdk::evm and stylus_sdk::msg imports

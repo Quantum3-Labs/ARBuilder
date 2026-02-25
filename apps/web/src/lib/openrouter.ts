@@ -153,7 +153,12 @@ Key patterns for v${targetVersion}:
 - Call IMPORT: \`Call\` is available from \`prelude::*\` — do NOT add \`use stylus_sdk::call::Call;\` separately
 - DUPLICATE DEFINITIONS: Put all errors in one \`sol! {}\` block. Never define the same error/event name twice
 - sol! STRUCT INIT: When constructing sol! event/error structs, ALWAYS use explicit field assignment: \`MyEvent { fieldName: my_var }\`. NEVER use Rust shorthand \`MyEvent { fieldName }\` — sol! fields are camelCase but Rust variables are snake_case, so shorthand WILL fail.
-- StorageVec API: \`len()\` returns \`usize\` (NOT U256). Use \`usize\` for loop indices. \`setter(i)\` returns \`Option\` — call \`.unwrap()\` before \`.set()\`. \`getter(i)\` also returns \`Option\` — call \`.unwrap()\`.
+- StorageVec API: \`len()\` returns \`usize\` (NOT U256). Use \`usize\` for loop indices. \`setter(i)\` returns \`Option\` — call \`.unwrap()\` before \`.set()\`. \`getter(i)\` also returns \`Option\` — call \`.unwrap()\`. Convert U256 to usize: \`index.to::<usize>()\`. Do NOT use \`.as_usize()\`.
+- SolidityError ENUM: Each variant must wrap a DISTINCT error type. Two variants wrapping the same inner type cause conflicting \`From\` impls.
+- U8 TYPE: \`uint8\` in sol_storage! maps to \`U8\` (Uint<8,1>), NOT native \`u8\`. Set: \`self.field.set(U8::from(18u8))\`. Read: \`self.field.get().to::<u8>()\`.
+- MUTABLE BINDINGS: \`.setter()\` result stored in a variable needs \`let mut\` if methods are called on it.
+- vm().log() returns \`()\` — do NOT use \`?\` after it. Just call: \`self.vm().log(MyEvent { ... });\`
+- unwrap_or vs unwrap_or_else: \`.unwrap_or(VALUE)\` for values, \`.unwrap_or_else(|| VALUE)\` for closures. Do NOT pass a value to unwrap_or_else.
 
 Security best practices:
 - Check for overflows using checked_add/checked_sub
@@ -259,7 +264,12 @@ COMPILATION-CRITICAL — these mistakes WILL break the build:
 - Call IMPORT: \`Call\` comes from \`prelude::*\`. Do NOT add \`use stylus_sdk::call::Call;\` separately.
 - DUPLICATE DEFINITIONS: Put all errors in one \`sol! {}\` block. Never define the same name twice.
 - sol! STRUCT INIT: When constructing sol! event/error structs, ALWAYS use explicit field assignment: \`MyEvent { fieldName: my_var }\`. NEVER use Rust shorthand \`MyEvent { fieldName }\` — sol! fields are camelCase but Rust variables are snake_case.
-- StorageVec API: \`len()\` returns \`usize\` (NOT U256). Use \`usize\` for loop indices. \`setter(i)\` returns \`Option\` — call \`.unwrap()\` before \`.set()\`. \`getter(i)\` also returns \`Option\` — call \`.unwrap()\`.
+- StorageVec API: \`len()\` returns \`usize\` (NOT U256). Use \`usize\` for loop indices. \`setter(i)\` returns \`Option\` — call \`.unwrap()\` before \`.set()\`. Convert U256 to usize: \`index.to::<usize>()\`. Do NOT use \`.as_usize()\`.
+- SolidityError ENUM: Each variant must wrap a DISTINCT error type. Two variants wrapping the same inner type cause conflicting \`From\` impls.
+- U8 TYPE: \`uint8\` → \`U8\` (Uint<8,1>), not native u8. Set: \`U8::from(val)\`. Read: \`.to::<u8>()\`.
+- MUTABLE BINDINGS: \`.setter()\` result stored in a variable needs \`let mut\`.
+- vm().log() returns \`()\` — do NOT use \`?\` after it.
+- unwrap_or vs unwrap_or_else: \`.unwrap_or(VALUE)\` for values, not \`.unwrap_or_else(VALUE)\`.
 
 WHAT YOU MAY DO:
 - Rename the contract struct in sol_storage! to match the user's request (e.g., PredictionMarket, Lottery, etc.)

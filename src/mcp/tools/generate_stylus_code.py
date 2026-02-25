@@ -287,7 +287,37 @@ iterating. `StorageVec::setter(index)` returns \
 `Option<StorageGuardMut>` — MUST call `.unwrap()` \
 before `.set()`. Example: \
 `self.items.setter(i).unwrap().set(val);` \
-For reading: `self.items.getter(i).unwrap()`.
+For reading: `self.items.getter(i).unwrap()`. \
+To convert U256 to usize: `index.to::<usize>()`. \
+Do NOT use `.as_usize()` — it does not exist.
+43. SolidityError ENUM: Each variant MUST wrap a \
+DISTINCT error type. Never have two variants wrapping \
+the same type: `NotOwner(NotOwner)` and \
+`NotTokenOwner(NotOwner)` — `#[derive(SolidityError)]` \
+generates conflicting `From<NotOwner>` impls. \
+Fix: define `error NotTokenOwner(address caller)` \
+as its own distinct error type.
+44. U8 TYPE: `uint8` in sol_storage! maps to `U8` \
+(alias for `Uint<8,1>`), NOT native `u8`. \
+To set: `self.decimals.set(U8::from(18u8))`. \
+To read as u8: `self.decimals.get().to::<u8>()` \
+or `.try_into().unwrap_or(18u8)`. \
+Import U8 from `stylus_sdk::alloy_primitives::U8`.
+45. MUTABLE BINDINGS: When you store a `.setter()` \
+result in a variable and then call methods on it, \
+the binding must be `let mut`. Example: \
+`let mut inner = self.allowances.setter(owner); \
+inner.setter(spender).set(amount);`
+46. vm().log() RETURN TYPE: `self.vm().log(event)` \
+returns `()` (unit type), NOT `Result`. \
+Do NOT use `?` after it. Just call it directly: \
+`self.vm().log(MyEvent {{ field1: val }});`
+47. unwrap_or vs unwrap_or_else: `unwrap_or(VALUE)` \
+takes a direct value. `unwrap_or_else(|| VALUE)` \
+takes a closure. Do NOT pass a value to \
+unwrap_or_else — use unwrap_or instead. \
+Example: `.unwrap_or(U256::ZERO)` NOT \
+`.unwrap_or_else(U256::ZERO)`.
 """
 
 
@@ -396,7 +426,18 @@ camelCase but Rust variables are snake_case.
 - StorageVec API: `len()` returns `usize` (NOT U256). \
 Use `usize` for loop indices. `setter(i)` returns \
 `Option` — call `.unwrap()` before `.set()`. \
-`getter(i)` also returns `Option` — call `.unwrap()`.
+`getter(i)` also returns `Option` — call `.unwrap()`. \
+To convert U256 to usize: `index.to::<usize>()`.
+- SolidityError ENUM: Each variant must wrap a DISTINCT \
+error type. Two variants wrapping the same type cause \
+conflicting `From` impls.
+- U8 TYPE: `uint8` → `U8` (Uint<8,1>), not native u8. \
+Set: `U8::from(18u8)`. Read: `.to::<u8>()`.
+- MUTABLE BINDINGS: `.setter()` result stored in a \
+variable needs `let mut` if methods are called on it.
+- vm().log() returns `()` — do NOT use `?` after it.
+- unwrap_or vs unwrap_or_else: `.unwrap_or(VALUE)` \
+for values, `.unwrap_or_else(|| VALUE)` for closures.
 
 WHAT YOU MAY DO:
 - Rename the contract struct in sol_storage! to \
@@ -1242,28 +1283,33 @@ class GenerateStylusCodeTool(BaseTool):
                     fixed,
                 )
 
-            # Fix 23: sol! struct shorthand with camelCase fields
-            # LLMs write `Event { fieldName }` (Rust shorthand) but the local
-            # variable is snake_case `field_name`, not camelCase `fieldName`.
-            # Convert shorthand to explicit: `fieldName` → `fieldName: field_name`
-            # This matches camelCase identifiers (lowercase+uppercase) inside { }
-            # that appear as standalone (no colon after them), inside struct init
-            def _fix_sol_struct_shorthand(m):
-                """Fix camelCase shorthand in sol! struct initialization."""
-                ident = m.group(1)
-                # Convert camelCase to snake_case
-                snake = re.sub(r"([a-z])([A-Z])", r"\1_\2", ident).lower()
-                # Only fix if the camelCase differs from snake_case
-                if snake != ident:
-                    return f"{ident}: {snake}"
-                return ident
+            # Fix 23: REMOVED — regex cannot distinguish sol! event/error
+            # declarations from struct initialization. Applied inside sol! {}
+            # blocks, it corrupts `event Foo(uint256 fieldName)` into
+            # `event Foo(uint256 fieldName: field_name)` (invalid syntax).
+            # System prompt rule 41 handles this via LLM guidance instead.
 
-            # Match camelCase identifiers in struct init that aren't followed by :
-            # Pattern: word boundary, lowercase letter(s), uppercase letter, more letters,
-            # followed by comma/space/newline/} but NOT by :
+            # Fix 24: .unwrap_or_else(VALUE) → .unwrap_or(VALUE)
+            # unwrap_or_else takes a closure, not a value. Fix for known constants.
             fixed = re.sub(
-                r"\b([a-z]+[A-Z]\w*)\b(?!\s*:)(?=\s*[,}\n])",
-                _fix_sol_struct_shorthand,
+                r"\.unwrap_or_else\((\w+::(?:ZERO|MAX|MIN|ONE))\)",
+                r".unwrap_or(\1)",
+                fixed,
+            )
+
+            # Fix 25: self.vm().log(...)? → self.vm().log(...)
+            # vm().log() returns (), not Result — cannot use ? operator
+            fixed = re.sub(
+                r"(self\.vm\(\)\.log\([^;]*\))\?",
+                r"\1",
+                fixed,
+            )
+
+            # Fix 26: .as_usize() → .to::<usize>()
+            # U256 does not have as_usize(). Use Uint::to() method instead.
+            fixed = re.sub(
+                r"\.as_usize\(\)",
+                ".to::<usize>()",
                 fixed,
             )
         else:
