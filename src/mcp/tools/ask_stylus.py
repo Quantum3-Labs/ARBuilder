@@ -516,6 +516,36 @@ class AskStylusTool(BaseTool):
                     code,
                     flags=re.MULTILINE,
                 )
+
+                # Fix StorageVec .setter(i).set() missing unwrap
+                # Only on dynamic array fields (type[]), not mapping .setter()
+                ask_array_fields = set()
+                for af_m in re.finditer(
+                    r"\b\w+\[\]\s+(\w+)\s*;", code
+                ):
+                    ask_array_fields.add(af_m.group(1))
+                for af in ask_array_fields:
+                    code = re.sub(
+                        rf"\.{af}\.setter\(([^)]+)\)\.set\(",
+                        rf".{af}.setter(\1).unwrap().set(",
+                        code,
+                    )
+
+                # Fix sol! struct shorthand with camelCase fields
+                def _fix_shorthand(m):
+                    ident = m.group(1)
+                    snake = re.sub(
+                        r"([a-z])([A-Z])", r"\1_\2", ident
+                    ).lower()
+                    if snake != ident:
+                        return f"{ident}: {snake}"
+                    return ident
+
+                code = re.sub(
+                    r"\b([a-z]+[A-Z]\w*)\b(?!\s*:)(?=\s*[,}\n])",
+                    _fix_shorthand,
+                    code,
+                )
             else:
                 # ── 0.9.x fixes (reverse) ──
 

@@ -273,6 +273,21 @@ that return `Result`, ALWAYS use `?` to propagate: \
 40. DUPLICATE DEFINITIONS: Never define the same \
 error or event name twice with different fields. \
 Put all errors in a single `sol! {{ }}` block.
+41. sol! STRUCT INITIALIZATION: When constructing \
+sol! event/error structs, ALWAYS use explicit field \
+assignment: `MyEvent {{ fieldName: my_var }}`. \
+NEVER use Rust shorthand `MyEvent {{ fieldName }}` \
+because sol! fields are camelCase but Rust variables \
+are snake_case — shorthand WILL fail to compile. \
+Example: `OwnershipTransferred {{ newOwner: new_owner }}` \
+NOT `OwnershipTransferred {{ newOwner }}`.
+42. StorageVec API: `StorageVec::len()` returns `usize` \
+(NOT `U256`). Use `usize` for loop indices when \
+iterating. `StorageVec::setter(index)` returns \
+`Option<StorageGuardMut>` — MUST call `.unwrap()` \
+before `.set()`. Example: \
+`self.items.setter(i).unwrap().set(val);` \
+For reading: `self.items.getter(i).unwrap()`.
 """
 
 
@@ -373,6 +388,15 @@ Use `event Paused(address)` and `error ContractPaused()`.
 Do NOT add `use stylus_sdk::call::Call;` separately.
 - DUPLICATE DEFINITIONS: Put all errors in one \
 `sol! {{ }}` block. Never define the same name twice.
+- sol! STRUCT INIT: When constructing sol! event/error \
+structs, ALWAYS use explicit field assignment: \
+`MyEvent {{ fieldName: my_var }}`. NEVER use Rust \
+shorthand `MyEvent {{ fieldName }}` — sol! fields are \
+camelCase but Rust variables are snake_case.
+- StorageVec API: `len()` returns `usize` (NOT U256). \
+Use `usize` for loop indices. `setter(i)` returns \
+`Option` — call `.unwrap()` before `.set()`. \
+`getter(i)` also returns `Option` — call `.unwrap()`.
 
 WHAT YOU MAY DO:
 - Rename the contract struct in sol_storage! to \
@@ -1198,6 +1222,49 @@ class GenerateStylusCodeTool(BaseTool):
                 "",
                 fixed,
                 flags=re.MULTILINE,
+            )
+
+            # Fix 22: StorageVec .setter(i).set(v) → .setter(i).unwrap().set(v)
+            # StorageVec::setter(usize) returns Option, needs unwrap.
+            # BUT mapping .setter(key) does NOT return Option — no unwrap needed.
+            # Strategy: detect dynamic array fields from sol_storage! (type[])
+            # and only add .unwrap() on those fields.
+            array_fields = set()
+            for af_match in re.finditer(
+                r"\b\w+\[\]\s+(\w+)\s*;", fixed
+            ):
+                array_fields.add(af_match.group(1))
+            for af in array_fields:
+                # .field.setter(x).set( → .field.setter(x).unwrap().set(
+                fixed = re.sub(
+                    rf"\.{af}\.setter\(([^)]+)\)\.set\(",
+                    rf".{af}.setter(\1).unwrap().set(",
+                    fixed,
+                )
+
+            # Fix 23: sol! struct shorthand with camelCase fields
+            # LLMs write `Event { fieldName }` (Rust shorthand) but the local
+            # variable is snake_case `field_name`, not camelCase `fieldName`.
+            # Convert shorthand to explicit: `fieldName` → `fieldName: field_name`
+            # This matches camelCase identifiers (lowercase+uppercase) inside { }
+            # that appear as standalone (no colon after them), inside struct init
+            def _fix_sol_struct_shorthand(m):
+                """Fix camelCase shorthand in sol! struct initialization."""
+                ident = m.group(1)
+                # Convert camelCase to snake_case
+                snake = re.sub(r"([a-z])([A-Z])", r"\1_\2", ident).lower()
+                # Only fix if the camelCase differs from snake_case
+                if snake != ident:
+                    return f"{ident}: {snake}"
+                return ident
+
+            # Match camelCase identifiers in struct init that aren't followed by :
+            # Pattern: word boundary, lowercase letter(s), uppercase letter, more letters,
+            # followed by comma/space/newline/} but NOT by :
+            fixed = re.sub(
+                r"\b([a-z]+[A-Z]\w*)\b(?!\s*:)(?=\s*[,}\n])",
+                _fix_sol_struct_shorthand,
+                fixed,
             )
         else:
             # 0.9.x fixes (reverse direction)

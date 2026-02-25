@@ -181,6 +181,33 @@ function fixCodeInResponse(content: string): string {
     // Remove incorrect Call import
     fixed = fixed.replace(/^use stylus_sdk::call::Call;\s*$/gm, "");
 
+    // Fix StorageVec .setter(i).set() missing unwrap
+    // Only on dynamic array fields (type[]), not mapping .setter()
+    const askArrayFields = new Set<string>();
+    const askArrayPattern = /\b\w+\[\]\s+(\w+)\s*;/g;
+    let askArrayMatch;
+    while ((askArrayMatch = askArrayPattern.exec(fixed)) !== null) {
+      askArrayFields.add(askArrayMatch[1]);
+    }
+    for (const af of askArrayFields) {
+      fixed = fixed.replace(
+        new RegExp(`\\.${af}\\.setter\\(([^)]+)\\)\\.set\\(`, "g"),
+        `.${af}.setter($1).unwrap().set(`
+      );
+    }
+
+    // Fix sol! struct shorthand with camelCase fields
+    fixed = fixed.replace(
+      /\b([a-z]+[A-Z]\w*)\b(?!\s*:)(?=\s*[,}\n])/g,
+      (_match, ident: string) => {
+        const snake = ident.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
+        if (snake !== ident) {
+          return `${ident}: ${snake}`;
+        }
+        return ident;
+      }
+    );
+
     return `\`\`\`${lang}\n${fixed}\`\`\``;
   });
 }

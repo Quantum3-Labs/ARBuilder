@@ -152,6 +152,8 @@ Key patterns for v${targetVersion}:
 - RESULT PROPAGATION: Always use \`?\` when calling helper methods that return Result: \`self.check()?\` not \`self.check()\`
 - Call IMPORT: \`Call\` is available from \`prelude::*\` — do NOT add \`use stylus_sdk::call::Call;\` separately
 - DUPLICATE DEFINITIONS: Put all errors in one \`sol! {}\` block. Never define the same error/event name twice
+- sol! STRUCT INIT: When constructing sol! event/error structs, ALWAYS use explicit field assignment: \`MyEvent { fieldName: my_var }\`. NEVER use Rust shorthand \`MyEvent { fieldName }\` — sol! fields are camelCase but Rust variables are snake_case, so shorthand WILL fail.
+- StorageVec API: \`len()\` returns \`usize\` (NOT U256). Use \`usize\` for loop indices. \`setter(i)\` returns \`Option\` — call \`.unwrap()\` before \`.set()\`. \`getter(i)\` also returns \`Option\` — call \`.unwrap()\`.
 
 Security best practices:
 - Check for overflows using checked_add/checked_sub
@@ -256,6 +258,8 @@ COMPILATION-CRITICAL — these mistakes WILL break the build:
 - RESULT PROPAGATION: Always use \`?\` to propagate Result from helper methods.
 - Call IMPORT: \`Call\` comes from \`prelude::*\`. Do NOT add \`use stylus_sdk::call::Call;\` separately.
 - DUPLICATE DEFINITIONS: Put all errors in one \`sol! {}\` block. Never define the same name twice.
+- sol! STRUCT INIT: When constructing sol! event/error structs, ALWAYS use explicit field assignment: \`MyEvent { fieldName: my_var }\`. NEVER use Rust shorthand \`MyEvent { fieldName }\` — sol! fields are camelCase but Rust variables are snake_case.
+- StorageVec API: \`len()\` returns \`usize\` (NOT U256). Use \`usize\` for loop indices. \`setter(i)\` returns \`Option\` — call \`.unwrap()\` before \`.set()\`. \`getter(i)\` also returns \`Option\` — call \`.unwrap()\`.
 
 WHAT YOU MAY DO:
 - Rename the contract struct in sol_storage! to match the user's request (e.g., PredictionMarket, Lottery, etc.)

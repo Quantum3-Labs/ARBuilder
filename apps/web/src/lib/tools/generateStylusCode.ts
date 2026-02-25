@@ -196,6 +196,38 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
   // Call is available from prelude::* — no separate import needed
   fixed = fixed.replace(/^use stylus_sdk::call::Call;\s*$/gm, "");
 
+  // Fix 22: StorageVec .setter(i).set(v) → .setter(i).unwrap().set(v)
+  // StorageVec::setter(usize) returns Option, needs unwrap.
+  // BUT mapping .setter(key) does NOT return Option — no unwrap needed.
+  // Only add .unwrap() on dynamic array fields (type[] in sol_storage!).
+  const arrayFields = new Set<string>();
+  const arrayFieldPattern = /\b\w+\[\]\s+(\w+)\s*;/g;
+  let arrayFieldMatch;
+  while ((arrayFieldMatch = arrayFieldPattern.exec(fixed)) !== null) {
+    arrayFields.add(arrayFieldMatch[1]);
+  }
+  for (const af of arrayFields) {
+    fixed = fixed.replace(
+      new RegExp(`\\.${af}\\.setter\\(([^)]+)\\)\\.set\\(`, "g"),
+      `.${af}.setter($1).unwrap().set(`
+    );
+  }
+
+  // Fix 23: sol! struct shorthand with camelCase fields
+  // LLMs write `Event { fieldName }` (Rust shorthand) but the local
+  // variable is snake_case `field_name`, not camelCase `fieldName`.
+  // Convert shorthand to explicit: `fieldName` → `fieldName: field_name`
+  fixed = fixed.replace(
+    /\b([a-z]+[A-Z]\w*)\b(?!\s*:)(?=\s*[,}\n])/g,
+    (_match, ident: string) => {
+      const snake = ident.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
+      if (snake !== ident) {
+        return `${ident}: ${snake}`;
+      }
+      return ident;
+    }
+  );
+
   // Fix 13: Remove deprecated stylus_sdk::evm and stylus_sdk::msg imports
   fixed = fixed.replace(/^use stylus_sdk::evm.*;\s*$/gm, "");
   fixed = fixed.replace(/^use stylus_sdk::msg.*;\s*$/gm, "");
