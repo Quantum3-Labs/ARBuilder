@@ -996,7 +996,7 @@ pub enum NftError {
 sol_storage! {
     #[entrypoint]
     pub struct NftRegistry {
-        address owner;
+        address contract_owner;
         uint256 next_token_id;
         mapping(uint256 => address) owners;
         mapping(address => uint256) balances;
@@ -1007,9 +1007,9 @@ sol_storage! {
 
 #[public]
 impl NftRegistry {
-    /// Initialize the registry with deployer as owner
+    /// Initialize the registry with deployer as contract owner
     pub fn initialize(&mut self) {
-        self.owner.set(self.vm().msg_sender());
+        self.contract_owner.set(self.vm().msg_sender());
     }
 
     /// Mint a new NFT to the given address

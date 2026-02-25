@@ -159,10 +159,42 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
   // For each storage field, fix bare <var>.<field> reads (not followed by . or ()
   // This catches both self.<field> AND nested struct fields like market.<field>
   // where market = self.markets.get(id) returns a storage accessor
+  // Use \b word boundary to prevent matching field prefixes (e.g., "owner" matching "owners")
   for (const field of storageFields) {
-    const bareFieldPattern = new RegExp(`(\\w+)\\.${field}(?!\\s*[.(])`, "g");
+    const bareFieldPattern = new RegExp(`(\\w+)\\.${field}\\b(?!\\s*[.(])`, "g");
     fixed = fixed.replace(bareFieldPattern, `$1.${field}.get()`);
   }
+
+  // Fix 17: self.vm().address() → self.vm().contract_address()
+  fixed = fixed.replace(/self\.vm\(\)\.address\(\)/g, "self.vm().contract_address()");
+
+  // Fix 18: U256::zero() / U128::zero() → U256::ZERO / U128::ZERO
+  fixed = fixed.replace(/U256::zero\(\)/g, "U256::ZERO");
+  fixed = fixed.replace(/U128::zero\(\)/g, "U128::ZERO");
+  fixed = fixed.replace(/U64::zero\(\)/g, "U64::ZERO");
+
+  // Fix 19: StorageString - .set() → .set_str(), .get() → .get_string()
+  const stringFields = new Set<string>();
+  const stringFieldPattern = /\bstring\s+(\w+)\s*;/g;
+  let stringFieldMatch;
+  while ((stringFieldMatch = stringFieldPattern.exec(fixed)) !== null) {
+    stringFields.add(stringFieldMatch[1]);
+  }
+  for (const sf of stringFields) {
+    fixed = fixed.replace(new RegExp(`\\.${sf}\\.set\\(`, "g"), `.${sf}.set_str(`);
+    fixed = fixed.replace(new RegExp(`\\.${sf}\\.get\\(\\)`, "g"), `.${sf}.get_string()`);
+  }
+
+  // Fix 20: std::time::SystemTime — not available in no_std WASM
+  fixed = fixed.replace(/^use std::time.*;\s*$/gm, "");
+  fixed = fixed.replace(
+    /std::time::SystemTime::now\(\)[^;]*/g,
+    "self.vm().block_timestamp()"
+  );
+
+  // Fix 21: Remove incorrect `use stylus_sdk::call::Call;` import
+  // Call is available from prelude::* — no separate import needed
+  fixed = fixed.replace(/^use stylus_sdk::call::Call;\s*$/gm, "");
 
   // Fix 13: Remove deprecated stylus_sdk::evm and stylus_sdk::msg imports
   fixed = fixed.replace(/^use stylus_sdk::evm.*;\s*$/gm, "");

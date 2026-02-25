@@ -59,6 +59,7 @@ dataSources:
         - Token
         - Account
         - Transfer
+        - Approval
       abis:
         - name: ERC20
           file: ./abis/ERC20.json

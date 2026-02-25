@@ -168,6 +168,19 @@ function fixCodeInResponse(content: string): string {
     fixed = fixed.replace(/StorageU64/g, "uint64");
     fixed = fixed.replace(/StorageU128/g, "uint128");
 
+    // Fix self.vm().address() → self.vm().contract_address()
+    fixed = fixed.replace(/self\.vm\(\)\.address\(\)/g, "self.vm().contract_address()");
+
+    // Fix U256::zero() → U256::ZERO
+    fixed = fixed.replace(/U256::zero\(\)/g, "U256::ZERO");
+    fixed = fixed.replace(/U128::zero\(\)/g, "U128::ZERO");
+
+    // Fix std::time in no_std
+    fixed = fixed.replace(/^use std::time.*;\s*$/gm, "");
+
+    // Remove incorrect Call import
+    fixed = fixed.replace(/^use stylus_sdk::call::Call;\s*$/gm, "");
+
     return `\`\`\`${lang}\n${fixed}\`\`\``;
   });
 }

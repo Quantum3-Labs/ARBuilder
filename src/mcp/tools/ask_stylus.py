@@ -493,6 +493,29 @@ class AskStylusTool(BaseTool):
                 code = code.replace("StorageU8", "uint8")
                 code = code.replace("StorageU64", "uint64")
                 code = code.replace("StorageU128", "uint128")
+
+                # Fix self.vm().address() → self.vm().contract_address()
+                code = code.replace(
+                    "self.vm().address()",
+                    "self.vm().contract_address()",
+                )
+
+                # Fix U256::zero() → U256::ZERO
+                code = re.sub(r"U256::zero\(\)", "U256::ZERO", code)
+                code = re.sub(r"U128::zero\(\)", "U128::ZERO", code)
+
+                # Fix std::time in no_std
+                code = re.sub(
+                    r"^use std::time.*;\s*$", "", code, flags=re.MULTILINE
+                )
+
+                # Remove incorrect Call import
+                code = re.sub(
+                    r"^use stylus_sdk::call::Call;\s*$",
+                    "",
+                    code,
+                    flags=re.MULTILINE,
+                )
             else:
                 # ── 0.9.x fixes (reverse) ──
 

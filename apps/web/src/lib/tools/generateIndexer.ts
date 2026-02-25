@@ -338,6 +338,7 @@ dataSources:
         - Token
         - Account
         - Transfer
+        - Approval
       abis:
         - name: ${abiName}
           file: ./abis/${abiName}.json
@@ -361,7 +362,10 @@ export function generateIndexer(args: GenerateIndexerArgs): GenerateIndexerResul
   // Select template based on type
   let template = ERC20_TEMPLATE;
   let abiName = "Token";
-  let eventSignatures = ["Transfer(indexed address,indexed address,uint256)"];
+  let eventSignatures = [
+    "Transfer(indexed address,indexed address,uint256)",
+    "Approval(indexed address,indexed address,uint256)",
+  ];
 
   if (subgraphType === "erc721") {
     template = ERC721_TEMPLATE;

@@ -132,10 +132,11 @@ export async function rerankResults(
   if (results.length === 0) return [];
 
   // Use BGE reranker to score query-document pairs
+  // Note: top_k removed — Workers AI reranker expects string type for top_k;
+  // we handle top-k selection ourselves by slicing after reranking
   const response = await ai.run("@cf/baai/bge-reranker-base", {
     query,
     contexts: results.map((r) => ({ text: r.content })),
-    top_k: topK,
   });
 
   // Map back the scores to results
@@ -151,7 +152,10 @@ export async function rerankResults(
     }
   }
 
-  return reranked;
+  // Sort by reranker score descending and take top K
+  return reranked
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK);
 }
 
 /**

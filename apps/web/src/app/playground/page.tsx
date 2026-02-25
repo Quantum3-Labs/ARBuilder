@@ -456,6 +456,7 @@ export default function PlaygroundPage() {
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [userKeys, setUserKeys] = useState<ApiKey[]>([]);
+  const [selectedKeyId, setSelectedKeyId] = useState<string>("session");
   const [authMode, setAuthMode] = useState<AuthMode>("session");
 
   // Check session and fetch keys on mount
@@ -699,40 +700,67 @@ export default function PlaygroundPage() {
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <input
-                        type="password"
-                        value={apiKey}
-                        onChange={(e) => setApiKey(e.target.value)}
-                        placeholder="arb_..."
-                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
-                      />
-                      {!apiKey && (
-                        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-blue-50 border border-blue-100 rounded-lg">
-                          <svg className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <p className="text-xs text-blue-600">
-                            No key entered — will use your session automatically.
-                          </p>
-                        </div>
-                      )}
-                      <p className="text-xs text-gray-500 px-2">
-                        {userKeys.length > 0 ? (
-                          <>
-                            You have {userKeys.length} key{userKeys.length > 1 ? "s" : ""}.{" "}
+                      {userKeys.length > 0 ? (
+                        <>
+                          <select
+                            value={selectedKeyId}
+                            onChange={(e) => {
+                              setSelectedKeyId(e.target.value);
+                              if (e.target.value !== "manual") {
+                                setApiKey("");
+                              }
+                            }}
+                            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all bg-white"
+                          >
+                            {userKeys.map((key) => (
+                              <option key={key.id} value={key.id}>
+                                {key.name || key.keyPrefix}
+                              </option>
+                            ))}
+                            <option value="manual">Enter key manually...</option>
+                          </select>
+                          {selectedKeyId === "manual" ? (
+                            <input
+                              type="password"
+                              value={apiKey}
+                              onChange={(e) => setApiKey(e.target.value)}
+                              placeholder="arb_..."
+                              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                            />
+                          ) : (
+                            <div className="flex items-center gap-1.5 px-2 py-1.5 bg-blue-50 border border-blue-100 rounded-lg">
+                              <svg className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              <p className="text-xs text-blue-600">
+                                Using your session to authenticate (key selected for tracking).
+                              </p>
+                            </div>
+                          )}
+                          <p className="text-xs text-gray-500 px-2">
                             <Link href="/dashboard/keys" className="text-blue-600 hover:text-blue-700">
                               Manage keys
                             </Link>
-                          </>
-                        ) : (
-                          <>
+                          </p>
+                        </>
+                      ) : (
+                        <div className="space-y-2">
+                          <input
+                            type="password"
+                            value={apiKey}
+                            onChange={(e) => setApiKey(e.target.value)}
+                            placeholder="arb_..."
+                            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                          />
+                          <p className="text-xs text-gray-500 px-2">
                             No keys yet.{" "}
                             <Link href="/dashboard/keys" className="text-blue-600 hover:text-blue-700">
                               Create one
                             </Link>
-                          </>
-                        )}
-                      </p>
+                            {" "}or use session mode.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

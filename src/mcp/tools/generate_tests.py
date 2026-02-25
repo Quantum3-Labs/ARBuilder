@@ -41,6 +41,15 @@ STORAGE ACCESS: ALWAYS use .get() to read: `self.field.get()` NOT `self.field`. 
 Use .set() to write. For mappings: `self.map.get(key)` and \
 `self.map.setter(key).set(val)`.
 
+EVENT CHECKING: Use `vm.get_emitted_logs()` to get emitted events. \
+Do NOT use `vm.logs()` — it does not exist. \
+The return type is `Vec<(Vec<B256>, Vec<u8>)>` where each tuple is (topics, data). \
+Do NOT use a `Log` type or `.data` field — these don't exist in stylus-test. \
+Example: `let logs = vm.get_emitted_logs(); assert_eq!(logs.len(), 1);`
+
+ZERO CONSTANTS: Use `U256::ZERO`, `Address::ZERO` (uppercase). \
+Do NOT use `U256::zero()` or `Address::zero()` — they don't exist.
+
 Cargo.toml needs:
 [dev-dependencies]
 stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }

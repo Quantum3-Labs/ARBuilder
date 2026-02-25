@@ -35,11 +35,11 @@ export interface ChatCompletionResponse {
   };
 }
 
-// Default models - using Gemini for all operations
+// Default models
 export const MODELS = {
-  CODE_GEN: "google/gemini-3-flash-preview",
-  QA: "google/gemini-3-flash-preview",
-  FAST: "google/gemini-3-flash-preview",
+  CODE_GEN: "openai/gpt-oss-120b",
+  QA: "openai/gpt-oss-120b",
+  FAST: "openai/gpt-oss-120b",
 } as const;
 
 /**
@@ -143,6 +143,15 @@ Key patterns for v${targetVersion}:
 - BORROW CHECKER: Extract values to local vars before combining storage reads/writes. Never \`self.field.setter(self.vm().something())\`.
 - sol! EVENT/ERROR FIELDS: Use camelCase (Solidity convention): \`tokenId\` NOT \`token_id\`.
 - On Arbitrum Sepolia, MetaMask may underestimate maxFeePerGas — add explicit gas overrides if "max fee per gas less than block base fee"
+- CONTRACT ADDRESS: Use \`self.vm().contract_address()\` — NOT \`self.vm().address()\` which does not exist
+- ZERO CONSTANTS: Use \`U256::ZERO\`, \`Address::ZERO\` (uppercase const) — NOT \`U256::zero()\` or \`Address::zero()\` which do not exist
+- BLOCK TIMESTAMP: \`self.vm().block_timestamp()\` returns \`u64\`. Wrap with \`U256::from()\` before storing in uint256 fields
+- StorageString: Use \`.set_str("value")\` and \`.get_string()\` — NOT \`.set()\` or \`.get()\` on string storage fields
+- NO STD: Do NOT use \`std::time\`, \`std::collections\`, or any std library. For timestamps: \`self.vm().block_timestamp()\`
+- EVENT/ERROR NAMING: Never give an event and error the same name — they generate conflicting Rust structs. Use distinct names like \`event Paused(address)\` + \`error ContractPaused()\`
+- RESULT PROPAGATION: Always use \`?\` when calling helper methods that return Result: \`self.check()?\` not \`self.check()\`
+- Call IMPORT: \`Call\` is available from \`prelude::*\` — do NOT add \`use stylus_sdk::call::Call;\` separately
+- DUPLICATE DEFINITIONS: Put all errors in one \`sol! {}\` block. Never define the same error/event name twice
 
 Security best practices:
 - Check for overflows using checked_add/checked_sub
@@ -238,6 +247,15 @@ COMPILATION-CRITICAL — these mistakes WILL break the build:
 - DYNAMIC ARRAYS: In sol_storage!, declare as \`uint256[] items;\`. Append with \`self.items.push(val)\` for primitives, \`self.items.grow()\` for structs. Do NOT use \`.setter(len).unwrap()\`.
 - BORROW CHECKER: Extract values to local vars before combining storage reads and writes.
 - sol! EVENT/ERROR FIELDS: Use camelCase (Solidity convention): \`tokenId\` NOT \`token_id\`.
+- CONTRACT ADDRESS: \`self.vm().contract_address()\` NOT \`self.vm().address()\` (does not exist).
+- ZERO CONSTANTS: \`U256::ZERO\`, \`Address::ZERO\` (uppercase const). NOT \`U256::zero()\` (does not exist).
+- BLOCK TIMESTAMP: \`self.vm().block_timestamp()\` returns \`u64\`. Wrap with \`U256::from()\` before storing in uint256 fields.
+- StorageString: \`.set_str("val")\` and \`.get_string()\`. NOT \`.set()\` or \`.get()\`.
+- NO STD: Do NOT use \`std::time\`, \`std::collections\`. For timestamps: \`self.vm().block_timestamp()\`.
+- EVENT/ERROR NAMING: Never give an event and error the same name — they generate conflicting Rust structs. Use \`event Paused(address)\` and \`error ContractPaused()\`.
+- RESULT PROPAGATION: Always use \`?\` to propagate Result from helper methods.
+- Call IMPORT: \`Call\` comes from \`prelude::*\`. Do NOT add \`use stylus_sdk::call::Call;\` separately.
+- DUPLICATE DEFINITIONS: Put all errors in one \`sol! {}\` block. Never define the same name twice.
 
 WHAT YOU MAY DO:
 - Rename the contract struct in sol_storage! to match the user's request (e.g., PredictionMarket, Lottery, etc.)
@@ -532,6 +550,9 @@ For Rust native tests (stylus-sdk 0.10.0):
 - Use vm.set_block_timestamp(ts) to set block.timestamp
 - Test all public functions with happy path, error cases, and edge cases
 - Use assert!, assert_eq!, assert_ne! with descriptive messages
+- EVENT CHECKING: Use \`vm.get_emitted_logs()\` to check events. Do NOT use \`vm.logs()\` — it does not exist. Return type is \`Vec<(Vec<B256>, Vec<u8>)>\`. Do NOT use a \`Log\` type — it doesn't exist in stylus-test.
+- ZERO CONSTANTS: Use \`U256::ZERO\`, \`Address::ZERO\` (uppercase). Do NOT use \`U256::zero()\` or \`Address::zero()\`.
+- STORAGE ACCESS: ALWAYS use \`.get()\` to read storage, \`.set()\` to write, \`.setter(key).set(val)\` for mappings
 - Cargo.toml needs: [dev-dependencies] stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
 
 For Foundry tests:

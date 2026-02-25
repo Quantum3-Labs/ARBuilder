@@ -170,8 +170,8 @@ ruff check .
 - Dimensions: 1024
 
 ### LLM Models
-- Code generation: `deepseek/deepseek-v3.2`
-- Q&A: `google/gemini-2.0-flash-001`
+- Code generation: `openai/gpt-oss-120b`
+- Q&A: `openai/gpt-oss-120b`
 
 ## Stylus Development Guidelines
 
@@ -436,7 +436,7 @@ echo '{"method": "tools/call", "params": {"name": "ask_stylus", "arguments": {"q
 Required in `.env`:
 ```env
 OPENROUTER_API_KEY=your-api-key
-DEFAULT_MODEL=deepseek/deepseek-v3.2
+DEFAULT_MODEL=openai/gpt-oss-120b
 DEFAULT_EMBEDDING=baai/bge-m3
 ```
 

@@ -240,6 +240,39 @@ When generating code:
 (check for overflows, validate inputs)
 - Do NOT use deprecated msg::sender(), \
 msg::value(), or evm::log() — use self.vm() methods
+32. CONTRACT ADDRESS: Use `self.vm().contract_address()` \
+to get this contract's address. Do NOT use \
+`self.vm().address()` — it does not exist.
+33. ZERO CONSTANTS: Use uppercase constants \
+`U256::ZERO`, `Address::ZERO`, `U128::ZERO`. \
+Do NOT use `U256::zero()` or `Address::zero()` \
+— these functions do not exist.
+34. BLOCK TIMESTAMP: `self.vm().block_timestamp()` \
+returns `u64`. When storing in a `uint256` field, \
+wrap with `U256::from(self.vm().block_timestamp())`.
+35. StorageString: Use `.set_str("value")` to write \
+and `.get_string()` to read. Do NOT use `.set()` or \
+`.get()` on string storage fields — they don't exist.
+36. NO STD LIBRARY: This is a `no_std` WASM environment. \
+Do NOT use `std::time`, `std::collections`, `std::io`, \
+or any other std library. For timestamps use \
+`self.vm().block_timestamp()`.
+37. EVENT/ERROR NAMING: Never give an event and error \
+the same name. For example, do NOT define both \
+`event Paused(address account)` and `error Paused()` \
+— they generate conflicting Rust structs. Use distinct \
+names like `event Paused(address)` and \
+`error ContractPaused()`.
+38. RESULT PROPAGATION: When calling helper methods \
+that return `Result`, ALWAYS use `?` to propagate: \
+`self._require_owner()?;` — NOT \
+`self._require_owner();` which silently ignores errors.
+39. Call IMPORT: `Call` is available from \
+`stylus_sdk::prelude::*` — do NOT add \
+`use stylus_sdk::call::Call;` separately.
+40. DUPLICATE DEFINITIONS: Never define the same \
+error or event name twice with different fields. \
+Put all errors in a single `sol! {{ }}` block.
 """
 
 
@@ -319,6 +352,27 @@ before combining storage reads and writes: \
 self.balances.setter(sender).set(amount);`
 - sol! EVENT/ERROR FIELDS: Use camelCase \
 (Solidity convention): `tokenId` NOT `token_id`.
+- CONTRACT ADDRESS: `self.vm().contract_address()` \
+NOT `self.vm().address()` (does not exist).
+- ZERO CONSTANTS: `U256::ZERO`, `Address::ZERO` \
+(uppercase const). NOT `U256::zero()` (does not exist).
+- BLOCK TIMESTAMP: `self.vm().block_timestamp()` \
+returns `u64`. Wrap with `U256::from()` before storing \
+in uint256 fields.
+- StorageString: `.set_str("val")` and `.get_string()`. \
+NOT `.set()` or `.get()`.
+- NO STD: Do NOT use `std::time`, `std::collections`. \
+For timestamps: `self.vm().block_timestamp()`.
+- EVENT/ERROR NAMING: Never give an event and error \
+the same name — they generate conflicting Rust structs. \
+Use `event Paused(address)` and `error ContractPaused()`.
+- RESULT PROPAGATION: Always use `?` to propagate \
+`Result` from helper methods. `self.check()?;` not \
+`self.check();`
+- Call IMPORT: `Call` comes from `prelude::*`. \
+Do NOT add `use stylus_sdk::call::Call;` separately.
+- DUPLICATE DEFINITIONS: Put all errors in one \
+`sol! {{ }}` block. Never define the same name twice.
 
 WHAT YOU MAY DO:
 - Rename the contract struct in sol_storage! to \
@@ -1098,10 +1152,53 @@ class GenerateStylusCodeTool(BaseTool):
                 storage_fields.add(field_match.group(1))
             for field in storage_fields:
                 fixed = re.sub(
-                    rf"(\w+)\.{field}(?!\s*[.(])",
+                    rf"(\w+)\.{field}\b(?!\s*[.(])",
                     rf"\1.{field}.get()",
                     fixed,
                 )
+
+            # Fix 17: self.vm().address() → self.vm().contract_address()
+            fixed = fixed.replace(
+                "self.vm().address()", "self.vm().contract_address()"
+            )
+
+            # Fix 18: U256::zero() / U128::zero() → U256::ZERO / U128::ZERO
+            fixed = re.sub(r"U256::zero\(\)", "U256::ZERO", fixed)
+            fixed = re.sub(r"U128::zero\(\)", "U128::ZERO", fixed)
+            fixed = re.sub(r"U64::zero\(\)", "U64::ZERO", fixed)
+
+            # Fix 19: StorageString - .set() → .set_str(), .get() → .get_string()
+            string_fields = set()
+            for sf_match in re.finditer(
+                r"\bstring\s+(\w+)\s*;", fixed
+            ):
+                string_fields.add(sf_match.group(1))
+            for sf in string_fields:
+                fixed = re.sub(
+                    rf"\.{sf}\.set\(", f".{sf}.set_str(", fixed
+                )
+                fixed = re.sub(
+                    rf"\.{sf}\.get\(\)", f".{sf}.get_string()", fixed
+                )
+
+            # Fix 20: std::time::SystemTime — not available in no_std WASM
+            fixed = re.sub(
+                r"^use std::time.*;\s*$", "", fixed, flags=re.MULTILINE
+            )
+            fixed = re.sub(
+                r"std::time::SystemTime::now\(\)[^;]*",
+                "self.vm().block_timestamp()",
+                fixed,
+            )
+
+            # Fix 21: Remove incorrect `use stylus_sdk::call::Call;` import
+            # Call is available from prelude::* — no separate import needed
+            fixed = re.sub(
+                r"^use stylus_sdk::call::Call;\s*$",
+                "",
+                fixed,
+                flags=re.MULTILINE,
+            )
         else:
             # 0.9.x fixes (reverse direction)
 
