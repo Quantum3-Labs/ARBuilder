@@ -184,10 +184,10 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
   while ((fieldMatch = typeFieldPattern.exec(fixed)) !== null) {
     storageFields.add(fieldMatch[1]);
   }
-  // Match mapping fields: mapping(...) field_name;
-  const mappingFieldPattern = /mapping\([^)]*\)\s+(\w+)\s*;/g;
+  // Match mapping fields: mapping(...) field_name; (balanced parens for nested mappings)
+  const mappingFieldPattern = /mapping\(((?:[^()]*|\([^()]*\))*)\)\s+(\w+)\s*;/g;
   while ((fieldMatch = mappingFieldPattern.exec(fixed)) !== null) {
-    storageFields.add(fieldMatch[1]);
+    storageFields.add(fieldMatch[2]);
   }
   // For each storage field, fix bare <var>.<field> reads (not followed by . or ()
   // This catches both self.<field> AND nested struct fields like market.<field>
@@ -257,6 +257,52 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
   );
 
   // Fix 23: REMOVED — corrupts sol! event/error declarations.
+
+  // Fix 28: Remove spurious .unwrap_or_default() on mapping reads.
+  // StorageMap::get() returns value directly (zero-default), NOT Option.
+  // Use balanced-paren regex for nested mapping declarations like
+  // mapping(address => mapping(address => uint256)) allowances;
+  const mapFields28 = new Set<string>();
+  const mapFieldPattern28 = /mapping\(((?:[^()]*|\([^()]*\))*)\)\s+(\w+)\s*;/g;
+  let mapFieldMatch28;
+  while ((mapFieldMatch28 = mapFieldPattern28.exec(fixed)) !== null) {
+    mapFields28.add(mapFieldMatch28[2]);
+  }
+  for (const mf of mapFields28) {
+    // Direct: .field.get(key).unwrap_or_default()
+    fixed = fixed.replace(
+      new RegExp(`\\.${mf}\\.get\\(([^)]*)\\)\\.unwrap_or_default\\(\\)`, "g"),
+      `.${mf}.get($1)`
+    );
+    // Nested via .getter(): .field.getter(k1).get(k2).unwrap_or_default()
+    fixed = fixed.replace(
+      new RegExp(`\\.${mf}\\.getter\\(([^)]*)\\)\\.get\\(([^)]*)\\)\\.unwrap_or_default\\(\\)`, "g"),
+      `.${mf}.getter($1).get($2)`
+    );
+  }
+
+  // Fix 29: sol_interface! generates snake_case Rust methods from
+  // Solidity camelCase function names. Only apply when followed by
+  // (self.vm(), which signals a sol_interface! call.
+  const solIfaceRenames: Record<string, string> = {
+    transferFrom: "transfer_from",
+    balanceOf: "balance_of",
+    ownerOf: "owner_of",
+    getApproved: "get_approved",
+    isApprovedForAll: "is_approved_for_all",
+    safeTransferFrom: "safe_transfer_from",
+    setApprovalForAll: "set_approval_for_all",
+    totalSupply: "total_supply",
+    latestAnswer: "latest_answer",
+    latestRoundData: "latest_round_data",
+    getRoundData: "get_round_data",
+  };
+  for (const [camel, snake] of Object.entries(solIfaceRenames)) {
+    fixed = fixed.replace(
+      new RegExp(`\\.${camel}\\(self\\.vm\\(\\)`, "g"),
+      `.${snake}(self.vm()`
+    );
+  }
 
   // Fix 24: .unwrap_or_else(VALUE) → .unwrap_or(VALUE)
   // unwrap_or_else takes a closure, not a value.

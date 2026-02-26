@@ -161,6 +161,8 @@ Key patterns for v${targetVersion}:
 - unwrap_or vs unwrap_or_else: \`.unwrap_or(VALUE)\` for values, \`.unwrap_or_else(|| VALUE)\` for closures. Do NOT pass a value to unwrap_or_else.
 - sol_storage! TYPES: Inside sol_storage! {}, use SOLIDITY syntax: \`uint256\`, \`address\`, \`bool\`, \`string\`, \`mapping(address => uint256)\`, \`uint256[]\`. Do NOT use Rust Storage* types: \`StorageU256\`, \`StorageAddress\`, \`StorageString\`, \`StorageMap<...>\`, \`StorageVec<...>\`.
 - NESTED MAPPING WRITES: Chain \`.setter()\` calls: \`self.allowances.setter(owner).setter(spender).set(amount);\`. Do NOT use tuple keys \`(owner, spender)\`. Do NOT mix \`.get()\` then \`.setter()\` — \`.get()\` returns immutable ref conflicting with \`.setter()\`'s mutable borrow. ALWAYS chain \`.setter()\` for writes.
+- MAPPING READS return value directly: \`StorageMap::get(key)\` returns the value type (zero-default for uninitialized), NOT \`Option\`. Do NOT call \`.unwrap_or_default()\` on mapping reads. Nested: \`.getter(k1).get(k2)\` also returns value directly.
+- sol_interface! SNAKE_CASE: \`sol_interface!\` converts Solidity camelCase to Rust snake_case. \`transferFrom\` → \`.transfer_from()\`, \`balanceOf\` → \`.balance_of()\`. ALWAYS use snake_case when calling sol_interface! methods.
 
 Security best practices:
 - Check for overflows using checked_add/checked_sub
@@ -274,6 +276,8 @@ COMPILATION-CRITICAL — these mistakes WILL break the build:
 - unwrap_or vs unwrap_or_else: \`.unwrap_or(VALUE)\` for values, not \`.unwrap_or_else(VALUE)\`.
 - sol_storage! TYPES: Use SOLIDITY syntax inside sol_storage!: \`uint256\`, \`address\`, \`bool\`, \`string\`, \`mapping(...)\`, \`type[]\`. NOT Rust Storage* types.
 - NESTED MAPPING WRITES: Chain \`.setter()\` calls: \`self.map.setter(k1).setter(k2).set(v)\`. Do NOT use tuple keys \`(k1, k2)\`. Do NOT mix \`.get()\` then \`.setter()\`.
+- MAPPING READS: \`StorageMap::get(key)\` returns value directly (zero-default), NOT Option. Do NOT use \`.unwrap_or_default()\` on mapping reads.
+- sol_interface! SNAKE_CASE: \`transferFrom\` → \`.transfer_from()\`, \`balanceOf\` → \`.balance_of()\`. Always snake_case for sol_interface! calls.
 
 WHAT YOU MAY DO:
 - Rename the contract struct in sol_storage! to match the user's request (e.g., PredictionMarket, Lottery, etc.)

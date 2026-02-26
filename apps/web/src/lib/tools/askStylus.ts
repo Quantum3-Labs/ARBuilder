@@ -207,6 +207,46 @@ function fixCodeInResponse(content: string): string {
 
     // Fix 23: REMOVED — corrupts sol! event/error declarations.
 
+    // Fix 28: Remove spurious .unwrap_or_default() on mapping reads
+    // Balanced parens for nested mapping declarations
+    const mappingFlds = new Set<string>();
+    const mappingFldPattern = /mapping\(((?:[^()]*|\([^()]*\))*)\)\s+(\w+)\s*;/g;
+    let mappingFldMatch;
+    while ((mappingFldMatch = mappingFldPattern.exec(fixed)) !== null) {
+      mappingFlds.add(mappingFldMatch[2]);
+    }
+    for (const mf of mappingFlds) {
+      fixed = fixed.replace(
+        new RegExp(`\\.${mf}\\.get\\(([^)]*)\\)\\.unwrap_or_default\\(\\)`, "g"),
+        `.${mf}.get($1)`
+      );
+      fixed = fixed.replace(
+        new RegExp(`\\.${mf}\\.getter\\(([^)]*)\\)\\.get\\(([^)]*)\\)\\.unwrap_or_default\\(\\)`, "g"),
+        `.${mf}.getter($1).get($2)`
+      );
+    }
+
+    // Fix 29: sol_interface! camelCase → snake_case
+    const solIfaceRenames: Record<string, string> = {
+      transferFrom: "transfer_from",
+      balanceOf: "balance_of",
+      ownerOf: "owner_of",
+      getApproved: "get_approved",
+      isApprovedForAll: "is_approved_for_all",
+      safeTransferFrom: "safe_transfer_from",
+      setApprovalForAll: "set_approval_for_all",
+      totalSupply: "total_supply",
+      latestAnswer: "latest_answer",
+      latestRoundData: "latest_round_data",
+      getRoundData: "get_round_data",
+    };
+    for (const [camel, snake] of Object.entries(solIfaceRenames)) {
+      fixed = fixed.replace(
+        new RegExp(`\\.${camel}\\(self\\.vm\\(\\)`, "g"),
+        `.${snake}(self.vm()`
+      );
+    }
+
     // Fix 24: .unwrap_or_else(VALUE) → .unwrap_or(VALUE)
     fixed = fixed.replace(
       /\.unwrap_or_else\((\w+::(?:ZERO|MAX|MIN|ONE))\)/g,

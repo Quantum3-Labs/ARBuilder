@@ -338,6 +338,22 @@ Do NOT mix .get() and .setter() on the same root: \
 .get() returns an immutable reference that \
 conflicts with .setter()'s mutable borrow. \
 ALWAYS chain .setter() for writes.
+50. MAPPING READS RETURN VALUES DIRECTLY: \
+`StorageMap::get(key)` returns the value type \
+directly (zero-default for uninitialized), NOT \
+`Option`. Do NOT call `.unwrap_or_default()` on \
+mapping reads. Both single and nested mappings: \
+`self.balances.get(user)` returns `U256`, \
+`self.allowances.getter(owner).get(spender)` \
+returns `U256`. Just use the returned value directly.
+51. sol_interface! GENERATES SNAKE_CASE METHODS: \
+The `sol_interface!` macro converts Solidity \
+camelCase function names to Rust snake_case. \
+`function transferFrom(...)` becomes \
+`.transfer_from(...)`. `function balanceOf(...)` \
+becomes `.balance_of(...)`. \
+ALWAYS use snake_case when calling sol_interface! \
+methods in Rust code.
 """
 
 
@@ -468,6 +484,14 @@ Do NOT use tuple keys `(k1, k2)`. \
 Do NOT mix `.get()` then `.setter()` — \
 `.get()` returns immutable ref conflicting with \
 `.setter()`'s mutable borrow.
+- MAPPING READS: `StorageMap::get(key)` returns \
+the value directly (zero-default), NOT `Option`. \
+Do NOT call `.unwrap_or_default()` on mapping reads. \
+Nested: `.getter(k1).get(k2)` returns value directly.
+- sol_interface! SNAKE_CASE: `sol_interface!` \
+converts Solidity camelCase to Rust snake_case. \
+`transferFrom` → `.transfer_from()`, \
+`balanceOf` → `.balance_of()`.
 
 WHAT YOU MAY DO:
 - Rename the contract struct in sol_storage! to \
@@ -1283,10 +1307,10 @@ class GenerateStylusCodeTool(BaseTool):
             ):
                 storage_fields.add(field_match.group(1))
             for field_match in re.finditer(
-                r"mapping\([^)]*\)\s+(\w+)\s*;",
+                r"mapping\(((?:[^()]*|\([^()]*\))*)\)\s+(\w+)\s*;",
                 fixed,
             ):
-                storage_fields.add(field_match.group(1))
+                storage_fields.add(field_match.group(2))
             for field in storage_fields:
                 fixed = re.sub(
                     rf"(\w+)\.{field}\b(?!\s*[.(])",
@@ -1371,6 +1395,67 @@ class GenerateStylusCodeTool(BaseTool):
             # blocks, it corrupts `event Foo(uint256 fieldName)` into
             # `event Foo(uint256 fieldName: field_name)` (invalid syntax).
             # System prompt rule 41 handles this via LLM guidance instead.
+
+            # Fix 28: Remove spurious .unwrap_or_default() on mapping reads.
+            # StorageMap::get() returns the value directly (zero-default for
+            # uninitialized), NOT Option. .unwrap_or_default() won't compile.
+            # Applies to both direct and nested mapping reads.
+            # e.g. self.map.get(key).unwrap_or_default() → self.map.get(key)
+            # e.g. self.map.getter(k1).get(k2).unwrap_or_default() → .getter(k1).get(k2)
+            # Use balanced-paren regex for nested mapping declarations like
+            # mapping(address => mapping(address => uint256)) allowances;
+            mapping_fields = set()
+            for mf_match in re.finditer(
+                r"mapping\(((?:[^()]*|\([^()]*\))*)\)\s+(\w+)\s*;", fixed
+            ):
+                mapping_fields.add(mf_match.group(2))
+            for mf in mapping_fields:
+                # Direct: .field.get(key).unwrap_or_default()
+                fixed = re.sub(
+                    rf"\.{mf}\.get\(([^)]*)\)\.unwrap_or_default\(\)",
+                    rf".{mf}.get(\1)",
+                    fixed,
+                )
+                # Nested via .getter(): .field.getter(k1).get(k2).unwrap_or_default()
+                fixed = re.sub(
+                    rf"\.{mf}\.getter\(([^)]*)\)\.get\(([^)]*)\)\.unwrap_or_default\(\)",
+                    rf".{mf}.getter(\1).get(\2)",
+                    fixed,
+                )
+
+            # Fix 29: sol_interface! generates snake_case Rust methods from
+            # Solidity camelCase function names. Common wrong patterns:
+            # .transferFrom(  → .transfer_from(
+            # .balanceOf(     → .balance_of(
+            # .allowance is already lowercase — no change needed
+            # .ownerOf(       → .owner_of(
+            # .getApproved(   → .get_approved(
+            # .isApprovedForAll( → .is_approved_for_all(
+            # .safeTransferFrom( → .safe_transfer_from(
+            # .setApprovalForAll( → .set_approval_for_all(
+            # .totalSupply(   → .total_supply(
+            # .latestAnswer(  → .latest_answer(
+            # .latestRoundData( → .latest_round_data(
+            # Only apply when followed by (self.vm(), which signals sol_interface! call.
+            sol_iface_renames = {
+                "transferFrom": "transfer_from",
+                "balanceOf": "balance_of",
+                "ownerOf": "owner_of",
+                "getApproved": "get_approved",
+                "isApprovedForAll": "is_approved_for_all",
+                "safeTransferFrom": "safe_transfer_from",
+                "setApprovalForAll": "set_approval_for_all",
+                "totalSupply": "total_supply",
+                "latestAnswer": "latest_answer",
+                "latestRoundData": "latest_round_data",
+                "getRoundData": "get_round_data",
+            }
+            for camel, snake in sol_iface_renames.items():
+                fixed = re.sub(
+                    rf"\.{camel}\(self\.vm\(\)",
+                    rf".{snake}(self.vm()",
+                    fixed,
+                )
 
             # Fix 24: .unwrap_or_else(VALUE) → .unwrap_or(VALUE)
             # unwrap_or_else takes a closure, not a value. Fix for known constants.

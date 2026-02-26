@@ -541,6 +541,46 @@ class AskStylusTool(BaseTool):
 
                 # Fix 23: REMOVED — corrupts sol! event/error declarations.
 
+                # Fix 28: Remove spurious .unwrap_or_default() on mapping reads
+                mapping_flds = set()
+                for mf_m in re.finditer(
+                    r"mapping\(((?:[^()]*|\([^()]*\))*)\)\s+(\w+)\s*;",
+                    code,
+                ):
+                    mapping_flds.add(mf_m.group(2))
+                for mf in mapping_flds:
+                    code = re.sub(
+                        rf"\.{mf}\.get\(([^)]*)\)\.unwrap_or_default\(\)",
+                        rf".{mf}.get(\1)",
+                        code,
+                    )
+                    code = re.sub(
+                        rf"\.{mf}\.getter\(([^)]*)\)\.get\(([^)]*)\)\.unwrap_or_default\(\)",
+                        rf".{mf}.getter(\1).get(\2)",
+                        code,
+                    )
+
+                # Fix 29: sol_interface! camelCase → snake_case
+                sol_iface_renames = {
+                    "transferFrom": "transfer_from",
+                    "balanceOf": "balance_of",
+                    "ownerOf": "owner_of",
+                    "getApproved": "get_approved",
+                    "isApprovedForAll": "is_approved_for_all",
+                    "safeTransferFrom": "safe_transfer_from",
+                    "setApprovalForAll": "set_approval_for_all",
+                    "totalSupply": "total_supply",
+                    "latestAnswer": "latest_answer",
+                    "latestRoundData": "latest_round_data",
+                    "getRoundData": "get_round_data",
+                }
+                for camel, snake in sol_iface_renames.items():
+                    code = re.sub(
+                        rf"\.{camel}\(self\.vm\(\)",
+                        rf".{snake}(self.vm()",
+                        code,
+                    )
+
                 # Fix 24: .unwrap_or_else(VALUE) → .unwrap_or(VALUE)
                 code = re.sub(
                     r"\.unwrap_or_else\((\w+::(?:ZERO|MAX|MIN|ONE))\)",
