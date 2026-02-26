@@ -247,6 +247,12 @@ function fixCodeInResponse(content: string): string {
       );
     }
 
+    // Fix 30: B256::from_uint(&expr) → B256::from(expr.to_be_bytes::<32>())
+    fixed = fixed.replace(
+      /B256::from_uint\(&(\w+)\)/g,
+      "B256::from($1.to_be_bytes::<32>())"
+    );
+
     // Fix 24: .unwrap_or_else(VALUE) → .unwrap_or(VALUE)
     fixed = fixed.replace(
       /\.unwrap_or_else\((\w+::(?:ZERO|MAX|MIN|ONE))\)/g,

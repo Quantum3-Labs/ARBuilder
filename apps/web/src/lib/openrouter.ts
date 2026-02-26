@@ -163,6 +163,7 @@ Key patterns for v${targetVersion}:
 - NESTED MAPPING WRITES: Chain \`.setter()\` calls: \`self.allowances.setter(owner).setter(spender).set(amount);\`. Do NOT use tuple keys \`(owner, spender)\`. Do NOT mix \`.get()\` then \`.setter()\` — \`.get()\` returns immutable ref conflicting with \`.setter()\`'s mutable borrow. ALWAYS chain \`.setter()\` for writes.
 - MAPPING READS return value directly: \`StorageMap::get(key)\` returns the value type (zero-default for uninitialized), NOT \`Option\`. Do NOT call \`.unwrap_or_default()\` on mapping reads. Nested: \`.getter(k1).get(k2)\` also returns value directly.
 - sol_interface! SNAKE_CASE: \`sol_interface!\` converts Solidity camelCase to Rust snake_case. \`transferFrom\` → \`.transfer_from()\`, \`balanceOf\` → \`.balance_of()\`. ALWAYS use snake_case when calling sol_interface! methods.
+- B256 CONVERSION: \`B256::from_uint()\` does NOT exist. To convert U256 to B256, use \`B256::from(value.to_be_bytes::<32>())\`.
 
 Security best practices:
 - Check for overflows using checked_add/checked_sub
@@ -278,6 +279,7 @@ COMPILATION-CRITICAL — these mistakes WILL break the build:
 - NESTED MAPPING WRITES: Chain \`.setter()\` calls: \`self.map.setter(k1).setter(k2).set(v)\`. Do NOT use tuple keys \`(k1, k2)\`. Do NOT mix \`.get()\` then \`.setter()\`.
 - MAPPING READS: \`StorageMap::get(key)\` returns value directly (zero-default), NOT Option. Do NOT use \`.unwrap_or_default()\` on mapping reads.
 - sol_interface! SNAKE_CASE: \`transferFrom\` → \`.transfer_from()\`, \`balanceOf\` → \`.balance_of()\`. Always snake_case for sol_interface! calls.
+- B256 CONVERSION: \`B256::from_uint()\` does NOT exist. Use \`B256::from(value.to_be_bytes::<32>())\`.
 
 WHAT YOU MAY DO:
 - Rename the contract struct in sol_storage! to match the user's request (e.g., PredictionMarket, Lottery, etc.)

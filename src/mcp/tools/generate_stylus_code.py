@@ -354,6 +354,10 @@ camelCase function names to Rust snake_case. \
 becomes `.balance_of(...)`. \
 ALWAYS use snake_case when calling sol_interface! \
 methods in Rust code.
+52. B256 CONVERSION: `B256::from_uint()` does NOT \
+exist. To convert U256 to B256, use \
+`B256::from(value.to_be_bytes::<32>())`. Import B256 \
+from `alloy_primitives::B256`.
 """
 
 
@@ -492,6 +496,8 @@ Nested: `.getter(k1).get(k2)` returns value directly.
 converts Solidity camelCase to Rust snake_case. \
 `transferFrom` → `.transfer_from()`, \
 `balanceOf` → `.balance_of()`.
+- B256 CONVERSION: `B256::from_uint()` does NOT \
+exist. Use `B256::from(value.to_be_bytes::<32>())`.
 
 WHAT YOU MAY DO:
 - Rename the contract struct in sol_storage! to \
@@ -1456,6 +1462,14 @@ class GenerateStylusCodeTool(BaseTool):
                     rf".{snake}(self.vm()",
                     fixed,
                 )
+
+            # Fix 30: B256::from_uint(&expr) does not exist in alloy-primitives.
+            # Use B256::from(expr.to_be_bytes::<32>()) instead.
+            fixed = re.sub(
+                r"B256::from_uint\(&(\w+)\)",
+                r"B256::from(\1.to_be_bytes::<32>())",
+                fixed,
+            )
 
             # Fix 24: .unwrap_or_else(VALUE) → .unwrap_or(VALUE)
             # unwrap_or_else takes a closure, not a value. Fix for known constants.

@@ -361,6 +361,7 @@ let val = self.items.get(index).unwrap();
 - **sol! uses camelCase fields** — `tokenId` not `token_id`, `fromAddress` not `from_address` (Solidity convention)
 - **Dynamic arrays** — `uint256[] items;` in sol_storage!, append with `.push(val)` for primitives, `.grow()` for structs. Never `.setter(len).unwrap()`
 - **Borrow checker** — extract `.get()` values to local vars before combining with `.set()`. Never `self.field.setter(self.vm().something())`
+- **B256 conversion** — `B256::from_uint()` does NOT exist. Use `B256::from(value.to_be_bytes::<32>())` to convert U256 to B256
 - **ABI uses camelCase** — Stylus exports snake_case Rust fns as camelCase (`create_market` → `createMarket`). Frontend must use camelCase in `functionName`
 - **View functions can't call external contracts** — `&self` view fns revert on cross-contract calls (unlike Solidity). Use `&mut self` or read from frontend
 - **Arbitrum L2 gas** — MetaMask may underestimate `maxFeePerGas` on Arbitrum Sepolia. Add explicit gas overrides if "max fee per gas less than block base fee"

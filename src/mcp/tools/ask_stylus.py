@@ -581,6 +581,13 @@ class AskStylusTool(BaseTool):
                         code,
                     )
 
+                # Fix 30: B256::from_uint(&expr) → B256::from(expr.to_be_bytes::<32>())
+                code = re.sub(
+                    r"B256::from_uint\(&(\w+)\)",
+                    r"B256::from(\1.to_be_bytes::<32>())",
+                    code,
+                )
+
                 # Fix 24: .unwrap_or_else(VALUE) → .unwrap_or(VALUE)
                 code = re.sub(
                     r"\.unwrap_or_else\((\w+::(?:ZERO|MAX|MIN|ONE))\)",
