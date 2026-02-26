@@ -487,6 +487,7 @@ class AskStylusTool(BaseTool):
                     lambda m: f"{m.group(1).lower()}[]",
                     code,
                 )
+                code = code.replace("StorageString", "string")
                 code = code.replace("StorageAddress", "address")
                 code = code.replace("StorageU256", "uint256")
                 code = code.replace("StorageBool", "bool")
@@ -526,10 +527,17 @@ class AskStylusTool(BaseTool):
                     ask_array_fields.add(af_m.group(1))
                 for af in ask_array_fields:
                     code = re.sub(
-                        rf"\.{af}\.setter\(([^)]+)\)\.set\(",
+                        rf"\.{af}\.setter\(((?:[^()]*|\([^()]*\))*)\)\.set\(",
                         rf".{af}.setter(\1).unwrap().set(",
                         code,
                     )
+
+                # Fix 27: .get(k1).setter(k2) → .setter(k1).setter(k2)
+                code = re.sub(
+                    r"\.get\(((?:[^()]*|\([^()]*\))*)\)\.setter\(",
+                    r".setter(\1).setter(",
+                    code,
+                )
 
                 # Fix 23: REMOVED — corrupts sol! event/error declarations.
 

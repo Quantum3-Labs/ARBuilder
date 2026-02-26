@@ -159,6 +159,8 @@ Key patterns for v${targetVersion}:
 - MUTABLE BINDINGS: \`.setter()\` result stored in a variable needs \`let mut\` if methods are called on it.
 - vm().log() returns \`()\` — do NOT use \`?\` after it. Just call: \`self.vm().log(MyEvent { ... });\`
 - unwrap_or vs unwrap_or_else: \`.unwrap_or(VALUE)\` for values, \`.unwrap_or_else(|| VALUE)\` for closures. Do NOT pass a value to unwrap_or_else.
+- sol_storage! TYPES: Inside sol_storage! {}, use SOLIDITY syntax: \`uint256\`, \`address\`, \`bool\`, \`string\`, \`mapping(address => uint256)\`, \`uint256[]\`. Do NOT use Rust Storage* types: \`StorageU256\`, \`StorageAddress\`, \`StorageString\`, \`StorageMap<...>\`, \`StorageVec<...>\`.
+- NESTED MAPPING WRITES: Chain \`.setter()\` calls: \`self.allowances.setter(owner).setter(spender).set(amount);\`. Do NOT use tuple keys \`(owner, spender)\`. Do NOT mix \`.get()\` then \`.setter()\` — \`.get()\` returns immutable ref conflicting with \`.setter()\`'s mutable borrow. ALWAYS chain \`.setter()\` for writes.
 
 Security best practices:
 - Check for overflows using checked_add/checked_sub
@@ -270,6 +272,8 @@ COMPILATION-CRITICAL — these mistakes WILL break the build:
 - MUTABLE BINDINGS: \`.setter()\` result stored in a variable needs \`let mut\`.
 - vm().log() returns \`()\` — do NOT use \`?\` after it.
 - unwrap_or vs unwrap_or_else: \`.unwrap_or(VALUE)\` for values, not \`.unwrap_or_else(VALUE)\`.
+- sol_storage! TYPES: Use SOLIDITY syntax inside sol_storage!: \`uint256\`, \`address\`, \`bool\`, \`string\`, \`mapping(...)\`, \`type[]\`. NOT Rust Storage* types.
+- NESTED MAPPING WRITES: Chain \`.setter()\` calls: \`self.map.setter(k1).setter(k2).set(v)\`. Do NOT use tuple keys \`(k1, k2)\`. Do NOT mix \`.get()\` then \`.setter()\`.
 
 WHAT YOU MAY DO:
 - Rename the contract struct in sol_storage! to match the user's request (e.g., PredictionMarket, Lottery, etc.)
@@ -477,6 +481,11 @@ let allowance = self.allowances.get(owner).get(spender);
 
 // Write nested: chain .setter() calls in ONE expression
 self.allowances.setter(owner).setter(spender).set(value);
+
+// WRONG — .get() returns immutable, can't call .setter():
+// self.allowances.get(owner).setter(spender).set(value);
+// WRONG — tuple keys don't exist:
+// self.allowances.setter((owner, spender)).set(value);
 \`\`\`
 
 Dynamic arrays (sol_storage! uses Solidity syntax: uint256[], address[]):

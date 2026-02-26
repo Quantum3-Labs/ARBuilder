@@ -318,6 +318,26 @@ takes a closure. Do NOT pass a value to \
 unwrap_or_else — use unwrap_or instead. \
 Example: `.unwrap_or(U256::ZERO)` NOT \
 `.unwrap_or_else(U256::ZERO)`.
+48. sol_storage! TYPES: Inside sol_storage! {{ }}, use \
+SOLIDITY type syntax, NOT Rust Storage* types. \
+Use: `uint256`, `address`, `bool`, `string`, \
+`mapping(address => uint256)`, `uint256[]`. \
+Do NOT use: `StorageU256`, `StorageAddress`, \
+`StorageString`, `StorageMap<...>`, `StorageVec<...>`. \
+These Rust wrapper types are internal to the SDK.
+49. NESTED MAPPING WRITES: To write to nested \
+mappings like `mapping(address => mapping(address \
+=> uint256))`, chain `.setter()` calls: \
+`self.allowances.setter(owner).setter(spender)\
+.set(amount);` \
+Do NOT use tuple keys: \
+`self.allowances.setter((owner, spender))` — \
+tuple indexing does NOT exist. \
+Do NOT mix .get() and .setter() on the same root: \
+`self.allowances.get(owner).setter(spender)` — \
+.get() returns an immutable reference that \
+conflicts with .setter()'s mutable borrow. \
+ALWAYS chain .setter() for writes.
 """
 
 
@@ -438,6 +458,16 @@ variable needs `let mut` if methods are called on it.
 - vm().log() returns `()` — do NOT use `?` after it.
 - unwrap_or vs unwrap_or_else: `.unwrap_or(VALUE)` \
 for values, `.unwrap_or_else(|| VALUE)` for closures.
+- sol_storage! TYPES: Use SOLIDITY syntax inside \
+sol_storage!: `uint256`, `address`, `bool`, `string`, \
+`mapping(...)`, `type[]`. NOT Rust Storage* types \
+like `StorageU256`, `StorageString`, etc.
+- NESTED MAPPING WRITES: Chain `.setter()` calls: \
+`self.map.setter(k1).setter(k2).set(v);` \
+Do NOT use tuple keys `(k1, k2)`. \
+Do NOT mix `.get()` then `.setter()` — \
+`.get()` returns immutable ref conflicting with \
+`.setter()`'s mutable borrow.
 
 WHAT YOU MAY DO:
 - Rename the contract struct in sol_storage! to \
@@ -1159,6 +1189,48 @@ class GenerateStylusCodeTool(BaseTool):
                 fixed,
             )
 
+            # Fix 9b: Convert Rust Storage* types to Solidity types in sol_storage!
+            # LLMs sometimes use Rust types instead of Solidity types
+            fixed = fixed.replace("StorageString", "string")
+            fixed = fixed.replace("StorageAddress", "address")
+            fixed = fixed.replace("StorageU256", "uint256")
+            fixed = fixed.replace("StorageU128", "uint128")
+            fixed = fixed.replace("StorageU64", "uint64")
+            fixed = fixed.replace("StorageU8", "uint8")
+            fixed = fixed.replace("StorageBool", "bool")
+            fixed = re.sub(
+                r"StorageMap<Storage(\w+),\s*Storage(\w+)>",
+                lambda m: f"mapping({m.group(1).lower()} => {m.group(2).lower()})",
+                fixed,
+            )
+            fixed = re.sub(
+                r"StorageVec<Storage(\w+)>",
+                lambda m: f"{m.group(1).lower()}[]",
+                fixed,
+            )
+
+            # Fix 9c: Remove incorrect stylus_sdk::storage imports
+            storage_types = (
+                r"StorageString|StorageMap|StorageVec"
+                r"|StorageU\d+|StorageBool|StorageAddress"
+            )
+            fixed = re.sub(
+                rf"^use stylus_sdk::storage"
+                rf"(?:::(?:{storage_types}))?;\s*$",
+                "",
+                fixed,
+                flags=re.MULTILINE,
+            )
+
+            # Fix 9d: Add `use alloc::string::String;` if String is used but not imported
+            if "-> String" in fixed or ": String" in fixed:
+                if "alloc::string::String" not in fixed and "alloc::string::" not in fixed:
+                    fixed = re.sub(
+                        r"(use alloc::\{vec, vec::Vec\};)",
+                        r"\1\nuse alloc::string::String;",
+                        fixed,
+                    )
+
             # Fix 10: Fix wrong transfer_eth import paths
             fixed = re.sub(
                 r"use stylus_sdk::call::transfer_eth;",
@@ -1277,11 +1349,22 @@ class GenerateStylusCodeTool(BaseTool):
                 array_fields.add(af_match.group(1))
             for af in array_fields:
                 # .field.setter(x).set( → .field.setter(x).unwrap().set(
+                # Use balanced-paren pattern to handle nested parens
+                # e.g. setter(U256::from(idx as u64))
                 fixed = re.sub(
-                    rf"\.{af}\.setter\(([^)]+)\)\.set\(",
+                    rf"\.{af}\.setter\(((?:[^()]*|\([^()]*\))*)\)\.set\(",
                     rf".{af}.setter(\1).unwrap().set(",
                     fixed,
                 )
+
+            # Fix 27: .get(k1).setter(k2) → .setter(k1).setter(k2)
+            # Nested mapping writes: .get() returns immutable ref, can't
+            # call .setter() on it. Must chain .setter() for writes.
+            fixed = re.sub(
+                r"\.get\(((?:[^()]*|\([^()]*\))*)\)\.setter\(",
+                r".setter(\1).setter(",
+                fixed,
+            )
 
             # Fix 23: REMOVED — regex cannot distinguish sol! event/error
             # declarations from struct initialization. Applied inside sol! {}

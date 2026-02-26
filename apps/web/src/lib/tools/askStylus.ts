@@ -160,7 +160,8 @@ function fixCodeInResponse(content: string): string {
       /StorageVec<Storage(\w+)>/g,
       (_m, t: string) => `${t.toLowerCase()}[]`
     );
-    // StorageAddress → address, StorageU256 → uint256, etc.
+    // StorageString → string, StorageAddress → address, StorageU256 → uint256, etc.
+    fixed = fixed.replace(/StorageString/g, "string");
     fixed = fixed.replace(/StorageAddress/g, "address");
     fixed = fixed.replace(/StorageU256/g, "uint256");
     fixed = fixed.replace(/StorageBool/g, "bool");
@@ -191,10 +192,18 @@ function fixCodeInResponse(content: string): string {
     }
     for (const af of askArrayFields) {
       fixed = fixed.replace(
-        new RegExp(`\\.${af}\\.setter\\(([^)]+)\\)\\.set\\(`, "g"),
+        new RegExp(`\\.${af}\\.setter\\(((?:[^()]*|\\([^()]*\\))*)\\)\\.set\\(`, "g"),
         `.${af}.setter($1).unwrap().set(`
       );
     }
+
+    // Fix 27: .get(k1).setter(k2) → .setter(k1).setter(k2)
+    // Nested mapping writes: .get() returns immutable ref, can't
+    // call .setter() on it. Must chain .setter() for writes.
+    fixed = fixed.replace(
+      /\.get\(((?:[^()]*|\([^()]*\))*)\)\.setter\(/g,
+      ".setter($1).setter("
+    );
 
     // Fix 23: REMOVED — corrupts sol! event/error declarations.
 

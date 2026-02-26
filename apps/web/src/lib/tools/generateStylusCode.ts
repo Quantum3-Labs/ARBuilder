@@ -107,6 +107,39 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     "sol_interface! { $1"
   );
 
+  // Fix 9b: Convert Rust Storage* types to Solidity types in sol_storage!
+  // LLMs sometimes use Rust types instead of Solidity types
+  fixed = fixed.replace(/StorageString/g, "string");
+  fixed = fixed.replace(/StorageAddress/g, "address");
+  fixed = fixed.replace(/StorageU256/g, "uint256");
+  fixed = fixed.replace(/StorageU128/g, "uint128");
+  fixed = fixed.replace(/StorageU64/g, "uint64");
+  fixed = fixed.replace(/StorageU8/g, "uint8");
+  fixed = fixed.replace(/StorageBool/g, "bool");
+  fixed = fixed.replace(
+    /StorageMap<Storage(\w+),\s*Storage(\w+)>/g,
+    (_m, k: string, v: string) => `mapping(${k.toLowerCase()} => ${v.toLowerCase()})`
+  );
+  fixed = fixed.replace(
+    /StorageVec<Storage(\w+)>/g,
+    (_m, t: string) => `${t.toLowerCase()}[]`
+  );
+
+  // Fix 9c: Remove incorrect stylus_sdk::storage imports
+  fixed = fixed.replace(
+    /^use stylus_sdk::storage(?:::(?:StorageString|StorageMap|StorageVec|StorageU\d+|StorageBool|StorageAddress))?;\s*$/gm,
+    ""
+  );
+
+  // Fix 9d: Add `use alloc::string::String;` if String is used but not imported
+  if ((fixed.includes("-> String") || fixed.includes(": String")) &&
+      !fixed.includes("alloc::string::String") && !fixed.includes("alloc::string::")) {
+    fixed = fixed.replace(
+      /(use alloc::\{vec, vec::Vec\};)/,
+      "$1\nuse alloc::string::String;"
+    );
+  }
+
   // Fix 10: Fix wrong transfer_eth import paths
   // Wrong: use stylus_sdk::call::transfer_eth;
   // Correct: use stylus_sdk::call::transfer::transfer_eth;
@@ -207,11 +240,21 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     arrayFields.add(arrayFieldMatch[1]);
   }
   for (const af of arrayFields) {
+    // Use balanced-paren pattern to handle nested parens
+    // e.g. setter(U256::from(idx as u64))
     fixed = fixed.replace(
-      new RegExp(`\\.${af}\\.setter\\(([^)]+)\\)\\.set\\(`, "g"),
+      new RegExp(`\\.${af}\\.setter\\(((?:[^()]*|\\([^()]*\\))*)\\)\\.set\\(`, "g"),
       `.${af}.setter($1).unwrap().set(`
     );
   }
+
+  // Fix 27: .get(k1).setter(k2) → .setter(k1).setter(k2)
+  // Nested mapping writes: .get() returns immutable ref, can't
+  // call .setter() on it. Must chain .setter() for writes.
+  fixed = fixed.replace(
+    /\.get\(((?:[^()]*|\([^()]*\))*)\)\.setter\(/g,
+    ".setter($1).setter("
+  );
 
   // Fix 23: REMOVED — corrupts sol! event/error declarations.
 
