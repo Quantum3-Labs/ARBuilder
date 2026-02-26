@@ -460,8 +460,8 @@ export async function generateStylusCode(
     enhancedPrompt += "\n\nYou may remove the #[cfg(test)] module if not needed.";
   }
 
-  // Generate code using LLM with template as base
-  const response = await generateCodeFromTemplate(
+  // Generate code using LLM with template as base (with retry on empty response)
+  let response = await generateCodeFromTemplate(
     openrouterApiKey,
     enhancedPrompt,
     template,
@@ -470,13 +470,27 @@ export async function generateStylusCode(
   );
 
   // Parse response - extract code blocks and explanation
-  const codeMatch = response.content.match(/```rust\n([\s\S]*?)```/);
+  let codeMatch = response.content.match(/```rust\n([\s\S]*?)```/);
   let code = codeMatch ? codeMatch[1].trim() : response.content;
 
-  // Safety net: if LLM returned empty content, fall back to template
+  // Retry once if LLM returned empty content
+  if (!code || code.trim().length === 0) {
+    console.warn("LLM returned empty content — retrying once");
+    response = await generateCodeFromTemplate(
+      openrouterApiKey,
+      enhancedPrompt,
+      template,
+      contextStr,
+      targetVersion
+    );
+    codeMatch = response.content.match(/```rust\n([\s\S]*?)```/);
+    code = codeMatch ? codeMatch[1].trim() : response.content;
+  }
+
+  // Safety net: if still empty after retry, fall back to template
   if (!code || code.trim().length === 0) {
     code = template.libRs;
-    warnings.push("LLM returned empty content — using template code as fallback");
+    warnings.push("LLM returned empty content after retry — using template code as fallback");
   }
 
   // ALWAYS use template's Cargo.toml - don't trust LLM-generated Cargo.toml

@@ -89,8 +89,20 @@ export async function chatCompletion(
     };
   };
 
+  const content = data.choices[0]?.message?.content ?? "";
+
+  // Log empty responses for debugging (TF1 issue)
+  if (!content || content.trim().length === 0) {
+    console.warn(
+      `OpenRouter returned empty content. Model: ${data.model}, ` +
+      `choices: ${data.choices?.length ?? 0}, ` +
+      `usage: ${JSON.stringify(data.usage)}, ` +
+      `finish_reason: ${(data.choices[0] as Record<string, unknown>)?.finish_reason ?? "unknown"}`
+    );
+  }
+
   return {
-    content: data.choices[0]?.message?.content ?? "",
+    content,
     model: data.model,
     usage: {
       promptTokens: data.usage?.prompt_tokens ?? 0,
