@@ -303,11 +303,96 @@ export function handleTransfer(event: TransferEvent): void {
   ],
 };
 
+/**
+ * Map a Solidity type to the corresponding GraphQL type for subgraph schemas.
+ */
+function solidityToGraphqlType(solType: string): string {
+  const t = solType.trim();
+
+  if (t === "address") return "Bytes!";
+  if (t === "bool") return "Boolean!";
+  if (t === "string") return "String!";
+  if (/^u?int\d*$/.test(t)) return "BigInt!";
+  if (/^bytes\d*$/.test(t)) return "Bytes!";
+
+  // Default fallback for unknown types
+  return "Bytes!";
+}
+
+interface AbiEventInput {
+  name: string;
+  type: string;
+  indexed: boolean;
+}
+
+interface AbiEvent {
+  name: string;
+  inputs: AbiEventInput[];
+}
+
+/**
+ * Generate dynamic schema.graphql and mapping.ts from parsed ABI events.
+ * One entity per event, one handler per event.
+ */
+function generateCustomSubgraph(
+  events: AbiEvent[],
+  eventSignatures: string[]
+): { schema: string; mapping: string } {
+  // --- schema.graphql ---
+  const entityBlocks = events.map((ev) => {
+    const fields = [
+      "  id: Bytes!",
+      ...ev.inputs.map(
+        (inp) => `  ${inp.name}: ${solidityToGraphqlType(inp.type)}`
+      ),
+      "  blockNumber: BigInt!",
+      "  blockTimestamp: BigInt!",
+      "  transactionHash: Bytes!",
+    ];
+    return `type ${ev.name} @entity(immutable: true) {\n${fields.join("\n")}\n}`;
+  });
+  const schema = entityBlocks.join("\n\n") + "\n";
+
+  // --- mapping.ts ---
+  const eventImports = events
+    .map((ev) => `${ev.name} as ${ev.name}Event`)
+    .join(", ");
+  const entityImports = events.map((ev) => ev.name).join(", ");
+
+  const handlers = events.map((ev) => {
+    const paramAssignments = ev.inputs
+      .map((inp) => `  entity.${inp.name} = event.params.${inp.name};`)
+      .join("\n");
+
+    return `export function handle${ev.name}(event: ${ev.name}Event): void {
+  let entity = new ${ev.name}(
+    event.transaction.hash.concatI32(event.logIndex.toI32())
+  );
+
+${paramAssignments}
+  entity.blockNumber = event.block.number;
+  entity.blockTimestamp = event.block.timestamp;
+  entity.transactionHash = event.transaction.hash;
+  entity.save();
+}`;
+  });
+
+  const mapping = `import { BigInt, Bytes, Address } from "@graphprotocol/graph-ts";
+import { ${eventImports} } from "../generated/Contract/Contract";
+import { ${entityImports} } from "../generated/schema";
+
+${handlers.join("\n\n")}
+`;
+
+  return { schema, mapping };
+}
+
 function generateSubgraphYaml(
   contractAddress: string,
   network: string,
   events: string[],
-  abiName: string
+  abiName: string,
+  entities?: string[]
 ): string {
   const eventHandlers = events
     .map((event) => {
@@ -315,6 +400,11 @@ function generateSubgraphYaml(
       return `        - event: ${event}
           handler: handle${name}`;
     })
+    .join("\n");
+
+  const entityList = entities ?? ["Token", "Account", "Transfer", "Approval"];
+  const entityLines = entityList
+    .map((e) => `        - ${e}`)
     .join("\n");
 
   return `specVersion: 1.0.0
@@ -335,10 +425,7 @@ dataSources:
       apiVersion: 0.0.7
       language: wasm/assemblyscript
       entities:
-        - Token
-        - Account
-        - Transfer
-        - Approval
+${entityLines}
       abis:
         - name: ${abiName}
           file: ./abis/${abiName}.json
@@ -371,30 +458,87 @@ export function generateIndexer(args: GenerateIndexerArgs): GenerateIndexerResul
     template = ERC721_TEMPLATE;
     abiName = "NFT";
     eventSignatures = ["Transfer(indexed address,indexed address,indexed uint256)"];
+  } else if (subgraphType === "custom" && abi) {
+    // Parse ABI to extract event items for custom subgraphs
+    let parsedAbi: Array<Record<string, unknown>> = [];
+    try {
+      parsedAbi = JSON.parse(abi);
+    } catch {
+      // Invalid ABI — fall through to default ERC20 template
+    }
+
+    if (parsedAbi.length > 0) {
+      // Extract all event items from the ABI
+      let abiEvents: AbiEvent[] = parsedAbi
+        .filter((item) => item.type === "event")
+        .map((item) => ({
+          name: item.name as string,
+          inputs: (item.inputs as Array<Record<string, unknown>>).map((inp) => ({
+            name: inp.name as string,
+            type: inp.type as string,
+            indexed: inp.indexed as boolean,
+          })),
+        }));
+
+      // If specific event names were provided, filter to only those
+      if (events && events.length > 0) {
+        abiEvents = abiEvents.filter((ev) => events.includes(ev.name));
+      }
+
+      if (abiEvents.length > 0) {
+        // Build event signatures from parsed ABI events
+        eventSignatures = abiEvents.map((ev) => {
+          const params = ev.inputs
+            .map((inp) => (inp.indexed ? `indexed ${inp.type}` : inp.type))
+            .join(",");
+          return `${ev.name}(${params})`;
+        });
+
+        abiName = "Contract";
+        const customEntityNames = abiEvents.map((ev) => ev.name);
+        const { schema, mapping } = generateCustomSubgraph(
+          abiEvents,
+          eventSignatures
+        );
+
+        files["schema.graphql"] = schema;
+        files["src/mapping.ts"] = mapping;
+        files[`abis/${abiName}.json`] = JSON.stringify(parsedAbi, null, 2);
+        files["subgraph.yaml"] = generateSubgraphYaml(
+          contractAddress,
+          network,
+          eventSignatures,
+          abiName,
+          customEntityNames
+        );
+      }
+    }
   } else if (subgraphType === "custom" && events) {
+    // Custom with raw event signatures but no ABI — keep ERC20 template schema/mapping
     eventSignatures = events;
   }
 
-  // Use provided ABI or template ABI
-  let contractAbi = template.abi;
-  if (abi) {
-    try {
-      contractAbi = JSON.parse(abi);
-    } catch {
-      // Invalid ABI, use template
+  // Use provided ABI or template ABI (only if files weren't already set by custom branch)
+  if (!files["schema.graphql"]) {
+    let contractAbi: unknown = template.abi;
+    if (abi) {
+      try {
+        contractAbi = JSON.parse(abi);
+      } catch {
+        // Invalid ABI, use template
+      }
     }
-  }
 
-  // Generate files
-  files["schema.graphql"] = template.schema;
-  files["src/mapping.ts"] = template.mapping;
-  files[`abis/${abiName}.json`] = JSON.stringify(contractAbi, null, 2);
-  files["subgraph.yaml"] = generateSubgraphYaml(
-    contractAddress,
-    network,
-    eventSignatures,
-    abiName
-  );
+    files["schema.graphql"] = template.schema;
+    files["src/mapping.ts"] = template.mapping;
+    files[`abis/${abiName}.json`] = JSON.stringify(contractAbi, null, 2);
+    files["subgraph.yaml"] = generateSubgraphYaml(
+      contractAddress,
+      network,
+      eventSignatures,
+      abiName
+    );
+  }
 
   // Package.json
   files["package.json"] = JSON.stringify(

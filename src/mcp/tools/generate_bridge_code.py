@@ -5,10 +5,9 @@ Supports:
 - ETH bridging (L1 <-> L2) via EthBridger
 - ERC20 token bridging via Erc20Bridger
 - L1 -> L3 bridging via EthL1L3Bridger and Erc20L1L3Bridger
+- L3 -> L2 withdrawal via EthBridger and Erc20Bridger (Orbit chain to parent L2)
 """
 
-import json
-import re
 from typing import Any
 
 from .base import BaseTool
@@ -301,6 +300,79 @@ async function depositTokenToL3(l1TokenAddress: string, amount: BigNumber) {
 // Usage: depositTokenToL3('0x...', BigNumber.from('1000000000000000000'));
 '''
 
+# Template for L3 -> L2 ETH withdrawal
+ETH_L3_L2_TEMPLATE = '''import { providers, Wallet, utils } from 'ethers';
+import { EthBridger, getArbitrumNetwork } from '@arbitrum/sdk';
+
+async function withdrawEthL3ToL2(amount: string) {
+  // Withdraw ETH from L3 (Orbit chain) back to its parent L2
+  const l2Provider = new providers.JsonRpcProvider(process.env.L2_RPC_URL);
+  const l3Provider = new providers.JsonRpcProvider(process.env.L3_RPC_URL);
+  const l3Wallet = new Wallet(process.env.PRIVATE_KEY!, l3Provider);
+
+  // SDK treats L3 as a standard Arbitrum chain — L2 is its parent
+  const l3Network = await getArbitrumNetwork(l3Provider);
+  const ethBridger = new EthBridger(l3Network);
+
+  // Initiate withdrawal from L3
+  const withdrawTx = await ethBridger.withdraw({
+    amount: utils.parseEther(amount),
+    childSigner: l3Wallet,
+    destinationAddress: l3Wallet.address,
+    from: l3Wallet.address,
+  });
+
+  console.log('L3 -> L2 withdrawal initiated:', withdrawTx.hash);
+  const receipt = await withdrawTx.wait();
+  console.log('L3 tx confirmed:', receipt.transactionHash);
+
+  // Note: Withdrawal requires ~7 day challenge period before claiming on L2
+  console.log('Withdrawal will be claimable on L2 after challenge period (~7 days)');
+}
+
+withdrawEthL3ToL2('{amount}').catch(console.error);
+'''
+
+# Template for L3 -> L2 ERC20 withdrawal
+ERC20_L3_L2_TEMPLATE = '''import { providers, Wallet, BigNumber } from 'ethers';
+import { Erc20Bridger, getArbitrumNetwork } from '@arbitrum/sdk';
+
+async function withdrawTokenL3ToL2(l2TokenAddress: string, amount: BigNumber) {
+  // Withdraw ERC20 from L3 (Orbit chain) back to its parent L2
+  const l2Provider = new providers.JsonRpcProvider(process.env.L2_RPC_URL);
+  const l3Provider = new providers.JsonRpcProvider(process.env.L3_RPC_URL);
+  const l3Wallet = new Wallet(process.env.PRIVATE_KEY!, l3Provider);
+
+  // SDK treats L3 as a standard Arbitrum chain — L2 is its parent
+  const l3Network = await getArbitrumNetwork(l3Provider);
+  const erc20Bridger = new Erc20Bridger(l3Network);
+
+  // Get L3 token address from the L2 (parent) token address
+  const l3TokenAddress = await erc20Bridger.getChildErc20Address(
+    l2TokenAddress,
+    l2Provider
+  );
+  console.log('L3 token address:', l3TokenAddress);
+
+  // Initiate withdrawal from L3
+  const withdrawTx = await erc20Bridger.withdraw({
+    amount,
+    erc20ParentAddress: l2TokenAddress,
+    childSigner: l3Wallet,
+    destinationAddress: l3Wallet.address,
+  });
+
+  console.log('L3 -> L2 withdrawal initiated:', withdrawTx.hash);
+  const receipt = await withdrawTx.wait();
+  console.log('L3 tx confirmed');
+
+  // Note: Requires ~7 day challenge period before claiming on L2
+  console.log('Withdrawal will be claimable on L2 after challenge period (~7 days)');
+}
+
+// Usage: withdrawTokenL3ToL2('0x...l2TokenAddress', BigNumber.from('1000000000000000000'));
+'''
+
 
 class GenerateBridgeCodeTool(BaseTool):
     """Generate Arbitrum SDK bridging code."""
@@ -312,6 +384,7 @@ Supports:
 - ETH bridging (L1 <-> L2) - deposit and withdraw
 - ERC20 token bridging (L1 <-> L2) - deposit and withdraw with approvals
 - L1 -> L3 bridging for Orbit chains (ETH and ERC20)
+- L3 -> L2 withdrawal for Orbit chains (ETH and ERC20)
 
 The generated code uses ethers.js v5 and @arbitrum/sdk."""
 
@@ -322,7 +395,8 @@ The generated code uses ethers.js v5 and @arbitrum/sdk."""
                 "type": "string",
                 "enum": ["eth_deposit", "eth_deposit_to", "eth_withdraw",
                          "erc20_deposit", "erc20_withdraw",
-                         "eth_l1_l3", "erc20_l1_l3"],
+                         "eth_l1_l3", "erc20_l1_l3",
+                         "eth_l3_l2", "erc20_l3_l2"],
                 "description": "Type of bridging operation to generate code for",
             },
             "amount": {
@@ -375,6 +449,8 @@ The generated code uses ethers.js v5 and @arbitrum/sdk."""
             "erc20_withdraw": ERC20_WITHDRAW_TEMPLATE,
             "eth_l1_l3": ETH_L1_L3_TEMPLATE,
             "erc20_l1_l3": ERC20_L1_L3_TEMPLATE,
+            "eth_l3_l2": ETH_L3_L2_TEMPLATE,
+            "erc20_l3_l2": ERC20_L3_L2_TEMPLATE,
         }
 
         template = templates.get(bridge_type)
@@ -403,7 +479,7 @@ The generated code uses ethers.js v5 and @arbitrum/sdk."""
             "disclaimer": TEMPLATE_DISCLAIMER,
         }
 
-        if bridge_type in ["eth_l1_l3", "erc20_l1_l3"]:
+        if bridge_type in ["eth_l1_l3", "erc20_l1_l3", "eth_l3_l2", "erc20_l3_l2"]:
             result["env_vars"].append("L3_RPC_URL")
 
         return result
@@ -412,7 +488,11 @@ The generated code uses ethers.js v5 and @arbitrum/sdk."""
         """Get helpful notes for the bridge type."""
         notes = []
 
-        if "withdraw" in bridge_type:
+        if "l3_l2" in bridge_type:
+            notes.append("L3 -> L2 withdrawals require ~7 day challenge period")
+            notes.append("After challenge period, claim withdrawal on L2")
+            notes.append("L3 (Orbit chain) uses same ArbSys and bridge infrastructure as L2")
+        elif "withdraw" in bridge_type:
             notes.append("Withdrawals require a ~7 day challenge period before claiming on L1")
             notes.append("Use ChildToParentMessage to track withdrawal status")
 
@@ -422,7 +502,10 @@ The generated code uses ethers.js v5 and @arbitrum/sdk."""
 
         if "erc20" in bridge_type:
             notes.append("Token must be approved before bridging")
-            notes.append("L2 token address is derived automatically by the gateway")
+            if "l3_l2" in bridge_type:
+                notes.append("Token address is the L2 (parent) token address")
+            else:
+                notes.append("L2 token address is derived automatically by the gateway")
 
         if "l1_l3" in bridge_type:
             notes.append("L1->L3 bridging uses double retryable tickets (L1->L2->L3)")

@@ -118,7 +118,7 @@ ruff check .
 ### M2: Arbitrum SDK (3 tools)
 | Tool | Purpose |
 |------|---------|
-| `generate_bridge_code` | ETH/ERC20 bridging (L1↔L2, L1→L3) |
+| `generate_bridge_code` | ETH/ERC20 bridging (L1↔L2, L1→L3, L3→L2) |
 | `generate_messaging_code` | Cross-chain messaging via retryables |
 | `ask_bridging` | Bridging Q&A and patterns |
 

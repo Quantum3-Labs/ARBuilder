@@ -10,7 +10,9 @@ type BridgeType =
   | "erc20_deposit"
   | "erc20_withdraw"
   | "eth_l1_l3"
-  | "erc20_l1_l3";
+  | "erc20_l1_l3"
+  | "eth_l3_l2"
+  | "erc20_l3_l2";
 
 interface GenerateBridgeCodeArgs {
   bridgeType: BridgeType;
@@ -238,6 +240,73 @@ async function bridgeErc20L1ToL3(tokenAddress: string, amount: BigNumber) {
 }
 
 bridgeErc20L1ToL3('{{tokenAddress}}', BigNumber.from('{{amount}}'));`,
+
+  eth_l3_l2: `import { providers, Wallet, utils } from 'ethers';
+import { EthBridger, getArbitrumNetwork } from '@arbitrum/sdk';
+
+async function withdrawEthL3ToL2(amount: string) {
+  // Withdraw ETH from L3 (Orbit chain) back to its parent L2
+  const l2Provider = new providers.JsonRpcProvider(process.env.L2_RPC_URL);
+  const l3Provider = new providers.JsonRpcProvider(process.env.L3_RPC_URL);
+  const l3Wallet = new Wallet(process.env.PRIVATE_KEY!, l3Provider);
+
+  // SDK treats L3 as a standard Arbitrum chain — L2 is its parent
+  const l3Network = await getArbitrumNetwork(l3Provider);
+  const ethBridger = new EthBridger(l3Network);
+
+  // Initiate withdrawal from L3
+  const withdrawTx = await ethBridger.withdraw({
+    amount: utils.parseEther(amount),
+    childSigner: l3Wallet,
+    destinationAddress: l3Wallet.address,
+    from: l3Wallet.address,
+  });
+
+  console.log('L3 -> L2 withdrawal initiated:', withdrawTx.hash);
+  const receipt = await withdrawTx.wait();
+  console.log('L3 tx confirmed. Wait ~7 days for challenge period before claiming on L2.');
+
+  return receipt;
+}
+
+withdrawEthL3ToL2('{{amount}}');`,
+
+  erc20_l3_l2: `import { providers, Wallet, BigNumber } from 'ethers';
+import { Erc20Bridger, getArbitrumNetwork } from '@arbitrum/sdk';
+
+async function withdrawTokenL3ToL2(l2TokenAddress: string, amount: BigNumber) {
+  // Withdraw ERC20 from L3 (Orbit chain) back to its parent L2
+  const l2Provider = new providers.JsonRpcProvider(process.env.L2_RPC_URL);
+  const l3Provider = new providers.JsonRpcProvider(process.env.L3_RPC_URL);
+  const l3Wallet = new Wallet(process.env.PRIVATE_KEY!, l3Provider);
+
+  // SDK treats L3 as a standard Arbitrum chain — L2 is its parent
+  const l3Network = await getArbitrumNetwork(l3Provider);
+  const erc20Bridger = new Erc20Bridger(l3Network);
+
+  // Get L3 token address from the L2 (parent) token address
+  const l3TokenAddress = await erc20Bridger.getChildErc20Address(
+    l2TokenAddress,
+    l2Provider
+  );
+  console.log('L3 token address:', l3TokenAddress);
+
+  // Initiate withdrawal from L3
+  const withdrawTx = await erc20Bridger.withdraw({
+    amount,
+    erc20ParentAddress: l2TokenAddress,
+    childSigner: l3Wallet,
+    destinationAddress: l3Wallet.address,
+  });
+
+  console.log('L3 -> L2 withdrawal initiated:', withdrawTx.hash);
+  const receipt = await withdrawTx.wait();
+  console.log('L3 tx confirmed. Wait ~7 days before claiming on L2.');
+
+  return receipt;
+}
+
+withdrawTokenL3ToL2('{{tokenAddress}}', BigNumber.from('{{amount}}'));`,
 };
 
 function getNotes(bridgeType: BridgeType): string[] {
@@ -248,17 +317,25 @@ function getNotes(bridgeType: BridgeType): string[] {
     notes.push("Funds are automatically credited to your L2 address");
   }
 
-  if (bridgeType.includes("withdraw")) {
+  if (bridgeType.includes("l3_l2")) {
+    notes.push("L3 -> L2 withdrawals require ~7 day challenge period");
+    notes.push("After challenge period, claim withdrawal on L2");
+    notes.push("L3 (Orbit chain) uses same ArbSys and bridge infrastructure as L2");
+  } else if (bridgeType.includes("withdraw")) {
     notes.push("Withdrawals require a ~7 day challenge period");
     notes.push("After the challenge period, call the claim function on L1");
   }
 
   if (bridgeType.includes("erc20")) {
     notes.push("Token must be approved before bridging");
-    notes.push("First-time bridging may require gateway registration");
+    if (bridgeType.includes("l3_l2")) {
+      notes.push("Token address is the L2 (parent) token address");
+    } else {
+      notes.push("First-time bridging may require gateway registration");
+    }
   }
 
-  if (bridgeType.includes("l3")) {
+  if (bridgeType.includes("l1_l3")) {
     notes.push("L1 -> L3 bridging uses double retryable tickets (L1->L2->L3)");
     notes.push("May require gas token approval if L3 uses custom gas token");
   }
@@ -268,7 +345,7 @@ function getNotes(bridgeType: BridgeType): string[] {
 
 function getEnvVars(bridgeType: BridgeType): string[] {
   const vars = ["L1_RPC_URL", "L2_RPC_URL", "PRIVATE_KEY"];
-  if (bridgeType.includes("l3")) {
+  if (bridgeType.includes("l1_l3") || bridgeType.includes("l3_l2")) {
     vars.push("L3_RPC_URL");
   }
   return vars;

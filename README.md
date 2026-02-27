@@ -556,8 +556,8 @@ ARBuilder exposes a full MCP server with **13 tools**, **11 resources**, and **5
 
 | Tool | Description |
 |------|-------------|
-| `generate_bridge_code` | Generate ETH/ERC20 bridging code (L1<->L2, L1->L3) |
-| `generate_messaging_code` | Generate cross-chain messaging code |
+| `generate_bridge_code` | Generate ETH/ERC20 bridging code (L1<->L2, L1->L3, L3->L2) |
+| `generate_messaging_code` | Generate cross-chain messaging code (L1<->L2, L2<->L3) |
 | `ask_bridging` | Q&A about bridging patterns and SDK usage |
 
 **M3: Full dApp Builder (5 tools)**

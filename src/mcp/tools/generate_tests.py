@@ -54,6 +54,15 @@ Cargo.toml needs:
 [dev-dependencies]
 stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
 
+IMPORTANT — TEST COMPILATION:
+- Run tests with `--target` flag (tests run on host, not WASM): \
+`cargo test --target=x86_64-unknown-linux-gnu` (Linux) or \
+`cargo test --target=aarch64-apple-darwin` (macOS Apple Silicon)
+- Do NOT run `cargo test` without `--target` — it compiles for \
+wasm32-unknown-unknown which cannot run unit tests
+- If you get alloy-consensus or alloy-* version conflicts, add \
+`[patch.crates-io]` or pin alloy versions in workspace Cargo.toml
+
 Return ONLY the test code inside a ```rust code block. No explanations."""
 
 SYSTEM_PROMPT_FOUNDRY = """\

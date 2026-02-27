@@ -599,6 +599,10 @@ For Rust native tests (stylus-sdk 0.10.0):
 - ZERO CONSTANTS: Use \`U256::ZERO\`, \`Address::ZERO\` (uppercase). Do NOT use \`U256::zero()\` or \`Address::zero()\`.
 - STORAGE ACCESS: ALWAYS use \`.get()\` to read storage, \`.set()\` to write, \`.setter(key).set(val)\` for mappings
 - Cargo.toml needs: [dev-dependencies] stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
+- IMPORTANT: Run tests with \`--target\` flag (tests run on host, not WASM):
+  \`cargo test --target=x86_64-unknown-linux-gnu\` (Linux) or \`cargo test --target=aarch64-apple-darwin\` (macOS)
+  Do NOT run \`cargo test\` without \`--target\` — it compiles for wasm32-unknown-unknown which cannot run unit tests
+- If you get alloy-consensus or alloy-* version conflicts, pin alloy crate versions in workspace Cargo.toml
 
 For Foundry tests:
 - Create Solidity interface matching the contract ABI (use camelCase function names)
