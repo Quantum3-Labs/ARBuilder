@@ -311,6 +311,13 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     "B256::from($1.to_be_bytes::<32>())"
   );
 
+  // Fix 31: U256::from(N) in const context → U256::from_limbs([N, 0, 0, 0])
+  // U256::from() is not const-compatible in alloy-primitives 1.3.1.
+  fixed = fixed.replace(
+    /(const\s+\w+\s*:\s*U256\s*=\s*)U256::from\((\d+)\)/g,
+    "$1U256::from_limbs([$2, 0, 0, 0])"
+  );
+
   // Fix 24: .unwrap_or_else(VALUE) → .unwrap_or(VALUE)
   // unwrap_or_else takes a closure, not a value.
   fixed = fixed.replace(

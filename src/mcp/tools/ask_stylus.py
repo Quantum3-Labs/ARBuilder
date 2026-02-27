@@ -588,6 +588,13 @@ class AskStylusTool(BaseTool):
                     code,
                 )
 
+                # Fix 31: U256::from(N) in const context → U256::from_limbs([N, 0, 0, 0])
+                code = re.sub(
+                    r"(const\s+\w+\s*:\s*U256\s*=\s*)U256::from\((\d+)\)",
+                    r"\1U256::from_limbs([\2, 0, 0, 0])",
+                    code,
+                )
+
                 # Fix 24: .unwrap_or_else(VALUE) → .unwrap_or(VALUE)
                 code = re.sub(
                     r"\.unwrap_or_else\((\w+::(?:ZERO|MAX|MIN|ONE))\)",

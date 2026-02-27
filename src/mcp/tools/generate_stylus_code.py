@@ -358,6 +358,10 @@ methods in Rust code.
 exist. To convert U256 to B256, use \
 `B256::from(value.to_be_bytes::<32>())`. Import B256 \
 from `alloy_primitives::B256`.
+53. CONST U256: `U256::from()` is NOT const-compatible. \
+For const declarations use `U256::from_limbs([N, 0, 0, 0])` \
+e.g. `const MY_ROLE: U256 = U256::from_limbs([1, 0, 0, 0]);`. \
+`U256::ZERO` is fine (it's already a const).
 """
 
 
@@ -498,6 +502,8 @@ converts Solidity camelCase to Rust snake_case. \
 `balanceOf` → `.balance_of()`.
 - B256 CONVERSION: `B256::from_uint()` does NOT \
 exist. Use `B256::from(value.to_be_bytes::<32>())`.
+- CONST U256: `U256::from()` is NOT const-compatible. \
+Use `U256::from_limbs([N, 0, 0, 0])` for const declarations.
 
 WHAT YOU MAY DO:
 - Rename the contract struct in sol_storage! to \
@@ -1468,6 +1474,14 @@ class GenerateStylusCodeTool(BaseTool):
             fixed = re.sub(
                 r"B256::from_uint\(&(\w+)\)",
                 r"B256::from(\1.to_be_bytes::<32>())",
+                fixed,
+            )
+
+            # Fix 31: U256::from(N) in const context is not const-compatible.
+            # Replace with U256::from_limbs([N, 0, 0, 0]) for small integer literals.
+            fixed = re.sub(
+                r"(const\s+\w+\s*:\s*U256\s*=\s*)U256::from\((\d+)\)",
+                r"\1U256::from_limbs([\2, 0, 0, 0])",
                 fixed,
             )
 
