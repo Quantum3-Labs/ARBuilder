@@ -1322,29 +1322,49 @@ class GenerateStylusCodeTool(BaseTool):
                 flags=re.MULTILINE,
             )
 
-            # Fix 9d: Add `use alloc::string::String;` if String is used but not imported
-            if "-> String" in fixed or ": String" in fixed or ".to_string()" in fixed:
-                if "alloc::string::String" not in fixed and "alloc::string::" not in fixed:
+            # Fix 9d + Fix 37 (N31): Ensure correct alloc::string imports,
+            # no duplicates.  Remove ALL existing alloc::string imports
+            # and add one combined line.
+            needs_string = (
+                "-> String" in fixed
+                or ": String" in fixed
+                or ".to_string()" in fixed
+                or "String::new" in fixed
+                or "String::from" in fixed
+            )
+            needs_to_string = ".to_string()" in fixed
+            if needs_string or needs_to_string:
+                # Remove all existing alloc::string imports
+                fixed = re.sub(
+                    r"^use alloc::string::\{[^}]*\};\s*\n?",
+                    "",
+                    fixed,
+                    flags=re.MULTILINE,
+                )
+                fixed = re.sub(
+                    r"^use alloc::string::\w+;\s*\n?",
+                    "",
+                    fixed,
+                    flags=re.MULTILINE,
+                )
+                # Build combined import
+                parts = []
+                if needs_string:
+                    parts.append("String")
+                if needs_to_string:
+                    parts.append("ToString")
+                if parts:
+                    if len(parts) == 1:
+                        import_line = f"use alloc::string::{parts[0]};"
+                    else:
+                        import_line = (
+                            f"use alloc::string::{{{', '.join(parts)}}};"
+                        )
                     fixed = re.sub(
                         r"(use alloc::\{vec, vec::Vec\};)",
-                        r"\1\nuse alloc::string::String;",
+                        rf"\1\n{import_line}",
                         fixed,
                     )
-
-            # Fix 37 (N31): Add `use alloc::string::ToString;` if .to_string() is used
-            if ".to_string()" in fixed:
-                if "alloc::string::ToString" not in fixed and "alloc::string::*" not in fixed:
-                    if "use alloc::string::String;" in fixed:
-                        fixed = fixed.replace(
-                            "use alloc::string::String;",
-                            "use alloc::string::String;\nuse alloc::string::ToString;",
-                        )
-                    else:
-                        fixed = re.sub(
-                            r"(use alloc::\{vec, vec::Vec\};)",
-                            r"\1\nuse alloc::string::ToString;",
-                            fixed,
-                        )
 
             # Fix 10: Fix wrong transfer_eth import paths
             fixed = re.sub(
@@ -1466,8 +1486,10 @@ class GenerateStylusCodeTool(BaseTool):
                 # .field.setter(x).set( → .field.setter(x).unwrap().set(
                 # Use balanced-paren pattern to handle nested parens
                 # e.g. setter(U256::from(idx as u64))
+                # Allow optional whitespace/newlines between ) and .set(
+                # for multiline chains (N34).
                 fixed = re.sub(
-                    rf"\.{af}\.setter\(((?:[^()]*|\([^()]*\))*)\)\.set\(",
+                    rf"\.{af}\.setter\(((?:[^()]*|\([^()]*\))*)\)\s*\.set\(",
                     rf".{af}.setter(\1).unwrap().set(",
                     fixed,
                 )
@@ -1475,8 +1497,10 @@ class GenerateStylusCodeTool(BaseTool):
             # Fix 27: .get(k1).setter(k2) → .setter(k1).setter(k2)
             # Nested mapping writes: .get() returns immutable ref, can't
             # call .setter() on it. Must chain .setter() for writes.
+            # Allow optional whitespace/newlines between ) and .setter(
+            # for multiline chains (N33).
             fixed = re.sub(
-                r"\.get\(((?:[^()]*|\([^()]*\))*)\)\.setter\(",
+                r"\.get\(((?:[^()]*|\([^()]*\))*)\)\s*\.setter\(",
                 r".setter(\1).setter(",
                 fixed,
             )

@@ -131,29 +131,28 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     ""
   );
 
-  // Fix 9d: Add `use alloc::string::String;` if String is used but not imported
-  if ((fixed.includes("-> String") || fixed.includes(": String") || fixed.includes(".to_string()")) &&
-      !fixed.includes("alloc::string::String") && !fixed.includes("alloc::string::")) {
-    fixed = fixed.replace(
-      /(use alloc::\{vec, vec::Vec\};)/,
-      "$1\nuse alloc::string::String;"
-    );
-  }
-
-  // Fix 37 (N31): Add `use alloc::string::ToString;` if .to_string() is used
-  if (fixed.includes(".to_string()") &&
-      !fixed.includes("alloc::string::ToString") && !fixed.includes("alloc::string::*")) {
-    // Insert after String import if present, otherwise after vec import
-    if (fixed.includes("use alloc::string::String;")) {
-      fixed = fixed.replace(
-        /(use alloc::string::String;)/,
-        "$1\nuse alloc::string::ToString;"
-      );
-    } else {
-      fixed = fixed.replace(
-        /(use alloc::\{vec, vec::Vec\};)/,
-        "$1\nuse alloc::string::ToString;"
-      );
+  // Fix 9d + Fix 37 (N31): Ensure correct alloc::string imports.
+  // Detect what's needed, remove ALL existing alloc::string imports, add one combined line.
+  {
+    const needsString = fixed.includes("-> String") || fixed.includes(": String") || fixed.includes(".to_string()") || fixed.includes("String::new") || fixed.includes("String::from");
+    const needsToString = fixed.includes(".to_string()");
+    if (needsString || needsToString) {
+      // Remove all existing alloc::string imports to avoid duplicates
+      fixed = fixed.replace(/^use alloc::string::\{[^}]*\};\s*\n?/gm, "");
+      fixed = fixed.replace(/^use alloc::string::\w+;\s*\n?/gm, "");
+      // Build combined import
+      const parts: string[] = [];
+      if (needsString) parts.push("String");
+      if (needsToString) parts.push("ToString");
+      if (parts.length > 0) {
+        const importLine = parts.length === 1
+          ? `use alloc::string::${parts[0]};`
+          : `use alloc::string::{${parts.join(", ")}};`;
+        fixed = fixed.replace(
+          /(use alloc::\{vec, vec::Vec\};)/,
+          `$1\n${importLine}`
+        );
+      }
     }
   }
 
@@ -259,8 +258,9 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
   for (const af of arrayFields) {
     // Use balanced-paren pattern to handle nested parens
     // e.g. setter(U256::from(idx as u64))
+    // Allow optional whitespace/newlines between ) and .set( for multiline chains.
     fixed = fixed.replace(
-      new RegExp(`\\.${af}\\.setter\\(((?:[^()]*|\\([^()]*\\))*)\\)\\.set\\(`, "g"),
+      new RegExp(`\\.${af}\\.setter\\(((?:[^()]*|\\([^()]*\\))*)\\)\\s*\\.set\\(`, "g"),
       `.${af}.setter($1).unwrap().set(`
     );
   }
@@ -268,8 +268,9 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
   // Fix 27: .get(k1).setter(k2) → .setter(k1).setter(k2)
   // Nested mapping writes: .get() returns immutable ref, can't
   // call .setter() on it. Must chain .setter() for writes.
+  // Allow optional whitespace/newlines between ) and .setter( for multiline chains.
   fixed = fixed.replace(
-    /\.get\(((?:[^()]*|\([^()]*\))*)\)\.setter\(/g,
+    /\.get\(((?:[^()]*|\([^()]*\))*)\)\s*\.setter\(/g,
     ".setter($1).setter("
   );
 

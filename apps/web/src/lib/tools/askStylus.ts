@@ -205,8 +205,9 @@ function fixCodeInResponse(content: string): string {
       askArrayFields.add(askArrayMatch[1]);
     }
     for (const af of askArrayFields) {
+      // Allow optional whitespace/newlines between ) and .set( for multiline chains
       fixed = fixed.replace(
-        new RegExp(`\\.${af}\\.setter\\(((?:[^()]*|\\([^()]*\\))*)\\)\\.set\\(`, "g"),
+        new RegExp(`\\.${af}\\.setter\\(((?:[^()]*|\\([^()]*\\))*)\\)\\s*\\.set\\(`, "g"),
         `.${af}.setter($1).unwrap().set(`
       );
     }
@@ -214,8 +215,9 @@ function fixCodeInResponse(content: string): string {
     // Fix 27: .get(k1).setter(k2) → .setter(k1).setter(k2)
     // Nested mapping writes: .get() returns immutable ref, can't
     // call .setter() on it. Must chain .setter() for writes.
+    // Allow optional whitespace/newlines between ) and .setter( for multiline chains.
     fixed = fixed.replace(
-      /\.get\(((?:[^()]*|\([^()]*\))*)\)\.setter\(/g,
+      /\.get\(((?:[^()]*|\([^()]*\))*)\)\s*\.setter\(/g,
       ".setter($1).setter("
     );
 
@@ -368,13 +370,26 @@ function fixCodeInResponse(content: string): string {
       );
     }
 
-    // Fix 37 (N31): Add String + ToString imports if .to_string() is used
-    if (fixed.includes(".to_string()") && !fixed.includes("alloc::string::")) {
-      if (fixed.includes("use alloc::{vec, vec::Vec};")) {
-        fixed = fixed.replace(
-          /(use alloc::\{vec, vec::Vec\};)/,
-          "$1\nuse alloc::string::{String, ToString};"
-        );
+    // Fix 9d + Fix 37 (N31): Ensure correct alloc::string imports, no duplicates.
+    {
+      const nsString = fixed.includes("-> String") || fixed.includes(": String") || fixed.includes(".to_string()") || fixed.includes("String::new") || fixed.includes("String::from");
+      const nsToString = fixed.includes(".to_string()");
+      if (nsString || nsToString) {
+        // Remove all existing alloc::string imports to avoid duplicates
+        fixed = fixed.replace(/^use alloc::string::\{[^}]*\};\s*\n?/gm, "");
+        fixed = fixed.replace(/^use alloc::string::\w+;\s*\n?/gm, "");
+        const parts: string[] = [];
+        if (nsString) parts.push("String");
+        if (nsToString) parts.push("ToString");
+        if (parts.length > 0 && fixed.includes("use alloc::{vec, vec::Vec};")) {
+          const importLine = parts.length === 1
+            ? `use alloc::string::${parts[0]};`
+            : `use alloc::string::{${parts.join(", ")}};`;
+          fixed = fixed.replace(
+            /(use alloc::\{vec, vec::Vec\};)/,
+            `$1\n${importLine}`
+          );
+        }
       }
     }
 

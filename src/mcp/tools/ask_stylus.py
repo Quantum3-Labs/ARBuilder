@@ -526,15 +526,17 @@ class AskStylusTool(BaseTool):
                 ):
                     ask_array_fields.add(af_m.group(1))
                 for af in ask_array_fields:
+                    # Allow \s* for multiline chains (N34)
                     code = re.sub(
-                        rf"\.{af}\.setter\(((?:[^()]*|\([^()]*\))*)\)\.set\(",
+                        rf"\.{af}\.setter\(((?:[^()]*|\([^()]*\))*)\)\s*\.set\(",
                         rf".{af}.setter(\1).unwrap().set(",
                         code,
                     )
 
                 # Fix 27: .get(k1).setter(k2) → .setter(k1).setter(k2)
+                # Allow \s* for multiline chains (N33)
                 code = re.sub(
-                    r"\.get\(((?:[^()]*|\([^()]*\))*)\)\.setter\(",
+                    r"\.get\(((?:[^()]*|\([^()]*\))*)\)\s*\.setter\(",
                     r".setter(\1).setter(",
                     code,
                 )
@@ -706,13 +708,42 @@ class AskStylusTool(BaseTool):
                         code,
                     )
 
-                # Fix 37 (N31): Add String + ToString imports if
-                # .to_string() is used
-                if ".to_string()" in code:
-                    if "alloc::string::" not in code:
+                # Fix 9d + Fix 37 (N31): Ensure alloc::string imports,
+                # no duplicates.
+                needs_str = (
+                    "-> String" in code
+                    or ": String" in code
+                    or ".to_string()" in code
+                    or "String::new" in code
+                    or "String::from" in code
+                )
+                needs_tostr = ".to_string()" in code
+                if needs_str or needs_tostr:
+                    code = re.sub(
+                        r"^use alloc::string::\{[^}]*\};\s*\n?",
+                        "",
+                        code,
+                        flags=re.MULTILINE,
+                    )
+                    code = re.sub(
+                        r"^use alloc::string::\w+;\s*\n?",
+                        "",
+                        code,
+                        flags=re.MULTILINE,
+                    )
+                    parts = []
+                    if needs_str:
+                        parts.append("String")
+                    if needs_tostr:
+                        parts.append("ToString")
+                    if parts:
+                        if len(parts) == 1:
+                            imp = f"use alloc::string::{parts[0]};"
+                        else:
+                            imp = f"use alloc::string::{{{', '.join(parts)}}};"
                         code = re.sub(
                             r"(use alloc::\{vec, vec::Vec\};)",
-                            r"\1\nuse alloc::string::{String, ToString};",
+                            rf"\1\n{imp}",
                             code,
                         )
 
