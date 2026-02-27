@@ -595,6 +595,27 @@ class AskStylusTool(BaseTool):
                     code,
                 )
 
+                # Fix 32: sol_interface! calls must have self.vm() as first host argument
+                code = re.sub(
+                    r"\b(\w+)\.(\w+)\(Call::new\(\)",
+                    r"\1.\2(self.vm(), Call::new()",
+                    code,
+                )
+                code = re.sub(
+                    r"\b(\w+)\.(\w+)\(Call::new_mutating\(self\)",
+                    r"\1.\2(self.vm(), Call::new_mutating(self)",
+                    code,
+                )
+                call_var_matches = re.findall(
+                    r"let\s+(?:mut\s+)?(\w+)\s*=\s*Call::new", code
+                )
+                for cvar in call_var_matches:
+                    code = re.sub(
+                        rf"\b(\w+)\.(\w+)\({cvar},\s*",
+                        rf"\1.\2(self.vm(), {cvar}, ",
+                        code,
+                    )
+
                 # Fix 24: .unwrap_or_else(VALUE) → .unwrap_or(VALUE)
                 code = re.sub(
                     r"\.unwrap_or_else\((\w+::(?:ZERO|MAX|MIN|ONE))\)",

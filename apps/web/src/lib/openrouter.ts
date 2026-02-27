@@ -177,6 +177,7 @@ Key patterns for v${targetVersion}:
 - sol_interface! SNAKE_CASE: \`sol_interface!\` converts Solidity camelCase to Rust snake_case. \`transferFrom\` → \`.transfer_from()\`, \`balanceOf\` → \`.balance_of()\`. ALWAYS use snake_case when calling sol_interface! methods.
 - B256 CONVERSION: \`B256::from_uint()\` does NOT exist. To convert U256 to B256, use \`B256::from(value.to_be_bytes::<32>())\`.
 - CONST U256: \`U256::from()\` is NOT const-compatible. For const declarations use \`U256::from_limbs([N, 0, 0, 0])\` e.g. \`const MY_ROLE: U256 = U256::from_limbs([1, 0, 0, 0]);\`. \`U256::ZERO\` is fine.
+- sol_interface! HOST ARGUMENT: When calling methods on sol_interface!-generated types, \`self.vm()\` MUST be the FIRST argument, followed by the Call context, then Solidity parameters. Example: \`token.transfer(self.vm(), Call::new_mutating(self), to, amount)?;\` NOT \`token.transfer(Call::new_mutating(self), to, amount)?;\` — the \`self.vm()\` host reference is ALWAYS required as the first arg.
 
 Security best practices:
 - Check for overflows using checked_add/checked_sub
@@ -294,6 +295,7 @@ COMPILATION-CRITICAL — these mistakes WILL break the build:
 - sol_interface! SNAKE_CASE: \`transferFrom\` → \`.transfer_from()\`, \`balanceOf\` → \`.balance_of()\`. Always snake_case for sol_interface! calls.
 - B256 CONVERSION: \`B256::from_uint()\` does NOT exist. Use \`B256::from(value.to_be_bytes::<32>())\`.
 - CONST U256: \`U256::from()\` is NOT const-compatible. Use \`U256::from_limbs([N, 0, 0, 0])\` for const declarations.
+- sol_interface! HOST ARGUMENT: When calling methods on sol_interface!-generated types, \`self.vm()\` MUST be the FIRST argument, followed by Call context, then Solidity parameters. Example: \`token.transfer(self.vm(), call, to, amount)?;\` NOT \`token.transfer(call, to, amount)?;\`.
 
 WHAT YOU MAY DO:
 - Rename the contract struct in sol_storage! to match the user's request (e.g., PredictionMarket, Lottery, etc.)

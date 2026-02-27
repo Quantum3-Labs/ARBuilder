@@ -362,6 +362,12 @@ from `alloy_primitives::B256`.
 For const declarations use `U256::from_limbs([N, 0, 0, 0])` \
 e.g. `const MY_ROLE: U256 = U256::from_limbs([1, 0, 0, 0]);`. \
 `U256::ZERO` is fine (it's already a const).
+54. sol_interface! HOST ARGUMENT: When calling methods on \
+sol_interface!-generated types, `self.vm()` MUST be the FIRST \
+argument, followed by the Call context, then the Solidity parameters. \
+Example: `token.transfer(self.vm(), Call::new_mutating(self), to, amount)?;` \
+NOT `token.transfer(Call::new_mutating(self), to, amount)?;` — \
+the `self.vm()` host reference is ALWAYS required as the first arg.
 """
 
 
@@ -504,6 +510,11 @@ converts Solidity camelCase to Rust snake_case. \
 exist. Use `B256::from(value.to_be_bytes::<32>())`.
 - CONST U256: `U256::from()` is NOT const-compatible. \
 Use `U256::from_limbs([N, 0, 0, 0])` for const declarations.
+- sol_interface! HOST ARGUMENT: When calling methods on \
+sol_interface!-generated types, `self.vm()` MUST be the FIRST \
+argument, followed by Call context, then Solidity parameters. \
+Example: `token.transfer(self.vm(), call, to, amount)?;` \
+NOT `token.transfer(call, to, amount)?;`.
 
 WHAT YOU MAY DO:
 - Rename the contract struct in sol_storage! to \
@@ -1484,6 +1495,32 @@ class GenerateStylusCodeTool(BaseTool):
                 r"\1U256::from_limbs([\2, 0, 0, 0])",
                 fixed,
             )
+
+            # Fix 32: sol_interface! calls must have self.vm() as first
+            # host argument.  LLMs often omit self.vm() and pass the
+            # Call context as the first argument.
+            # Pattern A: Call::new() as first argument
+            fixed = re.sub(
+                r"\b(\w+)\.(\w+)\(Call::new\(\)",
+                r"\1.\2(self.vm(), Call::new()",
+                fixed,
+            )
+            # Pattern B: Call::new_mutating(self) as first argument
+            fixed = re.sub(
+                r"\b(\w+)\.(\w+)\(Call::new_mutating\(self\)",
+                r"\1.\2(self.vm(), Call::new_mutating(self)",
+                fixed,
+            )
+            # Pattern C: Named Call variable as first argument
+            call_var_matches = re.findall(
+                r"let\s+(?:mut\s+)?(\w+)\s*=\s*Call::new", fixed
+            )
+            for cvar in call_var_matches:
+                fixed = re.sub(
+                    rf"\b(\w+)\.(\w+)\({cvar},\s*",
+                    rf"\1.\2(self.vm(), {cvar}, ",
+                    fixed,
+                )
 
             # Fix 24: .unwrap_or_else(VALUE) → .unwrap_or(VALUE)
             # unwrap_or_else takes a closure, not a value. Fix for known constants.

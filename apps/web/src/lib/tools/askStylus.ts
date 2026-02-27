@@ -259,6 +259,25 @@ function fixCodeInResponse(content: string): string {
       "$1U256::from_limbs([$2, 0, 0, 0])"
     );
 
+    // Fix 32: sol_interface! calls must have self.vm() as first host argument
+    fixed = fixed.replace(
+      /\b(\w+)\.(\w+)\(Call::new\(\)/g,
+      "$1.$2(self.vm(), Call::new()"
+    );
+    fixed = fixed.replace(
+      /\b(\w+)\.(\w+)\(Call::new_mutating\(self\)/g,
+      "$1.$2(self.vm(), Call::new_mutating(self)"
+    );
+    const askCallVarPattern = /let\s+(?:mut\s+)?(\w+)\s*=\s*Call::new/g;
+    let askCallVarMatch;
+    while ((askCallVarMatch = askCallVarPattern.exec(fixed)) !== null) {
+      const cvar = askCallVarMatch[1];
+      fixed = fixed.replace(
+        new RegExp(`\\b(\\w+)\\.(\\w+)\\(${cvar},\\s*`, "g"),
+        `$1.$2(self.vm(), ${cvar}, `
+      );
+    }
+
     // Fix 24: .unwrap_or_else(VALUE) → .unwrap_or(VALUE)
     fixed = fixed.replace(
       /\.unwrap_or_else\((\w+::(?:ZERO|MAX|MIN|ONE))\)/g,

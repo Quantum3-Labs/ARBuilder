@@ -318,6 +318,29 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     "$1U256::from_limbs([$2, 0, 0, 0])"
   );
 
+  // Fix 32: sol_interface! calls must have self.vm() as first host argument.
+  // LLMs often omit self.vm() and pass the Call context as the first argument.
+  // Pattern A: Call::new() as first argument
+  fixed = fixed.replace(
+    /\b(\w+)\.(\w+)\(Call::new\(\)/g,
+    "$1.$2(self.vm(), Call::new()"
+  );
+  // Pattern B: Call::new_mutating(self) as first argument
+  fixed = fixed.replace(
+    /\b(\w+)\.(\w+)\(Call::new_mutating\(self\)/g,
+    "$1.$2(self.vm(), Call::new_mutating(self)"
+  );
+  // Pattern C: Named Call variable as first argument
+  const callVarPattern = /let\s+(?:mut\s+)?(\w+)\s*=\s*Call::new/g;
+  let callVarMatch;
+  while ((callVarMatch = callVarPattern.exec(fixed)) !== null) {
+    const cvar = callVarMatch[1];
+    fixed = fixed.replace(
+      new RegExp(`\\b(\\w+)\\.(\\w+)\\(${cvar},\\s*`, "g"),
+      `$1.$2(self.vm(), ${cvar}, `
+    );
+  }
+
   // Fix 24: .unwrap_or_else(VALUE) → .unwrap_or(VALUE)
   // unwrap_or_else takes a closure, not a value.
   fixed = fixed.replace(

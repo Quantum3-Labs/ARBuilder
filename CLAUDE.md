@@ -357,6 +357,7 @@ let val = self.items.get(index).unwrap();
 - **transfer_eth** — `use stylus_sdk::call::transfer::transfer_eth;` then `transfer_eth(self.vm(), to, amount)?` (needs `self.vm()` not `self`)
 - **sol_interface! for interfaces** — use `sol_interface!` (NOT `sol!`) to define external contract interfaces for cross-contract calls
 - **Call contexts** — `Call::new()` for VIEW calls, `Call::new_mutating(self)` for STATE-MODIFYING calls. Extract Call to local var to avoid borrow conflict: `let call = Call::new_mutating(self);`
+- **sol_interface! host argument** — `self.vm()` MUST be the FIRST argument when calling sol_interface! methods: `token.transfer(self.vm(), call, to, amount)?;` NOT `token.transfer(call, to, amount)?;`
 - **sol! needs explicit import** — `use alloy_sol_types::{sol, SolError};` — sol! is NOT in prelude
 - **sol! uses camelCase fields** — `tokenId` not `token_id`, `fromAddress` not `from_address` (Solidity convention)
 - **Dynamic arrays** — `uint256[] items;` in sol_storage!, append with `.push(val)` for primitives, `.grow()` for structs. Never `.setter(len).unwrap()`
