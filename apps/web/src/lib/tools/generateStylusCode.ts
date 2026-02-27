@@ -132,12 +132,29 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
   );
 
   // Fix 9d: Add `use alloc::string::String;` if String is used but not imported
-  if ((fixed.includes("-> String") || fixed.includes(": String")) &&
+  if ((fixed.includes("-> String") || fixed.includes(": String") || fixed.includes(".to_string()")) &&
       !fixed.includes("alloc::string::String") && !fixed.includes("alloc::string::")) {
     fixed = fixed.replace(
       /(use alloc::\{vec, vec::Vec\};)/,
       "$1\nuse alloc::string::String;"
     );
+  }
+
+  // Fix 37 (N31): Add `use alloc::string::ToString;` if .to_string() is used
+  if (fixed.includes(".to_string()") &&
+      !fixed.includes("alloc::string::ToString") && !fixed.includes("alloc::string::*")) {
+    // Insert after String import if present, otherwise after vec import
+    if (fixed.includes("use alloc::string::String;")) {
+      fixed = fixed.replace(
+        /(use alloc::string::String;)/,
+        "$1\nuse alloc::string::ToString;"
+      );
+    } else {
+      fixed = fixed.replace(
+        /(use alloc::\{vec, vec::Vec\};)/,
+        "$1\nuse alloc::string::ToString;"
+      );
+    }
   }
 
   // Fix 10: Fix wrong transfer_eth import paths
@@ -362,6 +379,102 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     ".to::<usize>()"
   );
 
+  // Fix 33: B256::from_limbs([...]) → B256::from(U256::from_limbs([...]).to_be_bytes::<32>())
+  // B256 is FixedBytes<32>, NOT Uint. from_limbs is a Uint method.
+  fixed = fixed.replace(
+    /B256::from_limbs\((\[[^\]]*\])\)/g,
+    "B256::from(U256::from_limbs($1).to_be_bytes::<32>())"
+  );
+
+  // Fix 34: mapping(... => string) .get(key) returns StorageGuard<StorageString>.
+  // Two-pass: first fix .get(k).get_string(), then fix bare .get(k).
+  const stringMapFields = new Set<string>();
+  const stringMapPattern = /mapping\([^=]+=>\s*string\)\s+(\w+)\s*;/g;
+  let stringMapMatch;
+  while ((stringMapMatch = stringMapPattern.exec(fixed)) !== null) {
+    stringMapFields.add(stringMapMatch[1]);
+  }
+  for (const smf of stringMapFields) {
+    // Pass 1: .field.get(k).get_string() → .field.getter(k).get_string()
+    fixed = fixed.replace(
+      new RegExp(`\\.${smf}\\.get\\(([^)]+)\\)\\.get_string\\(\\)`, "g"),
+      `.${smf}.getter($1).get_string()`
+    );
+    // Pass 2: bare .field.get(k) → .field.getter(k).get_string()
+    fixed = fixed.replace(
+      new RegExp(`\\.${smf}\\.get\\(([^)]+)\\)`, "g"),
+      `.${smf}.getter($1).get_string()`
+    );
+  }
+  // Cleanup: doubled .get_string() chains (LLM garbage)
+  fixed = fixed.replace(
+    /\.get_string\(\)(?:\.getter\([^)]*\))?\.get_string\(\)/g,
+    ".get_string()"
+  );
+  // Cleanup: local_var.get_string() is always wrong.
+  // .get_string() is only valid on StorageString (self.field...).
+  fixed = fixed.replace(
+    /\b([a-z_]\w*)\.get_string\(\)/g,
+    (_match: string, varName: string) => varName === "self" ? _match : varName
+  );
+
+  // Fix 35: .abi_encode() on SolidityError enum wrapper.
+  // Enum::Variant(Inner{..}).abi_encode() → Inner{..}.abi_encode()
+  fixed = fixed.replace(
+    /(\w+)::(\w+)\((\2\s*\{[^}]*\})\)\.abi_encode\(\)/g,
+    "$3.abi_encode()"
+  );
+
+  // Fix 36: StorageString returned directly without .get_string().
+  // `string name;` in sol_storage! → self.name is StorageString.
+  // self.name (not followed by . or word char) → self.name.get_string()
+  const strFields = new Set<string>();
+  const strFieldPattern = /\bstring\s+(\w+)\s*;/g;
+  let strFieldMatch;
+  while ((strFieldMatch = strFieldPattern.exec(fixed)) !== null) {
+    strFields.add(strFieldMatch[1]);
+  }
+  for (const sf of strFields) {
+    fixed = fixed.replace(
+      new RegExp(`self\\.${sf}(?![.\\w])`, "g"),
+      `self.${sf}.get_string()`
+    );
+  }
+
+  // Fix 38 (N32): Move `pub const` out of #[public] impl blocks.
+  // The #[public] proc macro doesn't support associated constants.
+  // Extract them to module-level constants above the impl block.
+  {
+    const constInImplPattern = /^([ \t]*)pub const\s+(\w+)\s*:\s*(\w+)\s*=\s*([^;]+);/gm;
+    const consts: Array<{ full: string; name: string; ty: string; val: string }> = [];
+    let constMatch;
+    while ((constMatch = constInImplPattern.exec(fixed)) !== null) {
+      // Only if inside a #[public] impl block (check if preceded by #[public])
+      const beforeMatch = fixed.slice(0, constMatch.index);
+      const lastPublicImpl = beforeMatch.lastIndexOf("#[public]");
+      const lastClosingBrace = beforeMatch.lastIndexOf("\n}\n");
+      if (lastPublicImpl > -1 && lastPublicImpl > lastClosingBrace) {
+        consts.push({
+          full: constMatch[0],
+          name: constMatch[2],
+          ty: constMatch[3],
+          val: constMatch[4].trim(),
+        });
+      }
+    }
+    for (const c of consts) {
+      // Remove from impl block
+      fixed = fixed.replace(c.full + "\n", "");
+      fixed = fixed.replace(c.full, "");
+      // Add as module-level const before #[public]
+      const moduleConst = `const ${c.name}: ${c.ty} = ${c.val};`;
+      fixed = fixed.replace(
+        /(\n#\[public\])/,
+        `\n${moduleConst}\n$1`
+      );
+    }
+  }
+
   // Fix 13: Remove deprecated stylus_sdk::evm and stylus_sdk::msg imports
   fixed = fixed.replace(/^use stylus_sdk::evm.*;\s*$/gm, "");
   fixed = fixed.replace(/^use stylus_sdk::msg.*;\s*$/gm, "");
@@ -476,9 +589,10 @@ export async function generateStylusCode(
     targetVersion,
   });
 
-  // Build context string (for additional patterns only)
+  // Build context string (for additional patterns only, capped to prevent token overflow)
+  const MAX_CONTEXT_CHARS = 2000;
   const contextStr = contextResult.contexts
-    .map((c, i) => `[${i + 1}] (${c.source})\n${c.content}`)
+    .map((c, i) => `[${i + 1}] (${c.source})\n${c.content.slice(0, MAX_CONTEXT_CHARS)}`)
     .join("\n\n---\n\n");
 
   // Enhance prompt with test request if needed
@@ -490,8 +604,9 @@ export async function generateStylusCode(
     enhancedPrompt += "\n\nYou may remove the #[cfg(test)] module if not needed.";
   }
 
-  // Generate code using LLM with template as base (with retry on empty response)
-  let response = await generateCodeFromTemplate(
+  // Generate code using LLM with template as base
+  // chatCompletion() handles retry internally (primary model + fallback model)
+  const response = await generateCodeFromTemplate(
     openrouterApiKey,
     enhancedPrompt,
     template,
@@ -500,27 +615,13 @@ export async function generateStylusCode(
   );
 
   // Parse response - extract code blocks and explanation
-  let codeMatch = response.content.match(/```rust\n([\s\S]*?)```/);
-  let code = codeMatch ? codeMatch[1].trim() : response.content;
+  const codeMatch = response.content.match(/```rust\n([\s\S]*?)```/);
+  let code = codeMatch ? codeMatch[1].trim() : response.content.trim();
 
-  // Retry once if LLM returned empty content
-  if (!code || code.trim().length === 0) {
-    console.warn("LLM returned empty content — retrying once");
-    response = await generateCodeFromTemplate(
-      openrouterApiKey,
-      enhancedPrompt,
-      template,
-      contextStr,
-      targetVersion
-    );
-    codeMatch = response.content.match(/```rust\n([\s\S]*?)```/);
-    code = codeMatch ? codeMatch[1].trim() : response.content;
-  }
-
-  // Safety net: if still empty after retry, fall back to template
-  if (!code || code.trim().length === 0) {
+  // If LLM returned empty after both attempts, fall back to template immediately
+  if (!code || code.length === 0) {
     code = template.libRs;
-    warnings.push("LLM returned empty content after retry — using template code as fallback");
+    warnings.push("LLM returned empty content — using template code as fallback");
   }
 
   // ALWAYS use template's Cargo.toml - don't trust LLM-generated Cargo.toml

@@ -44,6 +44,11 @@ export const MODELS = {
 
 /**
  * Call OpenRouter API for chat completions.
+ *
+ * Simple single-call approach — no retry or timeout.
+ * Tool-level fallbacks (template code, knowledge base) handle empty responses.
+ * AbortController timeouts were removed because they caused tokensUsed:0
+ * by killing requests before the LLM could respond.
  */
 export async function chatCompletion(
   apiKey: string,
@@ -80,7 +85,7 @@ export async function chatCompletion(
   }
 
   const data = (await response.json()) as {
-    choices: Array<{ message?: { content?: string } }>;
+    choices: Array<{ message?: { content?: string }; finish_reason?: string }>;
     model: string;
     usage?: {
       prompt_tokens?: number;
@@ -90,14 +95,10 @@ export async function chatCompletion(
   };
 
   const content = data.choices[0]?.message?.content ?? "";
-
-  // Log empty responses for debugging (TF1 issue)
   if (!content || content.trim().length === 0) {
     console.warn(
-      `OpenRouter returned empty content. Model: ${data.model}, ` +
-      `choices: ${data.choices?.length ?? 0}, ` +
-      `usage: ${JSON.stringify(data.usage)}, ` +
-      `finish_reason: ${(data.choices[0] as Record<string, unknown>)?.finish_reason ?? "unknown"}`
+      `Empty LLM response. Model: ${data.model}, ` +
+      `finish_reason: ${data.choices[0]?.finish_reason ?? "unknown"}`
     );
   }
 
@@ -178,6 +179,12 @@ Key patterns for v${targetVersion}:
 - B256 CONVERSION: \`B256::from_uint()\` does NOT exist. To convert U256 to B256, use \`B256::from(value.to_be_bytes::<32>())\`.
 - CONST U256: \`U256::from()\` is NOT const-compatible. For const declarations use \`U256::from_limbs([N, 0, 0, 0])\` e.g. \`const MY_ROLE: U256 = U256::from_limbs([1, 0, 0, 0]);\`. \`U256::ZERO\` is fine.
 - sol_interface! HOST ARGUMENT: When calling methods on sol_interface!-generated types, \`self.vm()\` MUST be the FIRST argument, followed by the Call context, then Solidity parameters. Example: \`token.transfer(self.vm(), Call::new_mutating(self), to, amount)?;\` NOT \`token.transfer(Call::new_mutating(self), to, amount)?;\` — the \`self.vm()\` host reference is ALWAYS required as the first arg.
+- B256 IS NOT Uint: B256 is \`FixedBytes<32>\`, NOT \`Uint<256>\`. \`B256::from_limbs()\` does NOT exist — \`from_limbs\` is a Uint method. To create B256 from limbs: \`B256::from(U256::from_limbs([1, 0, 0, 0]).to_be_bytes::<32>())\`. Use \`B256::ZERO\` for zero, \`B256::with_last_byte(n)\` for small values.
+- STRING MAPPING READS: \`mapping(... => string)\` — \`.get(key)\` returns \`StorageGuard<StorageString>\`, NOT String. Use \`.getter(key).get_string()\` to read as String. Do NOT call \`.get_string()\` again on the result — it already IS a String. Write: \`.setter(key).set_str("val")\`.
+- abi_encode() ON ERRORS: \`.abi_encode()\` is on the inner \`sol!\` error struct (SolError trait), NOT on the \`#[derive(SolidityError)]\` enum. WRONG: \`MyErrors::NotOwner(NotOwner{...}).abi_encode()\`. CORRECT: \`NotOwner{caller, owner}.abi_encode()\`. The enum is for Stylus runtime dispatch, not manual encoding.
+- STORAGESTRING VIEW FUNCTIONS: When returning a \`string\` field from sol_storage! in a view function, ALWAYS call \`.get_string()\`: \`pub fn name(&self) -> String { self.name.get_string() }\`. NEVER return \`self.name\` directly — it is StorageString, not String. Do NOT use \`.push_str()\` on StorageString — extract first: \`let s = self.name.get_string(); format!("{}{}", s, other)\`.
+- STRING IMPORTS (no_std): When using \`String\` type, add \`use alloc::string::String;\`. When using \`.to_string()\`, ALSO add \`use alloc::string::ToString;\`. These are NOT in prelude in no_std.
+- NO CONST IN #[public] IMPL: Do NOT put \`pub const\` declarations inside \`#[public] impl MyContract { ... }\` — the proc macro does not support associated constants. Move constants to module level: \`const ADMIN_ROLE: U256 = U256::ZERO;\` BEFORE the impl block.
 
 Security best practices:
 - Check for overflows using checked_add/checked_sub
@@ -296,6 +303,12 @@ COMPILATION-CRITICAL — these mistakes WILL break the build:
 - B256 CONVERSION: \`B256::from_uint()\` does NOT exist. Use \`B256::from(value.to_be_bytes::<32>())\`.
 - CONST U256: \`U256::from()\` is NOT const-compatible. Use \`U256::from_limbs([N, 0, 0, 0])\` for const declarations.
 - sol_interface! HOST ARGUMENT: When calling methods on sol_interface!-generated types, \`self.vm()\` MUST be the FIRST argument, followed by Call context, then Solidity parameters. Example: \`token.transfer(self.vm(), call, to, amount)?;\` NOT \`token.transfer(call, to, amount)?;\`.
+- B256 IS NOT Uint: B256 is \`FixedBytes<32>\`, NOT \`Uint<256>\`. \`B256::from_limbs()\` does NOT exist. Use \`B256::from(U256::from_limbs([...]).to_be_bytes::<32>())\`.
+- STRING MAPPING READS: \`mapping(... => string)\` — \`.get(key)\` returns \`StorageGuard<StorageString>\`, NOT String. Use \`.getter(key).get_string()\` to read as String. Do NOT call \`.get_string()\` again on the result — it already IS a String. Write: \`.setter(key).set_str("val")\`.
+- abi_encode() ON ERRORS: \`.abi_encode()\` is on the inner \`sol!\` error struct, NOT the \`#[derive(SolidityError)]\` enum. WRONG: \`MyErrors::Variant(Inner{..}).abi_encode()\`. CORRECT: \`Inner{..}.abi_encode()\`.
+- STORAGESTRING VIEW FUNCTIONS: When returning a \`string\` field from sol_storage! in a view function, ALWAYS call \`.get_string()\`: \`pub fn name(&self) -> String { self.name.get_string() }\`. NEVER return \`self.name\` directly — it is StorageString, not String. Do NOT use \`.push_str()\` on StorageString — extract first: \`let s = self.name.get_string(); format!("{}{}", s, other)\`.
+- STRING IMPORTS (no_std): When using \`String\`, add \`use alloc::string::String;\`. When using \`.to_string()\`, ALSO add \`use alloc::string::ToString;\`. These are NOT in prelude in no_std.
+- NO CONST IN #[public] IMPL: Do NOT put \`pub const\` inside \`#[public] impl\` — the proc macro doesn't support associated constants. Put constants at module level BEFORE the impl block.
 
 WHAT YOU MAY DO:
 - Rename the contract struct in sol_storage! to match the user's request (e.g., PredictionMarket, Lottery, etc.)

@@ -362,8 +362,13 @@ let val = self.items.get(index).unwrap();
 - **sol! uses camelCase fields** — `tokenId` not `token_id`, `fromAddress` not `from_address` (Solidity convention)
 - **Dynamic arrays** — `uint256[] items;` in sol_storage!, append with `.push(val)` for primitives, `.grow()` for structs. Never `.setter(len).unwrap()`
 - **Borrow checker** — extract `.get()` values to local vars before combining with `.set()`. Never `self.field.setter(self.vm().something())`
-- **B256 conversion** — `B256::from_uint()` does NOT exist. Use `B256::from(value.to_be_bytes::<32>())` to convert U256 to B256
+- **B256 is FixedBytes, not Uint** — `B256::from_uint()` and `B256::from_limbs()` do NOT exist. B256 is `FixedBytes<32>`, not `Uint<256>`. Use `B256::from(value.to_be_bytes::<32>())` for U256→B256, `B256::from(U256::from_limbs([N, 0, 0, 0]).to_be_bytes::<32>())` for limbs, `B256::ZERO` for zero, `B256::with_last_byte(n)` for small values
 - **Const U256** — `U256::from()` is NOT const-compatible. Use `U256::from_limbs([N, 0, 0, 0])` for const declarations. `U256::ZERO` is fine.
+- **String mapping reads** — `mapping(uint256 => string)` — `.get(key)` returns `StorageGuard<StorageString>`, NOT `String`. Use `.getter(key).get_string()` to read. For writes: `.setter(key).set_str("value")`
+- **abi_encode() on errors** — `.abi_encode()` is on the inner `sol!` error struct (SolError trait), NOT on the `#[derive(SolidityError)]` enum wrapper. WRONG: `MyErrors::NotOwner(NotOwner{...}).abi_encode()`. CORRECT: `NotOwner{caller, owner}.abi_encode()`
+- **StorageString view functions** — When returning a `string` field from sol_storage! in a view function, ALWAYS call `.get_string()`: `pub fn name(&self) -> String { self.name.get_string() }`. NEVER return `self.name` directly — it is `StorageString`, not `String`. Do NOT use `.push_str()` on StorageString — extract first: `let s = self.name.get_string(); format!("{}{}", s, other)`
+- **String imports in no_std** — `String` needs `use alloc::string::String;`. `.to_string()` also needs `use alloc::string::ToString;`. These are NOT in prelude in no_std.
+- **No const in #[public] impl** — `pub const` inside `#[public] impl` is unsupported by the proc macro. Move constants to module level before the impl block.
 - **ABI uses camelCase** — Stylus exports snake_case Rust fns as camelCase (`create_market` → `createMarket`). Frontend must use camelCase in `functionName`
 - **View functions can't call external contracts** — `&self` view fns revert on cross-contract calls (unlike Solidity). Use `&mut self` or read from frontend
 - **Arbitrum L2 gas** — MetaMask may underestimate `maxFeePerGas` on Arbitrum Sepolia. Add explicit gas overrides if "max fee per gas less than block base fee"

@@ -636,6 +636,110 @@ class AskStylusTool(BaseTool):
                     ".to::<usize>()",
                     code,
                 )
+
+                # Fix 33: B256::from_limbs([...]) is wrong —
+                # B256 is FixedBytes<32>, NOT Uint. Wrap with U256.
+                code = re.sub(
+                    r"B256::from_limbs\((\[[^\]]*\])\)",
+                    r"B256::from(U256::from_limbs(\1).to_be_bytes::<32>())",
+                    code,
+                )
+
+                # Fix 34: mapping(... => string) .get(key) returns
+                # StorageGuard<StorageString>. Two-pass approach.
+                string_map_fields = set()
+                for smf in re.finditer(
+                    r"mapping\([^=]+=>\s*string\)\s+(\w+)\s*;", code
+                ):
+                    string_map_fields.add(smf.group(1))
+                for smf in string_map_fields:
+                    # Pass 1: .get(k).get_string() → .getter(k).get_string()
+                    code = re.sub(
+                        rf"\.{smf}\.get\(([^)]+)\)\.get_string\(\)",
+                        rf".{smf}.getter(\1).get_string()",
+                        code,
+                    )
+                    # Pass 2: bare .get(k) → .getter(k).get_string()
+                    code = re.sub(
+                        rf"\.{smf}\.get\(([^)]+)\)",
+                        rf".{smf}.getter(\1).get_string()",
+                        code,
+                    )
+                # Cleanup: doubled .get_string() chains
+                code = re.sub(
+                    r"\.get_string\(\)"
+                    r"(?:\.getter\([^)]*\))?"
+                    r"\.get_string\(\)",
+                    ".get_string()",
+                    code,
+                )
+                # Cleanup: local_var.get_string() is always wrong.
+                code = re.sub(
+                    r"\b([a-z_]\w*)\.get_string\(\)",
+                    lambda m: (
+                        m.group(0) if m.group(1) == "self"
+                        else m.group(1)
+                    ),
+                    code,
+                )
+
+                # Fix 35: .abi_encode() on SolidityError enum wrapper.
+                code = re.sub(
+                    r"(\w+)::(\w+)\((\2\s*\{[^}]*\})\)"
+                    r"\.abi_encode\(\)",
+                    r"\3.abi_encode()",
+                    code,
+                )
+
+                # Fix 36: StorageString returned directly without
+                # .get_string(). self.field (not followed by .) must
+                # become self.field.get_string().
+                ask_str_fields: set[str] = set()
+                for sm in re.finditer(
+                    r"\bstring\s+(\w+)\s*;", code
+                ):
+                    ask_str_fields.add(sm.group(1))
+                for sf in ask_str_fields:
+                    code = re.sub(
+                        rf"self\.{sf}(?![\.\w])",
+                        f"self.{sf}.get_string()",
+                        code,
+                    )
+
+                # Fix 37 (N31): Add String + ToString imports if
+                # .to_string() is used
+                if ".to_string()" in code:
+                    if "alloc::string::" not in code:
+                        code = re.sub(
+                            r"(use alloc::\{vec, vec::Vec\};)",
+                            r"\1\nuse alloc::string::{String, ToString};",
+                            code,
+                        )
+
+                # Fix 38 (N32): Move pub const out of #[public] impl
+                consts_to_move = []
+                for cm in re.finditer(
+                    r"^[ \t]*pub const\s+(\w+)\s*:\s*(\w+)\s*=\s*([^;]+);",
+                    code,
+                    re.MULTILINE,
+                ):
+                    before = code[: cm.start()]
+                    last_pub = before.rfind("#[public]")
+                    last_close = before.rfind("\n}\n")
+                    if last_pub > -1 and last_pub > last_close:
+                        consts_to_move.append(
+                            (cm.group(0), cm.group(1), cm.group(2), cm.group(3).strip())
+                        )
+                for full_m, cname, cty, cval in consts_to_move:
+                    code = code.replace(full_m + "\n", "")
+                    code = code.replace(full_m, "")
+                    module_const = f"const {cname}: {cty} = {cval};"
+                    code = re.sub(
+                        r"(\n#\[public\])",
+                        f"\n{module_const}\n\\1",
+                        code,
+                        count=1,
+                    )
             else:
                 # ── 0.9.x fixes (reverse) ──
 

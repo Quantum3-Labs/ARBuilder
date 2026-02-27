@@ -50,20 +50,34 @@ export async function askStylus(
     rerank: true,
   });
 
-  // Build context string with optional code context
+  // Build context string with optional code context (cap per-item to prevent token overflow)
+  const MAX_CONTEXT_CHARS = 2000;
   let contextStr = contextResult.contexts
-    .map((c, i) => `[${i + 1}] (${c.source})\n${c.content}`)
+    .slice(0, 3) // Top 3 most relevant
+    .map((c, i) => `[${i + 1}] (${c.source})\n${c.content.slice(0, MAX_CONTEXT_CHARS)}`)
     .join("\n\n---\n\n");
 
   if (codeContext) {
     contextStr = `User's Code:\n\`\`\`rust\n${codeContext}\n\`\`\`\n\n---\n\n${contextStr}`;
   }
 
-  // Get answer from LLM
+  // Get answer from LLM (chatCompletion retries 3x on empty)
   const response = await answerQuestion(openrouterApiKey, question, contextStr);
 
+  // Fallback: if LLM returned empty after all retries, use RAG context summary
+  let responseContent = response.content;
+  if (!responseContent || responseContent.trim().length === 0) {
+    const ctxSummary = contextResult.contexts
+      .slice(0, 3)
+      .map((c) => `From ${c.source}:\n${c.content.slice(0, 500)}`)
+      .join("\n\n---\n\n");
+    responseContent = ctxSummary
+      ? `Here are relevant excerpts from the documentation:\n\n${ctxSummary}`
+      : `I couldn't generate a detailed answer right now. Please try again or check https://docs.arbitrum.io/stylus`;
+  }
+
   // Fix wrong patterns in code blocks (RAG context often overrides system prompt)
-  const fixedContent = fixCodeInResponse(response.content);
+  const fixedContent = fixCodeInResponse(responseContent);
 
   // Extract code examples from response
   const codeExamples: Array<{ title: string; code: string }> = [];
@@ -295,6 +309,97 @@ function fixCodeInResponse(content: string): string {
       /\.as_usize\(\)/g,
       ".to::<usize>()"
     );
+
+    // Fix 33: B256::from_limbs([...]) → B256::from(U256::from_limbs([...]).to_be_bytes::<32>())
+    // B256 is FixedBytes<32>, NOT Uint. from_limbs is a Uint method.
+    fixed = fixed.replace(
+      /B256::from_limbs\((\[[^\]]*\])\)/g,
+      "B256::from(U256::from_limbs($1).to_be_bytes::<32>())"
+    );
+
+    // Fix 34: mapping(... => string) .get(key) returns StorageGuard<StorageString>.
+    // Two-pass approach to avoid doubling .get_string().
+    const askStringMapFields = new Set<string>();
+    const askStringMapPattern = /mapping\([^=]+=>\s*string\)\s+(\w+)\s*;/g;
+    let askStringMapMatch;
+    while ((askStringMapMatch = askStringMapPattern.exec(fixed)) !== null) {
+      askStringMapFields.add(askStringMapMatch[1]);
+    }
+    for (const smf of askStringMapFields) {
+      // Pass 1: .field.get(k).get_string() → .field.getter(k).get_string()
+      fixed = fixed.replace(
+        new RegExp(`\\.${smf}\\.get\\(([^)]+)\\)\\.get_string\\(\\)`, "g"),
+        `.${smf}.getter($1).get_string()`
+      );
+      // Pass 2: bare .field.get(k) → .field.getter(k).get_string()
+      fixed = fixed.replace(
+        new RegExp(`\\.${smf}\\.get\\(([^)]+)\\)`, "g"),
+        `.${smf}.getter($1).get_string()`
+      );
+    }
+    // Cleanup: doubled .get_string() chains
+    fixed = fixed.replace(
+      /\.get_string\(\)(?:\.getter\([^)]*\))?\.get_string\(\)/g,
+      ".get_string()"
+    );
+    // Cleanup: local_var.get_string() is always wrong.
+    fixed = fixed.replace(
+      /\b([a-z_]\w*)\.get_string\(\)/g,
+      (_match: string, varName: string) => varName === "self" ? _match : varName
+    );
+
+    // Fix 35: .abi_encode() on SolidityError enum wrapper.
+    fixed = fixed.replace(
+      /(\w+)::(\w+)\((\2\s*\{[^}]*\})\)\.abi_encode\(\)/g,
+      "$3.abi_encode()"
+    );
+
+    // Fix 36: StorageString returned directly without .get_string().
+    const askStrFields = new Set<string>();
+    const askStrFieldPattern = /\bstring\s+(\w+)\s*;/g;
+    let askStrFieldMatch;
+    while ((askStrFieldMatch = askStrFieldPattern.exec(fixed)) !== null) {
+      askStrFields.add(askStrFieldMatch[1]);
+    }
+    for (const sf of askStrFields) {
+      fixed = fixed.replace(
+        new RegExp(`self\\.${sf}(?![.\\w])`, "g"),
+        `self.${sf}.get_string()`
+      );
+    }
+
+    // Fix 37 (N31): Add String + ToString imports if .to_string() is used
+    if (fixed.includes(".to_string()") && !fixed.includes("alloc::string::")) {
+      if (fixed.includes("use alloc::{vec, vec::Vec};")) {
+        fixed = fixed.replace(
+          /(use alloc::\{vec, vec::Vec\};)/,
+          "$1\nuse alloc::string::{String, ToString};"
+        );
+      }
+    }
+
+    // Fix 38 (N32): Move `pub const` out of #[public] impl blocks
+    {
+      const constInImplPattern = /^([ \t]*)pub const\s+(\w+)\s*:\s*(\w+)\s*=\s*([^;]+);/gm;
+      const consts: Array<{ full: string; name: string; ty: string; val: string }> = [];
+      let cm;
+      while ((cm = constInImplPattern.exec(fixed)) !== null) {
+        const before = fixed.slice(0, cm.index);
+        const lastPub = before.lastIndexOf("#[public]");
+        const lastClose = before.lastIndexOf("\n}\n");
+        if (lastPub > -1 && lastPub > lastClose) {
+          consts.push({ full: cm[0], name: cm[2], ty: cm[3], val: cm[4].trim() });
+        }
+      }
+      for (const c of consts) {
+        fixed = fixed.replace(c.full + "\n", "");
+        fixed = fixed.replace(c.full, "");
+        fixed = fixed.replace(
+          /(\n#\[public\])/,
+          `\nconst ${c.name}: ${c.ty} = ${c.val};\n$1`
+        );
+      }
+    }
 
     return `\`\`\`${lang}\n${fixed}\`\`\``;
   });

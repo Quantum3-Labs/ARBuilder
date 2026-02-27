@@ -368,6 +368,36 @@ argument, followed by the Call context, then the Solidity parameters. \
 Example: `token.transfer(self.vm(), Call::new_mutating(self), to, amount)?;` \
 NOT `token.transfer(Call::new_mutating(self), to, amount)?;` — \
 the `self.vm()` host reference is ALWAYS required as the first arg.
+55. B256 IS NOT Uint: B256 is `FixedBytes<32>`, NOT `Uint<256>`. \
+`B256::from_limbs()` does NOT exist — `from_limbs` is a Uint method. \
+To create B256 from limbs: \
+`B256::from(U256::from_limbs([1, 0, 0, 0]).to_be_bytes::<32>())`. \
+Use `B256::ZERO` for zero, `B256::with_last_byte(n)` for small values.
+56. STRING MAPPING READS: `mapping(uint256 => string)` — \
+Use `.getter(key).get_string()` to read — this returns `String`. \
+Do NOT call `.get_string()` again on the result — it's already a String. \
+WRONG: `let s = self.names.getter(k).get_string(); s.get_string()` \
+CORRECT: `let s = self.names.getter(k).get_string(); // s is String` \
+For writes: `.setter(key).set_str("value")`.
+57. abi_encode() ON ERRORS: `.abi_encode()` is a method on the \
+inner `sol!` error struct (via `SolError` trait), NOT on the \
+`#[derive(SolidityError)]` enum wrapper. \
+WRONG: `MyErrors::NotOwner(NotOwner{{...}}).abi_encode()` \
+CORRECT: `NotOwner{{caller, owner}}.abi_encode()` \
+The enum is for Stylus runtime dispatch, not manual encoding.
+58. STORAGESTRING VIEW FUNCTIONS: When returning a `string` field from \
+sol_storage! in a view function, ALWAYS call `.get_string()`: \
+`pub fn name(&self) -> String {{ self.name.get_string() }}`. \
+NEVER return `self.name` directly — it is `StorageString`, not `String`. \
+Similarly, do NOT use `.push_str()` on StorageString — extract first: \
+`let s = self.name.get_string(); format!("{{}}{{}}", s, other)`.
+59. STRING IMPORTS (no_std): When using `String` type, add \
+`use alloc::string::String;`. When using `.to_string()`, ALSO add \
+`use alloc::string::ToString;`. These are NOT in prelude in no_std.
+60. NO CONST IN #[public] IMPL: Do NOT put `pub const` declarations inside \
+`#[public] impl MyContract {{ ... }}` — the proc macro does not support \
+associated constants. Move constants to module level: \
+`const ADMIN_ROLE: U256 = U256::ZERO;` BEFORE the impl block.
 """
 
 
@@ -515,6 +545,29 @@ sol_interface!-generated types, `self.vm()` MUST be the FIRST \
 argument, followed by Call context, then Solidity parameters. \
 Example: `token.transfer(self.vm(), call, to, amount)?;` \
 NOT `token.transfer(call, to, amount)?;`.
+- B256 IS NOT Uint: B256 is `FixedBytes<32>`, NOT `Uint<256>`. \
+`B256::from_limbs()` does NOT exist. To create B256 from limbs: \
+`B256::from(U256::from_limbs([1, 0, 0, 0]).to_be_bytes::<32>())`.
+- STRING MAPPING READS: `mapping(... => string)` — \
+Use `.getter(key).get_string()` to read — returns `String`. \
+Do NOT call `.get_string()` again on the result. \
+Write: `.setter(key).set_str("val")`.
+- abi_encode() ON ERRORS: `.abi_encode()` is on the inner `sol!` \
+error struct (SolError trait), NOT on the `#[derive(SolidityError)]` enum. \
+WRONG: `MyErrors::NotOwner(NotOwner{{...}}).abi_encode()`. \
+CORRECT: `NotOwner{{caller, owner}}.abi_encode()`.
+- STORAGESTRING VIEW FUNCTIONS: When returning a `string` field from \
+sol_storage! in a view function, ALWAYS call `.get_string()`: \
+`pub fn name(&self) -> String {{ self.name.get_string() }}`. \
+NEVER return `self.name` directly — it is `StorageString`, not `String`. \
+Do NOT use `.push_str()` on StorageString — extract first: \
+`let s = self.name.get_string(); format!("{{}}{{}}", s, other)`.
+- STRING IMPORTS (no_std): When using `String`, add \
+`use alloc::string::String;`. When using `.to_string()`, ALSO add \
+`use alloc::string::ToString;`. These are NOT in prelude in no_std.
+- NO CONST IN #[public] IMPL: Do NOT put `pub const` inside \
+`#[public] impl` — the proc macro doesn't support associated constants. \
+Put constants at module level BEFORE the impl block.
 
 WHAT YOU MAY DO:
 - Rename the contract struct in sol_storage! to \
@@ -1270,13 +1323,28 @@ class GenerateStylusCodeTool(BaseTool):
             )
 
             # Fix 9d: Add `use alloc::string::String;` if String is used but not imported
-            if "-> String" in fixed or ": String" in fixed:
+            if "-> String" in fixed or ": String" in fixed or ".to_string()" in fixed:
                 if "alloc::string::String" not in fixed and "alloc::string::" not in fixed:
                     fixed = re.sub(
                         r"(use alloc::\{vec, vec::Vec\};)",
                         r"\1\nuse alloc::string::String;",
                         fixed,
                     )
+
+            # Fix 37 (N31): Add `use alloc::string::ToString;` if .to_string() is used
+            if ".to_string()" in fixed:
+                if "alloc::string::ToString" not in fixed and "alloc::string::*" not in fixed:
+                    if "use alloc::string::String;" in fixed:
+                        fixed = fixed.replace(
+                            "use alloc::string::String;",
+                            "use alloc::string::String;\nuse alloc::string::ToString;",
+                        )
+                    else:
+                        fixed = re.sub(
+                            r"(use alloc::\{vec, vec::Vec\};)",
+                            r"\1\nuse alloc::string::ToString;",
+                            fixed,
+                        )
 
             # Fix 10: Fix wrong transfer_eth import paths
             fixed = re.sub(
@@ -1545,6 +1613,102 @@ class GenerateStylusCodeTool(BaseTool):
                 ".to::<usize>()",
                 fixed,
             )
+
+            # Fix 33: B256::from_limbs([...]) is wrong — B256 is
+            # FixedBytes<32>, NOT Uint. Wrap with U256 conversion.
+            fixed = re.sub(
+                r"B256::from_limbs\((\[[^\]]*\])\)",
+                r"B256::from(U256::from_limbs(\1).to_be_bytes::<32>())",
+                fixed,
+            )
+
+            # Fix 34: mapping(... => string) .get(key) returns
+            # StorageGuard<StorageString>, NOT String.
+            # Two-pass: first fix .get(k).get_string() → .getter(k).get_string()
+            # then fix bare .get(k) → .getter(k).get_string()
+            string_map_fields = set()
+            for smf in re.finditer(
+                r"mapping\([^=]+=>\s*string\)\s+(\w+)\s*;", fixed
+            ):
+                string_map_fields.add(smf.group(1))
+            for smf in string_map_fields:
+                # Pass 1: .field.get(k).get_string() → .field.getter(k).get_string()
+                fixed = re.sub(
+                    rf"\.{smf}\.get\(([^)]+)\)\.get_string\(\)",
+                    rf".{smf}.getter(\1).get_string()",
+                    fixed,
+                )
+                # Pass 2: bare .field.get(k) → .field.getter(k).get_string()
+                fixed = re.sub(
+                    rf"\.{smf}\.get\(([^)]+)\)",
+                    rf".{smf}.getter(\1).get_string()",
+                    fixed,
+                )
+            # Cleanup: doubled .get_string() chains (LLM garbage)
+            fixed = re.sub(
+                r"\.get_string\(\)(?:\.getter\([^)]*\))?\.get_string\(\)",
+                ".get_string()",
+                fixed,
+            )
+            # Cleanup: local_var.get_string() is always wrong.
+            # .get_string() is only valid on StorageString (self.field...).
+            # A local variable is String, which has no .get_string().
+            fixed = re.sub(
+                r"\b([a-z_]\w*)\.get_string\(\)",
+                lambda m: m.group(0) if m.group(1) == "self" else m.group(1),
+                fixed,
+            )
+
+            # Fix 35: .abi_encode() on SolidityError enum wrapper.
+            # Enum::Variant(Inner{..}).abi_encode() → Inner{..}.abi_encode()
+            # The #[derive(SolidityError)] enum is for runtime dispatch,
+            # not for manual .abi_encode(). The inner sol! struct has it.
+            fixed = re.sub(
+                r"(\w+)::(\w+)\((\2\s*\{[^}]*\})\)\.abi_encode\(\)",
+                r"\3.abi_encode()",
+                fixed,
+            )
+
+            # Fix 36: StorageString returned directly without .get_string().
+            # `string name;` in sol_storage! → self.name is StorageString.
+            # self.name (not followed by .) must be self.name.get_string().
+            str_fields = set()
+            for sm in re.finditer(
+                r"\bstring\s+(\w+)\s*;", fixed
+            ):
+                str_fields.add(sm.group(1))
+            for sf in str_fields:
+                fixed = re.sub(
+                    rf"self\.{sf}(?![\.\w])",
+                    f"self.{sf}.get_string()",
+                    fixed,
+                )
+
+            # Fix 38 (N32): Move `pub const` out of #[public] impl blocks.
+            # The #[public] proc macro doesn't support associated constants.
+            consts_to_move = []
+            for cm in re.finditer(
+                r"^[ \t]*pub const\s+(\w+)\s*:\s*(\w+)\s*=\s*([^;]+);",
+                fixed,
+                re.MULTILINE,
+            ):
+                before = fixed[: cm.start()]
+                last_pub = before.rfind("#[public]")
+                last_close = before.rfind("\n}\n")
+                if last_pub > -1 and last_pub > last_close:
+                    consts_to_move.append(
+                        (cm.group(0), cm.group(1), cm.group(2), cm.group(3).strip())
+                    )
+            for full_match, name, ty, val in consts_to_move:
+                fixed = fixed.replace(full_match + "\n", "")
+                fixed = fixed.replace(full_match, "")
+                module_const = f"const {name}: {ty} = {val};"
+                fixed = re.sub(
+                    r"(\n#\[public\])",
+                    f"\n{module_const}\n\\1",
+                    fixed,
+                    count=1,
+                )
         else:
             # 0.9.x fixes (reverse direction)
 

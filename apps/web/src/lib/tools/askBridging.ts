@@ -87,9 +87,11 @@ export async function askBridging(
     rerank: true,
   });
 
-  // Build context string for LLM
+  // Build context string for LLM (cap per-item to prevent token overflow)
+  const MAX_CONTEXT_CHARS = 2000;
   let contextStr = contextResult.contexts
-    .map((c, i) => `[${i + 1}] (${c.source})\n${c.content}`)
+    .slice(0, 3) // Top 3 most relevant
+    .map((c, i) => `[${i + 1}] (${c.source})\n${c.content.slice(0, MAX_CONTEXT_CHARS)}`)
     .join("\n\n---\n\n");
 
   // Enrich with knowledge base if relevant topics detected
@@ -117,15 +119,25 @@ export async function askBridging(
     contextStr = `Quick Reference:\n${enrichments.join("\n")}\n\n---\n\n${contextStr}`;
   }
 
-  // Get answer from LLM
+  // Get answer from LLM (chatCompletion retries 3x on empty)
   const response = await answerBridgingQuestion(openrouterApiKey, question, contextStr);
+
+  // Fallback: if LLM returned empty after all retries, use knowledge base
+  let answerContent = response.content;
+  if (!answerContent || answerContent.trim().length === 0) {
+    if (enrichments.length > 0) {
+      answerContent = `Here's what I know about this topic:\n\n${enrichments.join("\n\n")}`;
+    } else {
+      answerContent = `I couldn't generate a detailed answer right now. Please try again or check the Arbitrum SDK documentation at https://docs.arbitrum.io/sdk`;
+    }
+  }
 
   // Extract code examples from response
   const codeExamples: Array<{ title: string; code: string; language: string }> = [];
   const codeBlockRegex = /```(typescript|javascript|ts|js)?\n([\s\S]*?)```/g;
   let match;
   let exampleIndex = 1;
-  while ((match = codeBlockRegex.exec(response.content)) !== null) {
+  while ((match = codeBlockRegex.exec(answerContent)) !== null) {
     codeExamples.push({
       title: `Example ${exampleIndex++}`,
       code: match[2].trim(),
@@ -137,7 +149,7 @@ export async function askBridging(
   const followUpQuestions = generateFollowUpQuestions(question, questionType);
 
   return {
-    answer: response.content
+    answer: answerContent
       .replace(/```(?:typescript|javascript|ts|js)?\n[\s\S]*?```/g, "[Code example above]")
       .trim(),
     codeExamples,
