@@ -18,7 +18,7 @@ ArbBuilder/
 ├── src/
 │   ├── mcp/                  # MCP server for IDE integration
 │   │   ├── server.py         # Main MCP server
-│   │   ├── tools/            # 13 MCP tools (M1: 5, M2: 3, M3: 5)
+│   │   ├── tools/            # 14 MCP tools (M1: 6, M2: 3, M3: 5)
 │   │   ├── resources/        # Static knowledge (11 resources)
 │   │   └── prompts/          # Workflow templates
 │   ├── embeddings/           # Vector DB and retrieval
@@ -106,7 +106,7 @@ ruff check .
 
 ## MCP Tools Reference
 
-### M1: Stylus Development (5 tools)
+### M1: Stylus Development (6 tools)
 | Tool | Purpose |
 |------|---------|
 | `get_stylus_context` | RAG retrieval for docs/code examples |
@@ -114,6 +114,7 @@ ruff check .
 | `ask_stylus` | Q&A, debugging, concept explanations |
 | `generate_tests` | Generate unit/integration/fuzz tests |
 | `get_workflow` | Build/deploy/test workflow guidance |
+| `validate_stylus_code` | Compile-check code via Docker cargo check with fix guidance |
 
 ### M2: Arbitrum SDK (3 tools)
 | Tool | Purpose |
@@ -142,7 +143,7 @@ ruff check .
 ### M3 dApp Generation Pipeline
 1. **Template Selection** → Based on contract_type and prompt keywords
 2. **ABI Extraction** → `abi_extractor.py` parses #[public] impl blocks from lib.rs
-3. **Compiler Verification** → `compiler_verifier.py` runs `cargo check` via Docker (up to 2 fix attempts)
+3. **Compiler Verification** → `compiler_verifier.py` runs `cargo check` via Docker (up to 3 fix attempts with Stylus-specific error guidance)
 4. **ABI Injection** → Backend/frontend templates have `__ABI_PLACEHOLDER__` markers replaced with actual ABI
 5. **Env Config** → `env_config.py` generates standardized `.env.example` (PORT=3001, CORS, BACKEND_URL)
 6. **Script Generation** → `setup.sh`, `deploy.sh`, `start.sh` for one-command workflows
@@ -369,9 +370,14 @@ let val = self.items.get(index).unwrap();
 - **StorageString view functions** — When returning a `string` field from sol_storage! in a view function, ALWAYS call `.get_string()`: `pub fn name(&self) -> String { self.name.get_string() }`. NEVER return `self.name` directly — it is `StorageString`, not `String`. Do NOT use `.push_str()` on StorageString — extract first: `let s = self.name.get_string(); format!("{}{}", s, other)`
 - **String imports in no_std** — `String` needs `use alloc::string::String;`. `.to_string()` also needs `use alloc::string::ToString;`. These are NOT in prelude in no_std.
 - **No const in #[public] impl** — `pub const` inside `#[public] impl` is unsupported by the proc macro. Move constants to module level before the impl block.
+- **sol! error/event type matching** — Solidity field types in sol! MUST match the Rust values passed. `address` → Address, `uint256` → U256. For comparison errors (InsufficientBalance, InsufficientStake), ALL value fields (have/want, available/required) should be `uint256`, NOT `address`.
 - **ABI uses camelCase** — Stylus exports snake_case Rust fns as camelCase (`create_market` → `createMarket`). Frontend must use camelCase in `functionName`
 - **View functions can't call external contracts** — `&self` view fns revert on cross-contract calls (unlike Solidity). Use `&mut self` or read from frontend
 - **Arbitrum L2 gas** — MetaMask may underestimate `maxFeePerGas` on Arbitrum Sepolia. Add explicit gas overrides if "max fee per gas less than block base fee"
+- **No Debug with SolidityError** — sol! generated types do NOT implement Debug. `#[derive(SolidityError, Debug)]` fails. Use `#[derive(SolidityError)]` only.
+- **No underscore fns in #[public] impl** — `#[public]` macro strips leading underscores for ABI selectors, so `fn _grant_role` and `fn grant_role` produce the same selector ("unreachable pattern"). Put internal helpers in a separate `impl MyContract { ... }` block without `#[public]`.
+- **address[] deref** — `*self.list.get(idx).unwrap()` on `address[]` returns `FixedBytes<20>`, not `Address`. Use `Address::from(*self.list.get(idx).unwrap())`.
+- **String mapping writes** — For `mapping(... => string)`, `.setter(key)` returns `StorageGuardMut<StorageString>` — call `.set_str(val)` directly. WRONG: `.setter(key).setter().set_str(val)`. CORRECT: `.setter(key).set_str(val)`.
 
 ## Network Endpoints
 

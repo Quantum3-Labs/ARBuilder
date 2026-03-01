@@ -2,18 +2,23 @@
 Base class for MCP tools.
 """
 
+import logging
 import os
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Optional
 
 import httpx
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "openai/gpt-oss-120b")
+FALLBACK_MODEL = os.getenv("FALLBACK_MODEL", "qwen/qwen3.5-flash")
 
 
 @dataclass
@@ -87,7 +92,16 @@ class BaseTool(ABC):
         model: Optional[str] = None,
     ) -> str:
         """
-        Make an LLM API call.
+        Make an LLM API call with production-grade resilience.
+
+        Strategy:
+        1. Try primary model up to 3 times with exponential backoff (1s, 2s, 4s)
+        2. On finish_reason="length" (truncation), increase max_tokens by 1.5x
+        3. On empty response or transient error, retry with backoff
+        4. After primary model exhausted, try fallback model up to 2 times
+        5. Returns "" only after ALL attempts fail
+
+        Never throws — callers can use their own fallback logic.
 
         Args:
             messages: List of message dicts with role and content.
@@ -96,21 +110,172 @@ class BaseTool(ABC):
             model: Model to use (defaults to self.model).
 
         Returns:
-            Generated text content.
+            Generated text content, or "" on failure.
         """
-        response = self.client.post(
-            "/chat/completions",
-            json={
-                "model": model or self.model,
-                "messages": messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-            },
-        )
-        response.raise_for_status()
-        data = response.json()
+        primary_model = model or self.model
+        current_max_tokens = max_tokens
+        primary_attempts = 3
 
-        return data["choices"][0]["message"]["content"]
+        # Phase 1: Primary model — 3 attempts with escalation
+        for attempt in range(primary_attempts):
+            try:
+                response = self.client.post(
+                    "/chat/completions",
+                    json={
+                        "model": primary_model,
+                        "messages": messages,
+                        "temperature": temperature,
+                        "max_tokens": current_max_tokens,
+                    },
+                )
+
+                # Non-retryable client errors — skip to fallback
+                if response.status_code in (400, 401, 403):
+                    logger.error(
+                        "[_call_llm] Non-retryable %d: %s",
+                        response.status_code,
+                        response.text[:200],
+                    )
+                    break
+
+                # Retryable server errors — retry after backoff
+                if response.status_code == 429 or response.status_code >= 500:
+                    logger.warning(
+                        "[_call_llm] HTTP %d (attempt %d/%d), retrying...",
+                        response.status_code,
+                        attempt + 1,
+                        primary_attempts,
+                    )
+                    time.sleep(min(2**attempt, 4))
+                    continue
+
+                response.raise_for_status()
+                data = response.json()
+                content = data["choices"][0]["message"]["content"]
+                finish_reason = data["choices"][0].get("finish_reason", "unknown")
+
+                # Truncation — escalate max_tokens and retry
+                if finish_reason == "length":
+                    old_tokens = current_max_tokens
+                    current_max_tokens = min(int(current_max_tokens * 1.5), 32000)
+                    logger.warning(
+                        "[_call_llm] Truncated (attempt %d/%d). "
+                        "Escalating max_tokens: %d → %d",
+                        attempt + 1,
+                        primary_attempts,
+                        old_tokens,
+                        current_max_tokens,
+                    )
+                    # On last attempt, use truncated content if non-empty
+                    if attempt == primary_attempts - 1 and content and content.strip():
+                        logger.warning("[_call_llm] Using truncated response on final primary attempt")
+                        return content
+                    time.sleep(min(2**attempt, 4))
+                    continue
+
+                if content and content.strip():
+                    return content
+
+                # Empty response — retry with backoff
+                logger.warning(
+                    "[_call_llm] Empty response (attempt %d/%d). "
+                    "Model: %s, finish_reason: %s",
+                    attempt + 1,
+                    primary_attempts,
+                    data.get("model", "unknown"),
+                    finish_reason,
+                )
+                time.sleep(min(2**attempt, 4))
+
+            except (httpx.TimeoutException, httpx.ConnectError) as e:
+                logger.warning(
+                    "[_call_llm] Network error (attempt %d/%d): %s",
+                    attempt + 1,
+                    primary_attempts,
+                    str(e),
+                )
+                time.sleep(min(2**attempt, 4))
+
+            except Exception as e:
+                logger.error("[_call_llm] Unexpected error: %s", str(e))
+                break  # Don't retry unknown errors — skip to fallback
+
+        # Phase 2: Fallback model — 2 attempts
+        fallback_attempts = 2
+        logger.warning(
+            "[_call_llm] Primary model %s exhausted. Trying fallback: %s",
+            primary_model,
+            FALLBACK_MODEL,
+        )
+
+        for attempt in range(fallback_attempts):
+            try:
+                response = self.client.post(
+                    "/chat/completions",
+                    json={
+                        "model": FALLBACK_MODEL,
+                        "messages": messages,
+                        "temperature": temperature,
+                        "max_tokens": current_max_tokens,
+                    },
+                )
+
+                if response.status_code in (400, 401, 403):
+                    logger.error(
+                        "[_call_llm] Fallback non-retryable %d: %s",
+                        response.status_code,
+                        response.text[:200],
+                    )
+                    break
+
+                if response.status_code == 429 or response.status_code >= 500:
+                    logger.warning(
+                        "[_call_llm] Fallback HTTP %d (attempt %d/%d)",
+                        response.status_code,
+                        attempt + 1,
+                        fallback_attempts,
+                    )
+                    time.sleep(min(2**attempt, 4))
+                    continue
+
+                response.raise_for_status()
+                data = response.json()
+                content = data["choices"][0]["message"]["content"]
+
+                if content and content.strip():
+                    logger.warning(
+                        "[_call_llm] Fallback succeeded: %s (%d tokens)",
+                        data.get("model", "unknown"),
+                        data.get("usage", {}).get("total_tokens", 0),
+                    )
+                    return content
+
+                logger.warning(
+                    "[_call_llm] Fallback empty (attempt %d/%d)",
+                    attempt + 1,
+                    fallback_attempts,
+                )
+                time.sleep(min(2**attempt, 4))
+
+            except Exception as e:
+                logger.warning(
+                    "[_call_llm] Fallback error (attempt %d/%d): %s",
+                    attempt + 1,
+                    fallback_attempts,
+                    str(e),
+                )
+                time.sleep(min(2**attempt, 4))
+
+        logger.error(
+            "[_call_llm] All attempts failed. Primary: %s (%dx), Fallback: %s (%dx). "
+            "max_tokens escalated to %d",
+            primary_model,
+            primary_attempts,
+            FALLBACK_MODEL,
+            fallback_attempts,
+            current_max_tokens,
+        )
+        return ""
 
     def _validate_required(self, kwargs: dict, required: list[str]) -> Optional[str]:
         """

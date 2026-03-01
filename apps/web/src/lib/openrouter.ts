@@ -28,6 +28,7 @@ export interface ChatCompletionOptions {
 export interface ChatCompletionResponse {
   content: string;
   model: string;
+  finishReason: string;
   usage: {
     promptTokens: number;
     completionTokens: number;
@@ -35,33 +36,36 @@ export interface ChatCompletionResponse {
   };
 }
 
-// Default models
+// Default models — FALLBACK used when primary exhausts retries
 export const MODELS = {
   CODE_GEN: "openai/gpt-oss-120b",
   QA: "openai/gpt-oss-120b",
   FAST: "openai/gpt-oss-120b",
+  FALLBACK: "qwen/qwen3.5-flash",
 } as const;
 
-/**
- * Call OpenRouter API for chat completions.
- *
- * Simple single-call approach — no retry or timeout.
- * Tool-level fallbacks (template code, knowledge base) handle empty responses.
- * AbortController timeouts were removed because they caused tokensUsed:0
- * by killing requests before the LLM could respond.
- */
-export async function chatCompletion(
-  apiKey: string,
-  messages: Message[],
-  options: ChatCompletionOptions = {}
-): Promise<ChatCompletionResponse> {
-  const {
-    model = MODELS.CODE_GEN,
-    temperature = 0.2,
-    maxTokens = 4096,
-    stream = false,
-  } = options;
+const EMPTY_RESPONSE: ChatCompletionResponse = {
+  content: "",
+  model: "unknown",
+  finishReason: "error",
+  usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+};
 
+/**
+ * Make a single OpenRouter API call. Returns parsed response or throws.
+ */
+async function singleCall(
+  apiKey: string,
+  model: string,
+  messages: Message[],
+  temperature: number,
+  maxTokens: number,
+): Promise<{
+  content: string;
+  finishReason: string;
+  model: string;
+  usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+}> {
   const response = await fetch(OPENROUTER_API_URL, {
     method: "POST",
     headers: {
@@ -75,42 +79,186 @@ export async function chatCompletion(
       messages,
       temperature,
       max_tokens: maxTokens,
-      stream,
+      stream: false,
     }),
   });
 
+  // Non-retryable client errors
+  if (response.status === 400 || response.status === 401 || response.status === 403) {
+    const error = await response.text();
+    throw new Error(`NON_RETRYABLE: HTTP ${response.status}: ${error.slice(0, 200)}`);
+  }
+
+  // Retryable server errors
+  if (response.status === 429 || response.status >= 500) {
+    throw new Error(`RETRYABLE: HTTP ${response.status}`);
+  }
+
   if (!response.ok) {
     const error = await response.text();
-    throw new Error(`OpenRouter API error: ${response.status} - ${error}`);
+    throw new Error(`NON_RETRYABLE: HTTP ${response.status}: ${error.slice(0, 200)}`);
   }
 
   const data = (await response.json()) as {
     choices: Array<{ message?: { content?: string }; finish_reason?: string }>;
     model: string;
-    usage?: {
-      prompt_tokens?: number;
-      completion_tokens?: number;
-      total_tokens?: number;
-    };
+    usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
   };
 
   const content = data.choices[0]?.message?.content ?? "";
-  if (!content || content.trim().length === 0) {
-    console.warn(
-      `Empty LLM response. Model: ${data.model}, ` +
-      `finish_reason: ${data.choices[0]?.finish_reason ?? "unknown"}`
-    );
+  const finishReason = data.choices[0]?.finish_reason ?? "unknown";
+
+  return { content, finishReason, model: data.model, usage: data.usage ?? {} };
+}
+
+/**
+ * Call OpenRouter API for chat completions with production-grade resilience.
+ *
+ * Strategy:
+ * 1. Try primary model up to 3 times with exponential backoff (1s, 2s, 4s)
+ * 2. On finish_reason="length" (truncation), increase maxTokens by 1.5x
+ * 3. On empty response or transient error, retry with backoff
+ * 4. After primary model exhausted, try fallback model up to 2 times
+ * 5. Returns empty content only after ALL attempts fail
+ *
+ * Never throws — callers can use their own fallback logic.
+ */
+export async function chatCompletion(
+  apiKey: string,
+  messages: Message[],
+  options: ChatCompletionOptions = {}
+): Promise<ChatCompletionResponse> {
+  const {
+    model = MODELS.CODE_GEN,
+    temperature = 0.2,
+    maxTokens = 4096,
+    stream = false,
+  } = options;
+
+  // Phase 1: Primary model — 3 attempts with escalation
+  let currentMaxTokens = maxTokens;
+  const PRIMARY_ATTEMPTS = 3;
+
+  for (let attempt = 0; attempt < PRIMARY_ATTEMPTS; attempt++) {
+    try {
+      const result = await singleCall(apiKey, model, messages, temperature, currentMaxTokens);
+
+      // Check for truncation — increase maxTokens and retry
+      if (result.finishReason === "length") {
+        const oldTokens = currentMaxTokens;
+        currentMaxTokens = Math.min(Math.ceil(currentMaxTokens * 1.5), 32000);
+        console.warn(
+          `[chatCompletion] Truncated (finish_reason=length) on attempt ${attempt + 1}/${PRIMARY_ATTEMPTS}. ` +
+          `Model: ${result.model}. Escalating maxTokens: ${oldTokens} → ${currentMaxTokens}`
+        );
+        // If content is non-empty despite truncation, it may still be usable on last attempt
+        if (attempt === PRIMARY_ATTEMPTS - 1 && result.content.trim().length > 0) {
+          console.warn(`[chatCompletion] Using truncated response on final primary attempt`);
+          return {
+            content: result.content,
+            model: result.model,
+            finishReason: result.finishReason,
+            usage: {
+              promptTokens: result.usage.prompt_tokens ?? 0,
+              completionTokens: result.usage.completion_tokens ?? 0,
+              totalTokens: result.usage.total_tokens ?? 0,
+            },
+          };
+        }
+        await backoff(attempt);
+        continue;
+      }
+
+      // Check for empty response
+      if (!result.content || result.content.trim().length === 0) {
+        console.warn(
+          `[chatCompletion] Empty response on attempt ${attempt + 1}/${PRIMARY_ATTEMPTS}. ` +
+          `Model: ${result.model}, finish_reason: ${result.finishReason}`
+        );
+        await backoff(attempt);
+        continue;
+      }
+
+      // Success
+      return {
+        content: result.content,
+        model: result.model,
+        finishReason: result.finishReason,
+        usage: {
+          promptTokens: result.usage.prompt_tokens ?? 0,
+          completionTokens: result.usage.completion_tokens ?? 0,
+          totalTokens: result.usage.total_tokens ?? 0,
+        },
+      };
+    } catch (e) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      if (errMsg.startsWith("NON_RETRYABLE:")) {
+        console.error(`[chatCompletion] Non-retryable error: ${errMsg}`);
+        break; // Skip to fallback
+      }
+      console.warn(
+        `[chatCompletion] Error on attempt ${attempt + 1}/${PRIMARY_ATTEMPTS}: ${errMsg}`
+      );
+      await backoff(attempt);
+    }
   }
 
-  return {
-    content,
-    model: data.model,
-    usage: {
-      promptTokens: data.usage?.prompt_tokens ?? 0,
-      completionTokens: data.usage?.completion_tokens ?? 0,
-      totalTokens: data.usage?.total_tokens ?? 0,
-    },
-  };
+  // Phase 2: Fallback model — 2 attempts
+  const FALLBACK_ATTEMPTS = 2;
+  console.warn(
+    `[chatCompletion] Primary model ${model} exhausted. Trying fallback: ${MODELS.FALLBACK}`
+  );
+
+  for (let attempt = 0; attempt < FALLBACK_ATTEMPTS; attempt++) {
+    try {
+      const result = await singleCall(
+        apiKey, MODELS.FALLBACK, messages, temperature, currentMaxTokens
+      );
+
+      if (!result.content || result.content.trim().length === 0) {
+        console.warn(
+          `[chatCompletion] Fallback empty on attempt ${attempt + 1}/${FALLBACK_ATTEMPTS}. ` +
+          `finish_reason: ${result.finishReason}`
+        );
+        await backoff(attempt);
+        continue;
+      }
+
+      console.warn(
+        `[chatCompletion] Fallback model succeeded: ${result.model} ` +
+        `(${result.usage.total_tokens ?? 0} tokens)`
+      );
+      return {
+        content: result.content,
+        model: result.model,
+        finishReason: result.finishReason,
+        usage: {
+          promptTokens: result.usage.prompt_tokens ?? 0,
+          completionTokens: result.usage.completion_tokens ?? 0,
+          totalTokens: result.usage.total_tokens ?? 0,
+        },
+      };
+    } catch (e) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.warn(
+        `[chatCompletion] Fallback error on attempt ${attempt + 1}/${FALLBACK_ATTEMPTS}: ${errMsg}`
+      );
+      if (errMsg.startsWith("NON_RETRYABLE:")) break;
+      await backoff(attempt);
+    }
+  }
+
+  console.error(
+    `[chatCompletion] All attempts failed. Primary: ${model} (${PRIMARY_ATTEMPTS}x), ` +
+    `Fallback: ${MODELS.FALLBACK} (${FALLBACK_ATTEMPTS}x). maxTokens escalated to ${currentMaxTokens}`
+  );
+  return EMPTY_RESPONSE;
+}
+
+/** Exponential backoff: 1s, 2s, 4s */
+function backoff(attempt: number): Promise<void> {
+  const delay = Math.min(1000 * Math.pow(2, attempt), 4000);
+  return new Promise((r) => setTimeout(r, delay));
 }
 
 /**
@@ -156,6 +304,9 @@ Key patterns for v${targetVersion}:
 - BORROW CHECKER: Extract values to local vars before combining storage reads/writes. Never \`self.field.setter(self.vm().something())\`.
 - sol! EVENT/ERROR FIELDS: Use camelCase (Solidity convention): \`tokenId\` NOT \`token_id\`.
 - On Arbitrum Sepolia, MetaMask may underestimate maxFeePerGas — add explicit gas overrides if "max fee per gas less than block base fee"
+- CRITICAL: \`sol!\` is for events and errors ONLY. External contract interfaces MUST use \`sol_interface!\`. If you write \`sol! { interface IToken { ... } }\`, the macro generates an EVENT named IToken, not a callable interface. ALWAYS use \`sol_interface! { interface IToken { ... } }\` for cross-contract calls.
+- sol_interface! SNAKE_CASE METHODS: sol_interface! generates Rust methods in snake_case from Solidity camelCase. \`transferFrom\` → \`.transfer_from()\`, \`totalSupply\` → \`.total_supply()\`, \`balanceOf\` → \`.balance_of()\`. NEVER use camelCase when calling sol_interface! methods from Rust.
+- sol_interface! HOST ARG: sol_interface! methods require \`self.vm()\` as the FIRST argument, then CallContext, then Solidity args. Pattern: \`token.transfer(self.vm(), Call::new(), to, amount)?;\` — NOT \`token.transfer(Call::new(), to, amount)?;\`
 - CONTRACT ADDRESS: Use \`self.vm().contract_address()\` — NOT \`self.vm().address()\` which does not exist
 - ZERO CONSTANTS: Use \`U256::ZERO\`, \`Address::ZERO\` (uppercase const) — NOT \`U256::zero()\` or \`Address::zero()\` which do not exist
 - BLOCK TIMESTAMP: \`self.vm().block_timestamp()\` returns \`u64\`. Wrap with \`U256::from()\` before storing in uint256 fields
@@ -185,6 +336,9 @@ Key patterns for v${targetVersion}:
 - STORAGESTRING VIEW FUNCTIONS: When returning a \`string\` field from sol_storage! in a view function, ALWAYS call \`.get_string()\`: \`pub fn name(&self) -> String { self.name.get_string() }\`. NEVER return \`self.name\` directly — it is StorageString, not String. Do NOT use \`.push_str()\` on StorageString — extract first: \`let s = self.name.get_string(); format!("{}{}", s, other)\`.
 - STRING IMPORTS (no_std): When using \`String\` type, add \`use alloc::string::String;\`. When using \`.to_string()\`, ALSO add \`use alloc::string::ToString;\`. These are NOT in prelude in no_std.
 - NO CONST IN #[public] IMPL: Do NOT put \`pub const\` declarations inside \`#[public] impl MyContract { ... }\` — the proc macro does not support associated constants. Move constants to module level: \`const ADMIN_ROLE: U256 = U256::ZERO;\` BEFORE the impl block.
+- sol! ERROR/EVENT TYPE MATCHING: When defining sol! errors/events, Solidity field types MUST match the Rust values you pass. \`address\` → Address, \`uint256\` → U256, \`bool\` → bool. If you pass a U256 value, the field MUST be \`uint256\`, NOT \`address\`. CRITICAL: if a value comes from a \`mapping(... => uint256)\` via \`.get()\`, it IS U256 — the event/error field MUST be \`uint256\` even if the field name sounds like an address (e.g., admin, owner, sender). The Solidity type MUST match the RUST TYPE, not the semantic meaning. For comparison errors (InsufficientBalance, InsufficientStake), ALL value fields (have/want, available/required) should be \`uint256\`.
+- CLEAN OUTPUT: Output ONLY valid Rust code in code blocks. NEVER include natural language commentary, corrections, or "thinking aloud" text inside code. No \`<< ??? >\`, no \`Wait, we need...\`, no \`Correction:\` inside code blocks.
+- INTERNAL HELPERS — NO PHANTOM VARIABLES: Internal check functions (only_owner, ensure_admin, check_role) must get ALL data from storage or parameters. If a function body uses a variable, it MUST be: (a) a declared function parameter, (b) a local \`let\` binding from a storage read or computation, or (c) \`self.field\`. NEVER write \`let role = role;\` — this references a non-existent variable. For owner checks: read \`self.owner.get()\` and compare to \`self.vm().msg_sender()\`. For role checks with a specific role: define as \`const\` or read from storage. For dynamic role checks: add \`role: U256\` as a function parameter.
 
 Security best practices:
 - Check for overflows using checked_add/checked_sub
@@ -223,6 +377,7 @@ export async function generateCode(
   return chatCompletion(apiKey, messages, {
     model: MODELS.CODE_GEN,
     temperature: 0.2,
+    maxTokens: 12000,
   });
 }
 
@@ -306,9 +461,15 @@ COMPILATION-CRITICAL — these mistakes WILL break the build:
 - B256 IS NOT Uint: B256 is \`FixedBytes<32>\`, NOT \`Uint<256>\`. \`B256::from_limbs()\` does NOT exist. Use \`B256::from(U256::from_limbs([...]).to_be_bytes::<32>())\`.
 - STRING MAPPING READS: \`mapping(... => string)\` — \`.get(key)\` returns \`StorageGuard<StorageString>\`, NOT String. Use \`.getter(key).get_string()\` to read as String. Do NOT call \`.get_string()\` again on the result — it already IS a String. Write: \`.setter(key).set_str("val")\`.
 - abi_encode() ON ERRORS: \`.abi_encode()\` is on the inner \`sol!\` error struct, NOT the \`#[derive(SolidityError)]\` enum. WRONG: \`MyErrors::Variant(Inner{..}).abi_encode()\`. CORRECT: \`Inner{..}.abi_encode()\`.
+- CRITICAL: \`sol!\` is for events and errors ONLY. External contract interfaces MUST use \`sol_interface!\`. If you write \`sol! { interface IToken { ... } }\`, the macro generates an EVENT named IToken, not a callable interface. ALWAYS use \`sol_interface! { interface IToken { ... } }\` for cross-contract calls.
+- sol_interface! SNAKE_CASE METHODS: sol_interface! generates Rust methods in snake_case from Solidity camelCase. \`transferFrom\` → \`.transfer_from()\`, \`totalSupply\` → \`.total_supply()\`, \`balanceOf\` → \`.balance_of()\`. NEVER use camelCase when calling sol_interface! methods from Rust.
+- sol_interface! HOST ARG: sol_interface! methods require \`self.vm()\` as the FIRST argument, then CallContext, then Solidity args. Pattern: \`token.transfer(self.vm(), Call::new(), to, amount)?;\` — NOT \`token.transfer(Call::new(), to, amount)?;\`
 - STORAGESTRING VIEW FUNCTIONS: When returning a \`string\` field from sol_storage! in a view function, ALWAYS call \`.get_string()\`: \`pub fn name(&self) -> String { self.name.get_string() }\`. NEVER return \`self.name\` directly — it is StorageString, not String. Do NOT use \`.push_str()\` on StorageString — extract first: \`let s = self.name.get_string(); format!("{}{}", s, other)\`.
 - STRING IMPORTS (no_std): When using \`String\`, add \`use alloc::string::String;\`. When using \`.to_string()\`, ALSO add \`use alloc::string::ToString;\`. These are NOT in prelude in no_std.
 - NO CONST IN #[public] IMPL: Do NOT put \`pub const\` inside \`#[public] impl\` — the proc macro doesn't support associated constants. Put constants at module level BEFORE the impl block.
+- sol! ERROR/EVENT TYPE MATCHING: Solidity field types MUST match the Rust values you pass. \`address\` → Address, \`uint256\` → U256. If passing U256 values, the sol! field MUST be \`uint256\`, NOT \`address\`. Comparison errors (InsufficientBalance, InsufficientStake) — ALL value fields (have/want, available/required) should be \`uint256\`.
+- CLEAN OUTPUT: Output ONLY valid Rust code. NEVER include natural language commentary or corrections inside code blocks. No "Wait,", "Correction:", or thinking-aloud text.
+- INTERNAL HELPERS — NO PHANTOM VARIABLES: Internal check functions (only_owner, ensure_admin, check_role) must get ALL data from storage or parameters. If a function body uses a variable, it MUST be: (a) a declared function parameter, (b) a local \`let\` binding from a storage read or computation, or (c) \`self.field\`. NEVER write \`let role = role;\` — this references a non-existent variable. For owner checks: read \`self.owner.get()\` and compare to \`self.vm().msg_sender()\`. For role checks with a specific role: define as \`const\` or read from storage. For dynamic role checks: add \`role: U256\` as a function parameter.
 
 WHAT YOU MAY DO:
 - Rename the contract struct in sol_storage! to match the user's request (e.g., PredictionMarket, Lottery, etc.)
@@ -546,6 +707,7 @@ item.field_a.set(val_a);
   return chatCompletion(apiKey, messages, {
     model: MODELS.QA,
     temperature: 0.3,
+    maxTokens: 6000,
   });
 }
 
@@ -581,6 +743,7 @@ Reference the correct SDK v4 classes: ParentTransactionReceipt, ChildTransaction
   return chatCompletion(apiKey, messages, {
     model: MODELS.QA,
     temperature: 0.3,
+    maxTokens: 6000,
   });
 }
 
@@ -631,5 +794,6 @@ For Foundry tests:
   return chatCompletion(apiKey, messages, {
     model: MODELS.CODE_GEN,
     temperature: 0.2,
+    maxTokens: 8192,
   });
 }

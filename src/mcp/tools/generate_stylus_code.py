@@ -42,6 +42,7 @@ try:
     from src.utils.compiler_verifier import (
         CompilerVerifier,
         format_errors_for_llm,
+        format_fix_guidance,
     )
 
     HAS_COMPILER = True
@@ -398,6 +399,60 @@ Similarly, do NOT use `.push_str()` on StorageString — extract first: \
 `#[public] impl MyContract {{ ... }}` — the proc macro does not support \
 associated constants. Move constants to module level: \
 `const ADMIN_ROLE: U256 = U256::ZERO;` BEFORE the impl block.
+61. sol! ERROR/EVENT TYPE MATCHING: When defining sol! errors/events, \
+Solidity field types MUST match the Rust values you pass. \
+`address` maps to `Address`, `uint256` maps to `U256`, `bool` maps to `bool`. \
+If you pass a U256 value, the field MUST be `uint256`, NOT `address`. \
+CRITICAL: If a value comes from a `mapping(... => uint256)` via `.get()`, \
+it is `U256` — the event/error field MUST be `uint256`, even if the field \
+name sounds like an address (e.g., `admin`, `sender`, `owner`). The Solidity \
+type in sol! must match the RUST TYPE being passed, not the semantic meaning. \
+For comparison errors (InsufficientBalance, InsufficientStake, etc.), \
+ALL value fields (have/want, available/required, balance/amount) should \
+be `uint256` — NOT `address`.
+62. CLEAN OUTPUT: Output ONLY valid Rust code in code blocks. \
+NEVER include natural language commentary, corrections, or "thinking aloud" \
+text inside code. No `<< ??? >`, no `Wait, we need...`, no `Correction:` \
+inside code blocks.
+63. sol! vs sol_interface! — CRITICAL: `sol!` is for events and errors ONLY. \
+External contract interfaces MUST use `sol_interface!`. \
+If you write `sol! {{ interface IToken {{ ... }} }}`, the macro generates an EVENT \
+named IToken, NOT a callable interface. ALWAYS use \
+`sol_interface! {{ interface IToken {{ ... }} }}` for cross-contract calls.
+64. sol_interface! SNAKE_CASE — sol_interface! generates Rust methods in snake_case \
+from Solidity camelCase. `transferFrom` → `.transfer_from()`, \
+`totalSupply` → `.total_supply()`, `balanceOf` → `.balance_of()`. \
+NEVER use camelCase when calling sol_interface! methods from Rust.
+65. sol_interface! HOST ARG — sol_interface! methods require `self.vm()` as the \
+FIRST argument, then CallContext, then Solidity args. \
+Pattern: `token.transfer(self.vm(), Call::new(), to, amount)?;` \
+NOT `token.transfer(Call::new(), to, amount)?;`.
+66. NO Debug DERIVE WITH SolidityError: sol! generated types do NOT implement \
+the Debug trait. NEVER write `#[derive(SolidityError, Debug)]` — it will fail. \
+Use `#[derive(SolidityError)]` only. If you need Debug for other reasons, \
+implement it manually.
+67. NO UNDERSCORE-PREFIXED FN IN #[public] IMPL: The `#[public]` proc macro may \
+strip leading underscores from method names for ABI selector generation, causing \
+`_grant_role` and `grant_role` to produce the SAME selector ("unreachable pattern" \
+error). Put internal helper methods in a SEPARATE `impl MyContract {{ ... }}` \
+block WITHOUT `#[public]`.
+68. ADDRESS ARRAY READS: When reading from `address[]` arrays in sol_storage!, \
+`*self.list.get(idx).unwrap()` dereferences to `FixedBytes<20>`, NOT `Address`. \
+Convert explicitly: `Address::from(*self.list.get(idx).unwrap())`.
+69. STRING MAPPING WRITES: For `mapping(... => string)` in sol_storage!, writing \
+uses `.setter(key).set_str(value)` — call `.set_str()` DIRECTLY on the \
+`StorageGuardMut<StorageString>` returned by `.setter(key)`. \
+WRONG: `self.names.setter(key).setter().set_str(value)` (extra .setter() call) \
+CORRECT: `self.names.setter(key).set_str(value)`
+70. INTERNAL HELPERS — NO PHANTOM VARIABLES: Internal check functions \
+(only_owner, ensure_admin, check_role) must get ALL data from storage or \
+parameters. If a function body uses a variable, it MUST be: (a) a declared \
+function parameter, (b) a local `let` binding from a storage read or computation, \
+or (c) `self.field`. NEVER write `let role = role;` — this references a \
+non-existent variable. For owner checks: read `self.owner.get()` and compare \
+to `self.vm().msg_sender()`. For role checks with a specific role: define as \
+`const` or read from storage. For dynamic role checks: add `role: U256` as a \
+function parameter.
 """
 
 
@@ -568,6 +623,29 @@ Do NOT use `.push_str()` on StorageString — extract first: \
 - NO CONST IN #[public] IMPL: Do NOT put `pub const` inside \
 `#[public] impl` — the proc macro doesn't support associated constants. \
 Put constants at module level BEFORE the impl block.
+- sol! ERROR/EVENT TYPE MATCHING: Solidity field types MUST match \
+the Rust values you pass. `address` → Address, `uint256` → U256. \
+If passing U256, the field MUST be `uint256`, NOT `address`. \
+Comparison errors (InsufficientBalance, InsufficientStake) — ALL value \
+fields (have/want, available/required) should be `uint256`.
+- CLEAN OUTPUT: Output ONLY valid Rust code. NEVER include natural \
+language commentary or corrections inside code blocks. No "Wait,", \
+"Correction:", or thinking-aloud text.
+- sol! vs sol_interface! — `sol!` is for events/errors ONLY. External contract \
+interfaces MUST use `sol_interface!`. Writing `sol! {{ interface IToken {{ ... }} }}` \
+generates an EVENT, not a callable interface.
+- sol_interface! SNAKE_CASE — sol_interface! generates snake_case Rust methods: \
+`transferFrom` → `.transfer_from()`, `balanceOf` → `.balance_of()`. \
+NEVER use camelCase in Rust sol_interface! calls.
+- sol_interface! HOST ARG — first arg is `self.vm()`, then Call context, then args: \
+`token.transfer(self.vm(), Call::new(), to, amount)?;`
+- INTERNAL HELPERS — NO PHANTOM VARIABLES: Internal check functions \
+(only_owner, ensure_admin, check_role) must get ALL data from storage or \
+parameters. If a function body uses a variable, it MUST be: (a) a declared \
+function parameter, (b) a local `let` binding from a storage read or computation, \
+or (c) `self.field`. NEVER write `let role = role;`. For owner checks: read \
+`self.owner.get()` and compare to `self.vm().msg_sender()`. For role checks: \
+define as const or read from storage.
 
 WHAT YOU MAY DO:
 - Rename the contract struct in sol_storage! to \
@@ -717,7 +795,7 @@ class GenerateStylusCodeTool(BaseTool):
     Uses RAG context to inform code generation with relevant examples.
     """
 
-    MAX_COMPILE_ATTEMPTS = 2
+    MAX_COMPILE_ATTEMPTS = 3
 
     def __init__(
         self,
@@ -888,7 +966,8 @@ class GenerateStylusCodeTool(BaseTool):
                         break
 
                     error_text = format_errors_for_llm(actual_errors, code)
-                    fix_prompt = self._build_fix_prompt(code, error_text)
+                    guidance = format_fix_guidance(actual_errors)
+                    fix_prompt = self._build_fix_prompt(code, error_text, guidance)
 
                     fix_messages = [
                         {"role": "system", "content": system_prompt},
@@ -1399,6 +1478,26 @@ class GenerateStylusCodeTool(BaseTool):
                 fixed,
             )
 
+            # Fix 39 (N36): Clean up garbled LLM output —
+            # natural language mid-code and repeated return type fragments.
+            fixed = re.sub(
+                r"^.*(?:<<\s*\?\?\?|Wait,\s+we\s+need|Correction:|should be:|"
+                r"Let me (?:re)?write|I'll fix|Actually,|Hmm,|Oops).*$",
+                "",
+                fixed,
+                flags=re.MULTILINE,
+            )
+            # Fix garbled function sigs: `-> U256) -> U256) -> U256)` → `-> U256`
+            fixed = re.sub(
+                r"(->\s*\w+(?:<[^>]*>)?)\s*\)\s*(?:->\s*\w+(?:<[^>]*>)?\s*\)\s*)+",
+                r"\1",
+                fixed,
+            )
+            # Clean up stray `<< ??? >?` fragments
+            fixed = re.sub(r"\s*<+\s*\?\?\?\s*>+\s*\??\s*", "", fixed)
+            # Remove excess blank lines
+            fixed = re.sub(r"\n{3,}", "\n\n", fixed)
+
             # Fix 13: Remove deprecated stylus_sdk::evm and stylus_sdk::msg imports
             fixed = re.sub(r"^use stylus_sdk::evm.*;\s*$", "", fixed, flags=re.MULTILINE)
             fixed = re.sub(r"^use stylus_sdk::msg.*;\s*$", "", fixed, flags=re.MULTILINE)
@@ -1410,24 +1509,9 @@ class GenerateStylusCodeTool(BaseTool):
             # Fix 15: Fix deprecated evm::log() → self.vm().log()
             fixed = re.sub(r"evm::log\(", "self.vm().log(", fixed)
 
-            # Fix 16: Enforce .get() on bare storage field reads
-            storage_fields = set()
-            for field_match in re.finditer(
-                r"\b(?:uint\d*|int\d*|address|bool|string|bytes\d*)\s+(\w+)\s*;",
-                fixed,
-            ):
-                storage_fields.add(field_match.group(1))
-            for field_match in re.finditer(
-                r"mapping\(((?:[^()]*|\([^()]*\))*)\)\s+(\w+)\s*;",
-                fixed,
-            ):
-                storage_fields.add(field_match.group(2))
-            for field in storage_fields:
-                fixed = re.sub(
-                    rf"(\w+)\.{field}\b(?!\s*[.(])",
-                    rf"\1.{field}.get()",
-                    fixed,
-                )
+            # Fix 16: MOVED TO CARGO CHECK — bare storage field reads
+            # cargo check catches type mismatch when StorageType is used where
+            # the value type is expected. Compiler fix loop handles it.
 
             # Fix 17: self.vm().address() → self.vm().contract_address()
             fixed = fixed.replace(
@@ -1439,19 +1523,9 @@ class GenerateStylusCodeTool(BaseTool):
             fixed = re.sub(r"U128::zero\(\)", "U128::ZERO", fixed)
             fixed = re.sub(r"U64::zero\(\)", "U64::ZERO", fixed)
 
-            # Fix 19: StorageString - .set() → .set_str(), .get() → .get_string()
-            string_fields = set()
-            for sf_match in re.finditer(
-                r"\bstring\s+(\w+)\s*;", fixed
-            ):
-                string_fields.add(sf_match.group(1))
-            for sf in string_fields:
-                fixed = re.sub(
-                    rf"\.{sf}\.set\(", f".{sf}.set_str(", fixed
-                )
-                fixed = re.sub(
-                    rf"\.{sf}\.get\(\)", f".{sf}.get_string()", fixed
-                )
+            # Fix 19: MOVED TO CARGO CHECK — StorageString API
+            # cargo check catches E0599 (no method set/get on StorageString).
+            # Compiler fix loop handles it with ERROR_GUIDANCE.
 
             # Fix 20: std::time::SystemTime — not available in no_std WASM
             fixed = re.sub(
@@ -1472,38 +1546,12 @@ class GenerateStylusCodeTool(BaseTool):
                 flags=re.MULTILINE,
             )
 
-            # Fix 22: StorageVec .setter(i).set(v) → .setter(i).unwrap().set(v)
-            # StorageVec::setter(usize) returns Option, needs unwrap.
-            # BUT mapping .setter(key) does NOT return Option — no unwrap needed.
-            # Strategy: detect dynamic array fields from sol_storage! (type[])
-            # and only add .unwrap() on those fields.
-            array_fields = set()
-            for af_match in re.finditer(
-                r"\b\w+\[\]\s+(\w+)\s*;", fixed
-            ):
-                array_fields.add(af_match.group(1))
-            for af in array_fields:
-                # .field.setter(x).set( → .field.setter(x).unwrap().set(
-                # Use balanced-paren pattern to handle nested parens
-                # e.g. setter(U256::from(idx as u64))
-                # Allow optional whitespace/newlines between ) and .set(
-                # for multiline chains (N34).
-                fixed = re.sub(
-                    rf"\.{af}\.setter\(((?:[^()]*|\([^()]*\))*)\)\s*\.set\(",
-                    rf".{af}.setter(\1).unwrap().set(",
-                    fixed,
-                )
+            # Fix 22: MOVED TO CARGO CHECK — StorageVec .setter() unwrap
+            # cargo check catches Option type mismatch (E0599). Compiler fix loop
+            # handles it.
 
-            # Fix 27: .get(k1).setter(k2) → .setter(k1).setter(k2)
-            # Nested mapping writes: .get() returns immutable ref, can't
-            # call .setter() on it. Must chain .setter() for writes.
-            # Allow optional whitespace/newlines between ) and .setter(
-            # for multiline chains (N33).
-            fixed = re.sub(
-                r"\.get\(((?:[^()]*|\([^()]*\))*)\)\s*\.setter\(",
-                r".setter(\1).setter(",
-                fixed,
-            )
+            # Fix 27: MOVED TO CARGO CHECK — nested mapping borrow conflict
+            # cargo check catches E0502. Compiler fix loop handles it.
 
             # Fix 23: REMOVED — regex cannot distinguish sol! event/error
             # declarations from struct initialization. Applied inside sol! {}
@@ -1511,32 +1559,8 @@ class GenerateStylusCodeTool(BaseTool):
             # `event Foo(uint256 fieldName: field_name)` (invalid syntax).
             # System prompt rule 41 handles this via LLM guidance instead.
 
-            # Fix 28: Remove spurious .unwrap_or_default() on mapping reads.
-            # StorageMap::get() returns the value directly (zero-default for
-            # uninitialized), NOT Option. .unwrap_or_default() won't compile.
-            # Applies to both direct and nested mapping reads.
-            # e.g. self.map.get(key).unwrap_or_default() → self.map.get(key)
-            # e.g. self.map.getter(k1).get(k2).unwrap_or_default() → .getter(k1).get(k2)
-            # Use balanced-paren regex for nested mapping declarations like
-            # mapping(address => mapping(address => uint256)) allowances;
-            mapping_fields = set()
-            for mf_match in re.finditer(
-                r"mapping\(((?:[^()]*|\([^()]*\))*)\)\s+(\w+)\s*;", fixed
-            ):
-                mapping_fields.add(mf_match.group(2))
-            for mf in mapping_fields:
-                # Direct: .field.get(key).unwrap_or_default()
-                fixed = re.sub(
-                    rf"\.{mf}\.get\(([^)]*)\)\.unwrap_or_default\(\)",
-                    rf".{mf}.get(\1)",
-                    fixed,
-                )
-                # Nested via .getter(): .field.getter(k1).get(k2).unwrap_or_default()
-                fixed = re.sub(
-                    rf"\.{mf}\.getter\(([^)]*)\)\.get\(([^)]*)\)\.unwrap_or_default\(\)",
-                    rf".{mf}.getter(\1).get(\2)",
-                    fixed,
-                )
+            # Fix 28: MOVED TO CARGO CHECK — .unwrap_or_default() on mapping reads
+            # cargo check catches type mismatch (E0277). Compiler fix loop handles it.
 
             # Fix 29: sol_interface! generates snake_case Rust methods from
             # Solidity camelCase function names. Common wrong patterns:
@@ -1572,21 +1596,11 @@ class GenerateStylusCodeTool(BaseTool):
                     fixed,
                 )
 
-            # Fix 30: B256::from_uint(&expr) does not exist in alloy-primitives.
-            # Use B256::from(expr.to_be_bytes::<32>()) instead.
-            fixed = re.sub(
-                r"B256::from_uint\(&(\w+)\)",
-                r"B256::from(\1.to_be_bytes::<32>())",
-                fixed,
-            )
+            # Fix 30: MOVED TO CARGO CHECK — B256::from_uint()
+            # cargo check catches missing method (E0599). Compiler fix loop handles it.
 
-            # Fix 31: U256::from(N) in const context is not const-compatible.
-            # Replace with U256::from_limbs([N, 0, 0, 0]) for small integer literals.
-            fixed = re.sub(
-                r"(const\s+\w+\s*:\s*U256\s*=\s*)U256::from\((\d+)\)",
-                r"\1U256::from_limbs([\2, 0, 0, 0])",
-                fixed,
-            )
+            # Fix 31: MOVED TO CARGO CHECK — const U256::from()
+            # cargo check catches E0015. Compiler fix loop handles it.
 
             # Fix 32: sol_interface! calls must have self.vm() as first
             # host argument.  LLMs often omit self.vm() and pass the
@@ -1638,101 +1652,88 @@ class GenerateStylusCodeTool(BaseTool):
                 fixed,
             )
 
-            # Fix 33: B256::from_limbs([...]) is wrong — B256 is
-            # FixedBytes<32>, NOT Uint. Wrap with U256 conversion.
+            # Fix 40: Remove Debug from derives containing SolidityError.
+            # sol! generated types don't implement Debug, so
+            # #[derive(SolidityError, Debug)] fails to compile.
+            def _remove_debug_from_solidity_error(m):
+                content = m.group(1)
+                if "SolidityError" in content and "Debug" in content:
+                    parts = [
+                        p.strip()
+                        for p in content.split(",")
+                        if p.strip() and p.strip() != "Debug"
+                    ]
+                    return f"#[derive({', '.join(parts)})]"
+                return m.group(0)
+
             fixed = re.sub(
-                r"B256::from_limbs\((\[[^\]]*\])\)",
-                r"B256::from(U256::from_limbs(\1).to_be_bytes::<32>())",
+                r"#\[derive\(([^)]+)\)\]",
+                _remove_debug_from_solidity_error,
                 fixed,
             )
 
-            # Fix 34: mapping(... => string) .get(key) returns
-            # StorageGuard<StorageString>, NOT String.
-            # Two-pass: first fix .get(k).get_string() → .getter(k).get_string()
-            # then fix bare .get(k) → .getter(k).get_string()
-            string_map_fields = set()
-            for smf in re.finditer(
-                r"mapping\([^=]+=>\s*string\)\s+(\w+)\s*;", fixed
-            ):
-                string_map_fields.add(smf.group(1))
-            for smf in string_map_fields:
-                # Pass 1: .field.get(k).get_string() → .field.getter(k).get_string()
-                fixed = re.sub(
-                    rf"\.{smf}\.get\(([^)]+)\)\.get_string\(\)",
-                    rf".{smf}.getter(\1).get_string()",
-                    fixed,
-                )
-                # Pass 2: bare .field.get(k) → .field.getter(k).get_string()
-                fixed = re.sub(
-                    rf"\.{smf}\.get\(([^)]+)\)",
-                    rf".{smf}.getter(\1).get_string()",
-                    fixed,
-                )
-            # Cleanup: doubled .get_string() chains (LLM garbage)
-            fixed = re.sub(
-                r"\.get_string\(\)(?:\.getter\([^)]*\))?\.get_string\(\)",
-                ".get_string()",
-                fixed,
-            )
-            # Cleanup: local_var.get_string() is always wrong.
-            # .get_string() is only valid on StorageString (self.field...).
-            # A local variable is String, which has no .get_string().
-            fixed = re.sub(
-                r"\b([a-z_]\w*)\.get_string\(\)",
-                lambda m: m.group(0) if m.group(1) == "self" else m.group(1),
-                fixed,
-            )
-
-            # Fix 35: .abi_encode() on SolidityError enum wrapper.
-            # Enum::Variant(Inner{..}).abi_encode() → Inner{..}.abi_encode()
-            # The #[derive(SolidityError)] enum is for runtime dispatch,
-            # not for manual .abi_encode(). The inner sol! struct has it.
-            fixed = re.sub(
-                r"(\w+)::(\w+)\((\2\s*\{[^}]*\})\)\.abi_encode\(\)",
-                r"\3.abi_encode()",
-                fixed,
-            )
-
-            # Fix 36: StorageString returned directly without .get_string().
-            # `string name;` in sol_storage! → self.name is StorageString.
-            # self.name (not followed by .) must be self.name.get_string().
-            str_fields = set()
-            for sm in re.finditer(
-                r"\bstring\s+(\w+)\s*;", fixed
-            ):
-                str_fields.add(sm.group(1))
-            for sf in str_fields:
-                fixed = re.sub(
-                    rf"self\.{sf}(?![\.\w])",
-                    f"self.{sf}.get_string()",
-                    fixed,
-                )
-
-            # Fix 38 (N32): Move `pub const` out of #[public] impl blocks.
-            # The #[public] proc macro doesn't support associated constants.
-            consts_to_move = []
-            for cm in re.finditer(
-                r"^[ \t]*pub const\s+(\w+)\s*:\s*(\w+)\s*=\s*([^;]+);",
-                fixed,
-                re.MULTILINE,
-            ):
-                before = fixed[: cm.start()]
-                last_pub = before.rfind("#[public]")
-                last_close = before.rfind("\n}\n")
-                if last_pub > -1 and last_pub > last_close:
-                    consts_to_move.append(
-                        (cm.group(0), cm.group(1), cm.group(2), cm.group(3).strip())
+            # Fix 41: Rename underscore-prefixed methods that conflict with
+            # public methods in #[public] impl.
+            # The #[public] proc macro strips leading underscores for ABI
+            # selectors, so fn _grant_role and fn grant_role produce the same
+            # selector ("unreachable pattern" error).
+            # Fix: rename _xxx → xxx_internal (both definition and call sites).
+            public_fns = set(re.findall(r"\bfn\s+([a-z]\w+)\s*\(", fixed))
+            underscore_fns = set(re.findall(r"\bfn\s+(_[a-z]\w+)\s*\(", fixed))
+            for ufn in underscore_fns:
+                base = ufn[1:]  # strip leading underscore
+                if base in public_fns:
+                    fixed = re.sub(
+                        rf"\b{re.escape(ufn)}\b", f"{base}_internal", fixed
                     )
-            for full_match, name, ty, val in consts_to_move:
-                fixed = fixed.replace(full_match + "\n", "")
-                fixed = fixed.replace(full_match, "")
-                module_const = f"const {name}: {ty} = {val};"
+
+            # Fix 42: address[] array deref returns FixedBytes<20>, not Address.
+            # *self.list.get(idx).unwrap() → Address::from(*self.list.get(idx).unwrap())
+            addr_array_fields = re.findall(r"\baddress\[\]\s+(\w+)", fixed)
+            for field in addr_array_fields:
                 fixed = re.sub(
-                    r"(\n#\[public\])",
-                    f"\n{module_const}\n\\1",
+                    rf"(?<!Address::from\()\*self\.{re.escape(field)}\.get\("
+                    rf"([^)]+)\)\.unwrap\(\)",
+                    rf"Address::from(*self.{field}.get(\1).unwrap())",
                     fixed,
-                    count=1,
                 )
+
+            # Fix 43: Remove extra .setter() on string mapping writes.
+            # .setter(key).setter().set_str(val) → .setter(key).set_str(val)
+            # StorageGuardMut<StorageString> has no .setter() method.
+            fixed = re.sub(
+                r"\.setter\(([^)]+)\)\.setter\(\)\.set_str\(",
+                r".setter(\1).set_str(",
+                fixed,
+            )
+
+            # Fix 44: Remove phantom variable self-assignments (let x = x;).
+            # LLM generates `let role = role;` in helpers where `role` is not
+            # a parameter — always a compile error. Even if it IS a parameter,
+            # it's a redundant shadow. Safe to remove.
+            fixed = re.sub(
+                r"^\s*let\s+(?:mut\s+)?([a-z_]\w*)\s*=\s*\1\s*;\s*$",
+                "",
+                fixed,
+                flags=re.MULTILINE,
+            )
+
+            # Fix 33: MOVED TO CARGO CHECK — B256::from_limbs()
+            # cargo check catches missing method (E0599). Compiler fix loop handles it.
+
+            # Fix 34: MOVED TO CARGO CHECK — string mapping reads
+            # cargo check catches type mismatch (E0599/E0308). Compiler fix loop
+            # handles it with ERROR_GUIDANCE for StorageString.
+
+            # Fix 35: MOVED TO CARGO CHECK — .abi_encode() on enum wrapper
+            # cargo check catches missing trait (E0599). Compiler fix loop handles it.
+
+            # Fix 36: MOVED TO CARGO CHECK — StorageString bare access
+            # cargo check catches type mismatch (E0308). Compiler fix loop handles it.
+
+            # Fix 38: MOVED TO CARGO CHECK — pub const in #[public] impl
+            # cargo check catches this with E0658. System prompt + compiler
+            # verification handle the fix loop.
         else:
             # 0.9.x fixes (reverse direction)
 
@@ -1803,16 +1804,24 @@ class GenerateStylusCodeTool(BaseTool):
         name_words = words[:3] if words else ["stylus", "contract"]
         return "_".join(name_words)
 
-    def _build_fix_prompt(self, code: str, error_text: str) -> str:
+    def _build_fix_prompt(self, code: str, error_text: str, guidance: str = "") -> str:
         """Build a prompt asking the LLM to fix compilation errors.
 
         Args:
             code: Current lib.rs code that failed to compile.
             error_text: Formatted error details from format_errors_for_llm().
+            guidance: Stylus-specific fix guidance from format_fix_guidance().
 
         Returns:
             Prompt string for the LLM.
         """
+        guidance_section = ""
+        if guidance:
+            guidance_section = f"""
+STYLUS-SPECIFIC FIX GUIDANCE:
+{guidance}
+"""
+
         return f"""The following Stylus contract code has \
 compilation errors. Fix ONLY the errors — do not \
 change the contract's functionality or structure.
@@ -1824,7 +1833,7 @@ CURRENT CODE:
 
 COMPILATION ERRORS:
 {error_text}
-
+{guidance_section}
 Fix the code and return the complete, corrected lib.rs in a ```rust code block.
 Keep the exact same structure and functionality. Only fix the compilation errors."""
 

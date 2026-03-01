@@ -80,12 +80,18 @@ export async function askBridging(
     searchQuery = `orbit l3 chain EthL1L3Bridger ${question}`;
   }
 
-  // Get relevant context from Vectorize
-  const contextResult = await getBridgingContext(vectorize, ai, {
-    query: searchQuery,
-    nResults: 5,
-    rerank: true,
-  });
+  // Get relevant context from Vectorize (graceful fallback on failure)
+  let contextResult: Awaited<ReturnType<typeof getBridgingContext>>;
+  try {
+    contextResult = await getBridgingContext(vectorize, ai, {
+      query: searchQuery,
+      nResults: 5,
+      rerank: true,
+    });
+  } catch (e) {
+    console.warn("getBridgingContext failed, proceeding without RAG:", e);
+    contextResult = { contexts: [], totalResults: 0, query: searchQuery };
+  }
 
   // Build context string for LLM (cap per-item to prevent token overflow)
   const MAX_CONTEXT_CHARS = 2000;
@@ -122,13 +128,39 @@ export async function askBridging(
   // Get answer from LLM (chatCompletion retries 3x on empty)
   const response = await answerBridgingQuestion(openrouterApiKey, question, contextStr);
 
-  // Fallback: if LLM returned empty after all retries, use knowledge base
+  // Fallback: if LLM returned empty after all retries, use knowledge base + RAG context
   let answerContent = response.content;
   if (!answerContent || answerContent.trim().length === 0) {
+    const parts: string[] = [];
+
+    // Use knowledge base enrichments first (structured data)
     if (enrichments.length > 0) {
-      answerContent = `Here's what I know about this topic:\n\n${enrichments.join("\n\n")}`;
+      parts.push(`Here's what I know about this topic:\n\n${enrichments.join("\n\n")}`);
+    }
+
+    // Add RAG context excerpts for additional detail
+    const ctxSummary = contextResult.contexts
+      .slice(0, 3)
+      .map((c) => `From ${c.source}:\n${c.content.slice(0, 800)}`)
+      .join("\n\n---\n\n");
+    if (ctxSummary) {
+      parts.push(`Relevant excerpts from the documentation:\n\n${ctxSummary}`);
+    }
+
+    if (parts.length > 0) {
+      answerContent = parts.join("\n\n---\n\n") +
+        `\n\nFor more details, see https://docs.arbitrum.io/sdk`;
     } else {
-      answerContent = `I couldn't generate a detailed answer right now. Please try again or check the Arbitrum SDK documentation at https://docs.arbitrum.io/sdk`;
+      // No knowledge base or RAG — synthesize from question
+      answerContent =
+        `Regarding "${question}":\n\n` +
+        `The Arbitrum SDK provides bridging tools for cross-chain operations:\n` +
+        `- **EthBridger**: ETH deposits (~10-15 min) and withdrawals (~7 day challenge period)\n` +
+        `- **Erc20Bridger**: ERC20 token bridging with token approval\n` +
+        `- **Retryable Tickets**: L1→L2 messaging via Inbox contract\n` +
+        `- **ArbSys**: L2→L1 messaging via precompile at 0x64\n` +
+        `- **ParentTransactionReceipt / ChildTransactionReceipt**: Transaction status tracking\n\n` +
+        `For detailed guidance, see https://docs.arbitrum.io/sdk`;
     }
   }
 

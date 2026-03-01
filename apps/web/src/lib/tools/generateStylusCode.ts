@@ -25,6 +25,26 @@ import { selectTemplate, StylusTemplate } from "../templates/stylusTemplates";
 /**
  * Validate and fix common LLM mistakes in generated code.
  * Mirrors the Python _fix_code() safety nets in generate_stylus_code.py.
+ *
+ * CF Workers cannot run `cargo check` (no Docker), so ALL regex fixes stay
+ * here as the only validation layer. The Python MCP server has a trimmed
+ * set (16 deterministic fixes) because it uses cargo check for semantic
+ * validation.
+ *
+ * Fix categories:
+ *   STRUCTURAL (1-3, 5-8): Empty sol_storage!, cfg_attr, extern crate,
+ *     Vec imports, alloc::vec, single sol_storage!, entrypoint placement
+ *   BEHAVIORAL (9, 9b-9d, 29, 32): sol! → sol_interface!, Rust Storage*
+ *     types → Solidity types, camelCase → snake_case, self.vm() host arg
+ *   API MIGRATION (10-15, 17-18, 20-21): transfer_eth path, remove
+ *     evm/msg modules, deprecated API replacements
+ *   SEMANTIC (16, 19, 22, 27-28, 30-31, 33-36, 38): Storage .get()
+ *     enforcement, StorageString API, StorageVec unwrap, nested mapping
+ *     borrow, mapping unwrap_or_default, B256 conversion, const U256,
+ *     string mapping reads, abi_encode on enum, StorageString bare access,
+ *     pub const in impl — Python removes these (cargo check catches them)
+ *   IMPORT MGMT (37/9d): alloc::string imports dedup + insertion
+ *   CLEANUP (24-26, 39): unwrap_or_else, vm().log()?, as_usize, garbled output
  */
 function validateAndFixCode(code: string, template: StylusTemplate): string {
   let fixed = code;
@@ -258,9 +278,10 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
   for (const af of arrayFields) {
     // Use balanced-paren pattern to handle nested parens
     // e.g. setter(U256::from(idx as u64))
-    // Allow optional whitespace/newlines between ) and .set( for multiline chains.
+    // Allow optional whitespace/newlines between field name, .setter(), and .set()
+    // for multiline chains like self.field\n    .setter(x)\n    .set(v).
     fixed = fixed.replace(
-      new RegExp(`\\.${af}\\.setter\\(((?:[^()]*|\\([^()]*\\))*)\\)\\s*\\.set\\(`, "g"),
+      new RegExp(`\\.${af}\\s*\\.setter\\(((?:[^()]*|\\([^()]*\\))*)\\)\\s*\\.set\\(`, "g"),
       `.${af}.setter($1).unwrap().set(`
     );
   }
@@ -475,6 +496,85 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
       );
     }
   }
+
+  // Fix 39 (N36): Clean up garbled LLM output — natural language mid-code
+  // and repeated return type fragments like `-> U256) -> U256) -> U256)`.
+  {
+    // Remove lines that contain natural language markers inside code
+    fixed = fixed.replace(
+      /^.*(?:<<\s*\?\?\?|Wait,\s+we\s+need|Correction:|should be:|Let me (?:re)?write|I'll fix|Actually,|Hmm,|Oops).*$/gm,
+      ""
+    );
+
+    // Fix garbled function signatures: `-> Type) -> Type) -> Type)` → `-> Type`
+    // This pattern catches repeated `) -> Type)` fragments
+    fixed = fixed.replace(
+      /(->\s*\w+(?:<[^>]*>)?)\s*\)\s*(?:->\s*\w+(?:<[^>]*>)?\s*\)\s*)+/g,
+      "$1"
+    );
+
+    // Clean up stray `>?` or `?>` fragments (LLM thinking markers)
+    fixed = fixed.replace(/\s*<+\s*\?\?\?\s*>+\s*\??\s*/g, "");
+
+    // Remove empty lines left by the above cleanups
+    fixed = fixed.replace(/\n{3,}/g, "\n\n");
+  }
+
+  // Fix 40: Remove Debug from derives containing SolidityError.
+  // sol! types don't implement Debug.
+  fixed = fixed.replace(
+    /#\[derive\(([^)]+)\)\]/g,
+    (match, content: string) => {
+      if (content.includes("SolidityError") && content.includes("Debug")) {
+        const parts = content.split(",").map((p: string) => p.trim()).filter((p: string) => p !== "Debug");
+        return `#[derive(${parts.join(", ")})]`;
+      }
+      return match;
+    }
+  );
+
+  // Fix 41: Rename underscore-prefixed methods conflicting with public methods.
+  // #[public] macro strips leading underscores for ABI selectors, so
+  // fn _grant_role and fn grant_role produce the same selector.
+  {
+    const allFnDefs = [...fixed.matchAll(/\bfn\s+([a-z_]\w+)\s*\(/g)].map(m => m[1]);
+    const publicFns = new Set(allFnDefs.filter(n => !n.startsWith("_")));
+    const underscoreFns = new Set(allFnDefs.filter(n => n.startsWith("_")));
+    for (const ufn of underscoreFns) {
+      const base = ufn.slice(1);
+      if (publicFns.has(base)) {
+        fixed = fixed.replace(
+          new RegExp(`\\b${ufn.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"),
+          `${base}_internal`
+        );
+      }
+    }
+  }
+
+  // Fix 42: address[] array deref returns FixedBytes<20>, not Address.
+  // Wrap with Address::from(...) for correct type.
+  {
+    const addrArrayFields = [...fixed.matchAll(/\baddress\[\]\s+(\w+)/g)].map(m => m[1]);
+    for (const field of addrArrayFields) {
+      fixed = fixed.replace(
+        new RegExp(`(?<!Address::from\\()\\*self\\.${field}\\.get\\(([^)]+)\\)\\.unwrap\\(\\)`, "g"),
+        `Address::from(*self.${field}.get($1).unwrap())`
+      );
+    }
+  }
+
+  // Fix 43: Remove extra .setter() on string mapping writes.
+  // .setter(key).setter().set_str(val) → .setter(key).set_str(val)
+  fixed = fixed.replace(
+    /\.setter\(([^)]+)\)\.setter\(\)\.set_str\(/g,
+    ".setter($1).set_str("
+  );
+
+  // Fix 44: Remove phantom variable self-assignments (let x = x;).
+  // LLM sometimes generates `let role = role;` in helpers where `role` is not
+  // a parameter — always a compile error. Even if it IS a parameter, it's a
+  // redundant shadow. Safe to remove.
+  fixed = fixed.replace(/^\s*let\s+(mut\s+)?([a-z_]\w*)\s*=\s*\2\s*;\s*$/gm, "");
 
   // Fix 13: Remove deprecated stylus_sdk::evm and stylus_sdk::msg imports
   fixed = fixed.replace(/^use stylus_sdk::evm.*;\s*$/gm, "");

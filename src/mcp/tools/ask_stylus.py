@@ -474,6 +474,22 @@ class AskStylusTool(BaseTool):
                 code = re.sub(r"^use stylus_sdk::evm.*;\s*$", "", code, flags=re.MULTILINE)
                 code = re.sub(r"^use stylus_sdk::msg.*;\s*$", "", code, flags=re.MULTILINE)
 
+                # Fix 39 (N36): Clean up garbled LLM output
+                code = re.sub(
+                    r"^.*(?:<<\s*\?\?\?|Wait,\s+we\s+need|Correction:|should be:|"
+                    r"Let me (?:re)?write|I'll fix|Actually,|Hmm,|Oops).*$",
+                    "",
+                    code,
+                    flags=re.MULTILINE,
+                )
+                code = re.sub(
+                    r"(->\s*\w+(?:<[^>]*>)?)\s*\)\s*(?:->\s*\w+(?:<[^>]*>)?\s*\)\s*)+",
+                    r"\1",
+                    code,
+                )
+                code = re.sub(r"\s*<+\s*\?\?\?\s*>+\s*\??\s*", "", code)
+                code = re.sub(r"\n{3,}", "\n\n", code)
+
                 code = re.sub(r"\.getter\(", ".get(", code)
 
                 # StorageMap/StorageVec/StorageX → Solidity types
@@ -518,105 +534,8 @@ class AskStylusTool(BaseTool):
                     flags=re.MULTILINE,
                 )
 
-                # Fix StorageVec .setter(i).set() missing unwrap
-                # Only on dynamic array fields (type[]), not mapping .setter()
-                ask_array_fields = set()
-                for af_m in re.finditer(
-                    r"\b\w+\[\]\s+(\w+)\s*;", code
-                ):
-                    ask_array_fields.add(af_m.group(1))
-                for af in ask_array_fields:
-                    # Allow \s* for multiline chains (N34)
-                    code = re.sub(
-                        rf"\.{af}\.setter\(((?:[^()]*|\([^()]*\))*)\)\s*\.set\(",
-                        rf".{af}.setter(\1).unwrap().set(",
-                        code,
-                    )
-
-                # Fix 27: .get(k1).setter(k2) → .setter(k1).setter(k2)
-                # Allow \s* for multiline chains (N33)
-                code = re.sub(
-                    r"\.get\(((?:[^()]*|\([^()]*\))*)\)\s*\.setter\(",
-                    r".setter(\1).setter(",
-                    code,
-                )
-
-                # Fix 23: REMOVED — corrupts sol! event/error declarations.
-
-                # Fix 28: Remove spurious .unwrap_or_default() on mapping reads
-                mapping_flds = set()
-                for mf_m in re.finditer(
-                    r"mapping\(((?:[^()]*|\([^()]*\))*)\)\s+(\w+)\s*;",
-                    code,
-                ):
-                    mapping_flds.add(mf_m.group(2))
-                for mf in mapping_flds:
-                    code = re.sub(
-                        rf"\.{mf}\.get\(([^)]*)\)\.unwrap_or_default\(\)",
-                        rf".{mf}.get(\1)",
-                        code,
-                    )
-                    code = re.sub(
-                        rf"\.{mf}\.getter\(([^)]*)\)\.get\(([^)]*)\)\.unwrap_or_default\(\)",
-                        rf".{mf}.getter(\1).get(\2)",
-                        code,
-                    )
-
-                # Fix 29: sol_interface! camelCase → snake_case
-                sol_iface_renames = {
-                    "transferFrom": "transfer_from",
-                    "balanceOf": "balance_of",
-                    "ownerOf": "owner_of",
-                    "getApproved": "get_approved",
-                    "isApprovedForAll": "is_approved_for_all",
-                    "safeTransferFrom": "safe_transfer_from",
-                    "setApprovalForAll": "set_approval_for_all",
-                    "totalSupply": "total_supply",
-                    "latestAnswer": "latest_answer",
-                    "latestRoundData": "latest_round_data",
-                    "getRoundData": "get_round_data",
-                }
-                for camel, snake in sol_iface_renames.items():
-                    code = re.sub(
-                        rf"\.{camel}\(self\.vm\(\)",
-                        rf".{snake}(self.vm()",
-                        code,
-                    )
-
-                # Fix 30: B256::from_uint(&expr) → B256::from(expr.to_be_bytes::<32>())
-                code = re.sub(
-                    r"B256::from_uint\(&(\w+)\)",
-                    r"B256::from(\1.to_be_bytes::<32>())",
-                    code,
-                )
-
-                # Fix 31: U256::from(N) in const context → U256::from_limbs([N, 0, 0, 0])
-                code = re.sub(
-                    r"(const\s+\w+\s*:\s*U256\s*=\s*)U256::from\((\d+)\)",
-                    r"\1U256::from_limbs([\2, 0, 0, 0])",
-                    code,
-                )
-
-                # Fix 32: sol_interface! calls must have self.vm() as first host argument
-                code = re.sub(
-                    r"\b(\w+)\.(\w+)\(Call::new\(\)",
-                    r"\1.\2(self.vm(), Call::new()",
-                    code,
-                )
-                code = re.sub(
-                    r"\b(\w+)\.(\w+)\(Call::new_mutating\(self\)",
-                    r"\1.\2(self.vm(), Call::new_mutating(self)",
-                    code,
-                )
-                call_var_matches = re.findall(
-                    r"let\s+(?:mut\s+)?(\w+)\s*=\s*Call::new", code
-                )
-                for cvar in call_var_matches:
-                    code = re.sub(
-                        rf"\b(\w+)\.(\w+)\({cvar},\s*",
-                        rf"\1.\2(self.vm(), {cvar}, ",
-                        code,
-                    )
+                # Fixes 22, 27, 28, 29, 30, 31, 32: MOVED TO CARGO CHECK
+                # (see comment near Fix 38 below)
 
                 # Fix 24: .unwrap_or_else(VALUE) → .unwrap_or(VALUE)
                 code = re.sub(
@@ -639,74 +558,8 @@ class AskStylusTool(BaseTool):
                     code,
                 )
 
-                # Fix 33: B256::from_limbs([...]) is wrong —
-                # B256 is FixedBytes<32>, NOT Uint. Wrap with U256.
-                code = re.sub(
-                    r"B256::from_limbs\((\[[^\]]*\])\)",
-                    r"B256::from(U256::from_limbs(\1).to_be_bytes::<32>())",
-                    code,
-                )
-
-                # Fix 34: mapping(... => string) .get(key) returns
-                # StorageGuard<StorageString>. Two-pass approach.
-                string_map_fields = set()
-                for smf in re.finditer(
-                    r"mapping\([^=]+=>\s*string\)\s+(\w+)\s*;", code
-                ):
-                    string_map_fields.add(smf.group(1))
-                for smf in string_map_fields:
-                    # Pass 1: .get(k).get_string() → .getter(k).get_string()
-                    code = re.sub(
-                        rf"\.{smf}\.get\(([^)]+)\)\.get_string\(\)",
-                        rf".{smf}.getter(\1).get_string()",
-                        code,
-                    )
-                    # Pass 2: bare .get(k) → .getter(k).get_string()
-                    code = re.sub(
-                        rf"\.{smf}\.get\(([^)]+)\)",
-                        rf".{smf}.getter(\1).get_string()",
-                        code,
-                    )
-                # Cleanup: doubled .get_string() chains
-                code = re.sub(
-                    r"\.get_string\(\)"
-                    r"(?:\.getter\([^)]*\))?"
-                    r"\.get_string\(\)",
-                    ".get_string()",
-                    code,
-                )
-                # Cleanup: local_var.get_string() is always wrong.
-                code = re.sub(
-                    r"\b([a-z_]\w*)\.get_string\(\)",
-                    lambda m: (
-                        m.group(0) if m.group(1) == "self"
-                        else m.group(1)
-                    ),
-                    code,
-                )
-
-                # Fix 35: .abi_encode() on SolidityError enum wrapper.
-                code = re.sub(
-                    r"(\w+)::(\w+)\((\2\s*\{[^}]*\})\)"
-                    r"\.abi_encode\(\)",
-                    r"\3.abi_encode()",
-                    code,
-                )
-
-                # Fix 36: StorageString returned directly without
-                # .get_string(). self.field (not followed by .) must
-                # become self.field.get_string().
-                ask_str_fields: set[str] = set()
-                for sm in re.finditer(
-                    r"\bstring\s+(\w+)\s*;", code
-                ):
-                    ask_str_fields.add(sm.group(1))
-                for sf in ask_str_fields:
-                    code = re.sub(
-                        rf"self\.{sf}(?![\.\w])",
-                        f"self.{sf}.get_string()",
-                        code,
-                    )
+                # Fixes 33, 34, 35, 36: MOVED TO CARGO CHECK
+                # (see comment near Fix 38 below)
 
                 # Fix 9d + Fix 37 (N31): Ensure alloc::string imports,
                 # no duplicates.
@@ -747,30 +600,66 @@ class AskStylusTool(BaseTool):
                             code,
                         )
 
-                # Fix 38 (N32): Move pub const out of #[public] impl
-                consts_to_move = []
-                for cm in re.finditer(
-                    r"^[ \t]*pub const\s+(\w+)\s*:\s*(\w+)\s*=\s*([^;]+);",
+                # Fix 40: Remove Debug from SolidityError derives
+                def _remove_debug_from_solidity_error(m):
+                    content = m.group(1)
+                    if "SolidityError" in content and "Debug" in content:
+                        parts = [
+                            p.strip()
+                            for p in content.split(",")
+                            if p.strip() and p.strip() != "Debug"
+                        ]
+                        return f"#[derive({', '.join(parts)})]"
+                    return m.group(0)
+
+                code = re.sub(
+                    r"#\[derive\(([^)]+)\)\]",
+                    _remove_debug_from_solidity_error,
                     code,
-                    re.MULTILINE,
-                ):
-                    before = code[: cm.start()]
-                    last_pub = before.rfind("#[public]")
-                    last_close = before.rfind("\n}\n")
-                    if last_pub > -1 and last_pub > last_close:
-                        consts_to_move.append(
-                            (cm.group(0), cm.group(1), cm.group(2), cm.group(3).strip())
+                )
+
+                # Fix 41: Rename underscore-prefixed fns conflicting
+                # with public methods (#[public] strips underscores).
+                pub_fns = set(re.findall(r"\bfn\s+([a-z]\w+)\s*\(", code))
+                ufns = set(re.findall(r"\bfn\s+(_[a-z]\w+)\s*\(", code))
+                for uf in ufns:
+                    base = uf[1:]
+                    if base in pub_fns:
+                        code = re.sub(
+                            rf"\b{re.escape(uf)}\b", f"{base}_internal", code
                         )
-                for full_m, cname, cty, cval in consts_to_move:
-                    code = code.replace(full_m + "\n", "")
-                    code = code.replace(full_m, "")
-                    module_const = f"const {cname}: {cty} = {cval};"
+
+                # Fix 42: address[] deref → Address::from(...)
+                af = re.findall(r"\baddress\[\]\s+(\w+)", code)
+                for field in af:
                     code = re.sub(
-                        r"(\n#\[public\])",
-                        f"\n{module_const}\n\\1",
+                        rf"(?<!Address::from\()\*self\.{re.escape(field)}"
+                        rf"\.get\(([^)]+)\)\.unwrap\(\)",
+                        rf"Address::from(*self.{field}.get(\1).unwrap())",
                         code,
-                        count=1,
                     )
+
+                # Fix 43: extra .setter() on string mapping writes
+                code = re.sub(
+                    r"\.setter\(([^)]+)\)\.setter\(\)\.set_str\(",
+                    r".setter(\1).set_str(",
+                    code,
+                )
+
+                # Fix 44: Remove phantom variable self-assignments (let x = x;)
+                code = re.sub(
+                    r"^\s*let\s+(?:mut\s+)?([a-z_]\w*)\s*=\s*\1\s*;\s*$",
+                    "",
+                    code,
+                    flags=re.MULTILINE,
+                )
+
+                # Fixes 22, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38:
+                # MOVED TO CARGO CHECK — these semantic fixes are now handled
+                # by the compile-verify-fix loop in generate_stylus_code.
+                # For ask_stylus Q&A responses, system prompt rules prevent
+                # these patterns; any remaining issues are caught by cargo check
+                # when the user compiles the code.
             else:
                 # ── 0.9.x fixes (reverse) ──
 
