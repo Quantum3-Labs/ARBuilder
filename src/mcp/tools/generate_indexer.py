@@ -202,7 +202,14 @@ The generated code includes schema.graphql, mappings, and configuration."""
         ]
 
         if not event_items:
-            return {}
+            return {
+                "warning": (
+                    "No indexable events found in the provided ABI. "
+                    "Custom subgraphs require at least one event definition. "
+                    "Ensure your ABI contains event entries, e.g.: "
+                    '{"type": "event", "name": "Transfer", "inputs": [...]}'
+                ),
+            }
 
         # Generate schema.graphql
         schema_lines = ['"""', "Custom indexed events", '"""']

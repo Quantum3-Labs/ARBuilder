@@ -74,7 +74,7 @@ async function depositEthTo(destinationAddress: string, amount: string) {
   console.log('Deposit complete:', l2Result.complete);
 }
 
-// Usage: depositEthTo('0x...', '0.1');
+// Usage: depositEthTo('{destination}', '{amount}');
 '''
 
 # Template for ETH withdrawal (L2 -> L1)

@@ -4,7 +4,7 @@ MCP Server for ARBuilder.
 Exposes Stylus development tools, resources, and prompts via the Model Context Protocol.
 
 MCP Capabilities:
-- Tools: 13 development tools (M1: Stylus + M2: Arbitrum SDK + M3: dApp Builder)
+- Tools: 14 development tools (M1: Stylus + M2: Arbitrum SDK + M3: dApp Builder)
 - Resources: Static knowledge (CLI commands, network configs, workflows)
 - Prompts: Reusable workflow templates
 """
@@ -40,6 +40,7 @@ from .tools import (
     GetStylusContextTool,
     GetWorkflowTool,
     OrchestrateDappTool,
+    ValidateStylusCodeTool,
 )
 
 # Tool definitions for MCP
@@ -257,6 +258,34 @@ TOOL_DEFINITIONS = [
                 },
             },
             "required": ["workflow_type"],
+        },
+    },
+    {
+        "name": "validate_stylus_code",
+        "description": (
+            "Compile-check Stylus Rust code via cargo"
+            " check and return structured errors with"
+            " Stylus-specific fix guidance. Use AFTER"
+            " generating code to verify correctness."
+            " Returns error codes, line numbers, and"
+            " suggested fixes. Requires Docker."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "description": "lib.rs source code to validate",
+                },
+                "cargo_toml": {
+                    "type": "string",
+                    "description": (
+                        "Cargo.toml content (uses default"
+                        " SDK 0.10.0 template if omitted)"
+                    ),
+                },
+            },
+            "required": ["code"],
         },
     },
     # M2: Arbitrum SDK Tools
@@ -562,7 +591,7 @@ class MCPServer:
     Handles tool registration, resource access, prompt templates, and execution.
 
     Capabilities:
-    - tools/list, tools/call: 13 development tools (M1 + M2 + M3)
+    - tools/list, tools/call: 14 development tools (M1 + M2 + M3)
     - resources/list, resources/read: Static knowledge injection
     - prompts/list, prompts/get: Workflow templates
     """
@@ -580,6 +609,7 @@ class MCPServer:
             "ask_stylus": AskStylusTool(context_tool=self.context_tool),
             "generate_tests": GenerateTestsTool(),
             "get_workflow": GetWorkflowTool(),
+            "validate_stylus_code": ValidateStylusCodeTool(),
             # M2: Arbitrum SDK Tools
             "generate_bridge_code": GenerateBridgeCodeTool(context_tool=self.context_tool),
             "generate_messaging_code": GenerateMessagingCodeTool(context_tool=self.context_tool),
@@ -684,7 +714,12 @@ class MCPServer:
             return {"error": f"Unknown tool: {tool_name}"}
 
         tool = self.tools[tool_name]
-        return tool.execute(**arguments)
+        try:
+            result = tool.execute(**arguments)
+        except Exception as e:
+            return {"error": f"Tool execution failed: {str(e)}"}
+
+        return result or {"error": "Tool produced no output"}
 
     def handle_request(self, request: dict) -> dict:
         """
@@ -784,6 +819,7 @@ class MCPServer:
         )
 
         for line in sys.stdin:
+            request_id = None
             try:
                 request = json.loads(line.strip())
                 request_id = request.get("id")
@@ -817,7 +853,7 @@ class MCPServer:
             except json.JSONDecodeError as e:
                 error_response = {
                     "jsonrpc": "2.0",
-                    "id": None,
+                    "id": request_id,
                     "error": {
                         "code": -32700,
                         "message": f"Parse error: {str(e)}",
@@ -828,7 +864,7 @@ class MCPServer:
             except Exception as e:
                 error_response = {
                     "jsonrpc": "2.0",
-                    "id": None,
+                    "id": request_id,
                     "error": {
                         "code": -32603,
                         "message": f"Internal error: {str(e)}",

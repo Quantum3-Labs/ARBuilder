@@ -547,11 +547,20 @@ export default function PlaygroundPage() {
             credentials: "include",
             body: JSON.stringify(inputs),
           });
-          const retryData = (await retryRes.json()) as { error?: string; [key: string]: unknown };
+          const retryData = (await retryRes.json()) as { error?: string; warning?: string; [key: string]: unknown };
           if (!retryRes.ok) {
             throw new Error(retryData.error || `Request failed (${retryRes.status})`);
           }
-          setResult(JSON.stringify(retryData, null, 2));
+          const retryKeys = Object.keys(retryData).filter((k) => k !== "disclaimer" && k !== "warning");
+          const retryEmpty = retryKeys.length === 0 || retryKeys.every((k) => {
+            const v = retryData[k];
+            return v === null || v === undefined || v === "" || (typeof v === "object" && Object.keys(v as object).length === 0);
+          });
+          if (retryEmpty) {
+            setError(retryData.warning as string || "Tool completed but produced no output. Try adjusting your inputs.");
+          } else {
+            setResult(JSON.stringify(retryData, null, 2));
+          }
           return;
         } else {
           // Session truly expired — clear session state
@@ -561,13 +570,24 @@ export default function PlaygroundPage() {
         }
       }
 
-      const data = (await res.json()) as { error?: string; [key: string]: unknown };
+      const data = (await res.json()) as { error?: string; warning?: string; [key: string]: unknown };
 
       if (!res.ok) {
         throw new Error(data.error || `Request failed (${res.status})`);
       }
 
-      setResult(JSON.stringify(data, null, 2));
+      // Detect empty or near-empty tool results
+      const keys = Object.keys(data).filter((k) => k !== "disclaimer" && k !== "warning");
+      const isEmpty = keys.length === 0 || keys.every((k) => {
+        const v = data[k];
+        return v === null || v === undefined || v === "" || (typeof v === "object" && Object.keys(v as object).length === 0);
+      });
+
+      if (isEmpty) {
+        setError(data.warning as string || "Tool completed but produced no output. Try adjusting your inputs.");
+      } else {
+        setResult(JSON.stringify(data, null, 2));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Request failed");
     } finally {

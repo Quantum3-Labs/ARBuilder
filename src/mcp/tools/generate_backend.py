@@ -14,13 +14,10 @@ from typing import Any, Optional
 from .base import BaseTool
 from ...templates.backend_templates import (
     BackendTemplate,
-    select_backend_template,
+    generate_service_from_abi,
     get_backend_template,
-    list_backend_templates,
-    NESTJS_STYLUS_TEMPLATE,
-    EXPRESS_STYLUS_TEMPLATE,
-    NESTJS_GRAPHQL_TEMPLATE,
-    API_GATEWAY_TEMPLATE,
+    render_with_abi,
+    select_backend_template,
 )
 
 
@@ -168,10 +165,99 @@ The generated code includes controllers, services, and configuration files."""
                     files["src/contract/contract.abi.ts"] = abi_content
                 else:
                     files["src/config/contract.abi.ts"] = abi_content
+
+                # Build human-readable ABI for placeholder replacement
+                hr_abi = self._build_human_readable_abi(abi)
+
+                # Replace __ABI_PLACEHOLDER__ in template files
+                files = render_with_abi(files, abi, hr_abi)
+
+                # Generate ABI-aware service methods/routes
+                service_code = generate_service_from_abi(hr_abi, template.framework)
+                if service_code:
+                    self._inject_abi_methods(files, service_code, template.framework)
+
             except json.JSONDecodeError:
                 pass  # Use default ABI
 
         return files
+
+    @staticmethod
+    def _build_human_readable_abi(abi: list) -> list[str]:
+        """Convert JSON ABI to human-readable format for generate_service_from_abi."""
+        hr = []
+        for item in abi:
+            if item.get("type") != "function":
+                continue
+            name = item.get("name", "")
+            inputs = ", ".join(
+                f"{inp.get('type', '')} {inp.get('name', '')}"
+                for inp in item.get("inputs", [])
+            )
+            outputs = ", ".join(
+                inp.get("type", "") for inp in item.get("outputs", [])
+            )
+            mutability = item.get("stateMutability", "nonpayable")
+            sig = f"function {name}({inputs})"
+            if mutability in ("view", "pure"):
+                sig += f" {mutability}"
+            if outputs:
+                sig += f" returns ({outputs})"
+            hr.append(sig)
+        return hr
+
+    @staticmethod
+    def _inject_abi_methods(
+        files: dict[str, str], service_code: str, framework: str
+    ) -> None:
+        """Inject ABI-aware methods into the service file, replacing generic placeholders."""
+        if framework == "nestjs":
+            key = "src/contract/contract.service.ts"
+            if key in files:
+                content = files[key]
+                # Replace the generic getBalance method with ABI-aware methods
+                marker = "  // Add your contract methods here"
+                generic_method = (
+                    "  async getBalance(address: string): Promise<bigint> {\n"
+                    "    const client = this.web3Service.getPublicClient();\n"
+                    "    return client.getBalance({ address: address as `0x${string}` });\n"
+                    "  }"
+                )
+                if marker in content:
+                    content = content.replace(
+                        marker + "\n" + generic_method,
+                        "  // ABI-generated methods\n" + service_code,
+                    )
+                    # Uncomment the ABI import and contract initialization
+                    content = content.replace(
+                        "// import { abi } from './abi';",
+                        "import { CONTRACT_ABI } from './contract.abi';",
+                    )
+                    content = content.replace(
+                        "      // Initialize contract instance\n"
+                        "      // this.contract = getContract({\n"
+                        "      //   address: contractAddress as `0x${string}`,\n"
+                        "      //   abi,\n"
+                        "      //   client: this.web3Service.getPublicClient(),\n"
+                        "      // });",
+                        "      this.contract = getContract({\n"
+                        "        address: contractAddress as `0x${string}`,\n"
+                        "        abi: CONTRACT_ABI,\n"
+                        "        client: this.web3Service.getPublicClient(),\n"
+                        "      });",
+                    )
+                    files[key] = content
+        else:
+            key = "src/routes/contract.ts"
+            if key in files:
+                # For Express, replace the entire route content with ABI-aware routes
+                files[key] = (
+                    "import { Router } from 'express';\n"
+                    "import { publicClient } from '../index';\n\n"
+                    "const router = Router();\n\n"
+                    + service_code
+                    + "\n\nexport default router;\n"
+                )
 
     def _generate_abi_file(self, abi: list) -> str:
         """Generate TypeScript ABI file from JSON ABI."""

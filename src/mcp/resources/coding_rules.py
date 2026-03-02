@@ -236,17 +236,87 @@ let result = token.transfer(self.vm(), config, recipient, amount)?;''',
         },
 
         "tests": {
-            "description": "Unit tests with stylus-test feature",
+            "description": "Unit tests with stylus-test feature (SDK 0.10.0)",
             "example": '''#[cfg(test)]
 mod tests {
     use super::*;
+    use stylus_sdk::testing::*;
 
     #[test]
     fn test_initial_value() {
-        let contract = Contract::default();
+        let vm = TestVM::default();
+        let contract = MyContract::from(&vm);
         assert_eq!(contract.value.get(), U256::ZERO);
     }
 }''',
+            "note": "Use TestVM::default() + MyContract::from(&vm), NOT MyContract::default(). "
+                    "Run with --target flag: cargo test --target=x86_64-unknown-linux-gnu",
+        },
+    },
+
+    "compile_error_fixes": {
+        "description": "Maps common cargo check error codes to Stylus-specific fixes. "
+                       "Use these when validating generated code with validate_stylus_code.",
+        "E0599_StorageString": {
+            "error": "no method named `set` found for `StorageString`",
+            "fix": "Use .set_str() for writes and .get_string() for reads",
+            "example": 'self.name.set_str("hello"); let n = self.name.get_string();',
+        },
+        "E0599_StorageVec": {
+            "error": "no method named `set` found for `Option<StorageGuardMut>`",
+            "fix": "StorageVec .setter() returns Option — must .unwrap() before .set()",
+            "example": "self.items.setter(i).unwrap().set(val);",
+        },
+        "E0502_borrow_conflict": {
+            "error": "cannot borrow `*self` as immutable because it is also borrowed as mutable",
+            "fix": "Extract .get() values to local vars before .set(). "
+                   "For sol_interface! extract Call to local var",
+            "example": "let val = self.x.get(); self.y.set(val);",
+        },
+        "E0277_B256": {
+            "error": "the trait `From<Uint<...>>` is not implemented for `FixedBytes<32>`",
+            "fix": "B256 is FixedBytes<32>, not Uint. Convert via to_be_bytes",
+            "example": "let hash = B256::from(value.to_be_bytes::<32>());",
+        },
+        "E0015_const_U256": {
+            "error": "cannot call non-const fn `U256::from` in constant",
+            "fix": "Use U256::from_limbs() for const declarations",
+            "example": "const MIN: U256 = U256::from_limbs([100, 0, 0, 0]);",
+        },
+        "E0432_removed_modules": {
+            "error": "unresolved import `stylus_sdk::evm` or `stylus_sdk::msg`",
+            "fix": "These modules are removed in SDK 0.10.0. Use self.vm() methods instead",
+            "example": "self.vm().msg_sender()  // was msg::sender()\n"
+                       "self.vm().log(event)    // was evm::log(event)",
+        },
+        "E0658_pub_const_in_impl": {
+            "error": "cannot have `pub const` inside #[public] impl block",
+            "fix": "Move constants to module level above the impl block",
+            "example": "const ADMIN_ROLE: U256 = U256::from_limbs([1, 0, 0, 0]);\n\n"
+                       "#[public]\nimpl MyContract { ... }",
+        },
+        "E0599_mapping_unwrap": {
+            "error": "no method named `unwrap_or_default` on StorageMap value",
+            "fix": "StorageMap::get() returns the value directly (zero-default), "
+                   "NOT Option. Remove .unwrap_or_default()",
+            "example": "let bal = self.balances.get(user);  // returns U256 directly",
+        },
+        "E0599_string_mapping": {
+            "error": "mapping(... => string) .get(key) returns StorageGuard, not String",
+            "fix": "Use .getter(key).get_string() for reads, .setter(key).set_str() for writes",
+            "example": 'let name = self.names.getter(id).get_string();\n'
+                       'self.names.setter(id).set_str("Alice");',
+        },
+        "E0599_abi_encode_enum": {
+            "error": ".abi_encode() called on SolidityError enum wrapper instead of inner struct",
+            "fix": "Call .abi_encode() on the inner sol! error struct, not the enum variant",
+            "example": "// WRONG: MyErrors::NotOwner(NotOwner{..}).abi_encode()\n"
+                       "// CORRECT: NotOwner{caller, owner}.abi_encode()",
+        },
+        "E0277_nested_mapping_borrow": {
+            "error": ".get() returns immutable ref, can't call .setter() on it",
+            "fix": "Chain .setter() calls for nested mapping writes",
+            "example": "self.allowances.setter(owner).setter(spender).set(amount);",
         },
     },
 

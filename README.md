@@ -34,7 +34,7 @@ ARBuilder uses a **Retrieval-Augmented Generation (RAG)** pipeline with hybrid s
 │                                         │                               │
 │  GENERATION                             ▼                               │
 │  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │                      MCP Server (13 tools)                        │  │
+│  │                      MCP Server (14 tools)                        │  │
 │  │                                                                   │  │
 │  │  M1: Stylus        M2: SDK           M3: dApp Builder            │  │
 │  │  ┌─────────────┐   ┌─────────────┐   ┌──────────────────────┐   │  │
@@ -44,6 +44,7 @@ ARBuilder uses a **Retrieval-Augmented Generation (RAG)** pipeline with hybrid s
 │  │  │ get_context  │   │ messaging   │   │ generate_oracle      │   │  │
 │  │  │ gen_tests    │   │ ask_bridging│   │ orchestrate_dapp     │   │  │
 │  │  │ get_workflow │   │             │   │                      │   │  │
+│  │  │ validate_code│   │             │   │                      │   │  │
 │  │  └─────────────┘   └─────────────┘   └──────────────────────┘   │  │
 │  └───────────────────────────────────────────────────────────────────┘  │
 │                           │                                             │
@@ -111,7 +112,7 @@ python -m src.embeddings.vectordb
 
 # 4. Test MCP server
 python -m src.mcp.server
-# Should show: "Capabilities: 13 tools, 11 resources, 5 prompts"
+# Should show: "Capabilities: 14 tools, 11 resources, 5 prompts"
 
 # 5. Configure Cursor IDE (~/.cursor/mcp.json) - see Setup section below
 ```
@@ -154,12 +155,13 @@ ArbBuilder/
 │   │   └── compiler_verifier.py # Docker-based cargo check verification
 │   ├── mcp/              # MCP server for IDE integration
 │   │   ├── server.py     # MCP server (tools, resources, prompts)
-│   │   ├── tools/        # MCP tool implementations (13 tools)
+│   │   ├── tools/        # MCP tool implementations (14 tools)
 │   │   │   ├── get_stylus_context.py   # M1
 │   │   │   ├── generate_stylus_code.py # M1
 │   │   │   ├── ask_stylus.py           # M1
 │   │   │   ├── generate_tests.py       # M1
 │   │   │   ├── get_workflow.py         # M1
+│   │   │   ├── validate_stylus_code.py # M1
 │   │   │   ├── generate_bridge_code.py # M2
 │   │   │   ├── generate_messaging_code.py # M2
 │   │   │   ├── ask_bridging.py         # M2
@@ -274,7 +276,7 @@ python -m src.mcp.server
 You should see:
 ```
 ARBuilder MCP Server started
-Capabilities: 13 tools, 11 resources, 5 prompts
+Capabilities: 14 tools, 11 resources, 5 prompts
 ```
 
 #### Optional: Refresh Data
@@ -542,7 +544,7 @@ ARBuilder exposes a full MCP server with **13 tools**, **11 resources**, and **5
 
 ### Tools
 
-**M1: Stylus Development (5 tools)**
+**M1: Stylus Development (6 tools)**
 
 | Tool | Description |
 |------|-------------|
@@ -551,6 +553,7 @@ ARBuilder exposes a full MCP server with **13 tools**, **11 resources**, and **5
 | `ask_stylus` | Q&A, debugging, concept explanations |
 | `generate_tests` | Generate unit/integration/fuzz tests |
 | `get_workflow` | Build/deploy/test workflow guidance |
+| `validate_stylus_code` | Compile-check code via Docker cargo check with Stylus-specific fix guidance |
 
 **M2: Arbitrum SDK - Bridging & Messaging (3 tools)**
 

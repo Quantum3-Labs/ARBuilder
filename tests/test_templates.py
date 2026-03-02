@@ -600,12 +600,18 @@ impl MyContract {
                 f"'{kw}' should select DeFiVault, got {template.name}"
             )
 
-    def test_fix_code_enforces_get_on_storage_reads(self):
-        """_fix_code should add .get() to bare storage field reads."""
+    def test_fix_code_preserves_storage_reads_for_cargo_check(self):
+        """_fix_code no longer adds .get() to bare storage reads (Fix 16 removed).
+
+        Bare storage field reads are now caught by cargo check in the
+        compile-verify-fix loop, not by regex. This test verifies that
+        _fix_code passes through storage access patterns unchanged (the
+        deterministic fixes like cfg_attr, entrypoint, etc. still apply).
+        """
         from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
 
         tool = GenerateStylusCodeTool.__new__(GenerateStylusCodeTool)
-        broken = """sol_storage! {
+        code = """sol_storage! {
     #[entrypoint]
     pub struct Market {
         uint256 count;
@@ -616,40 +622,10 @@ let c = self.count;
 let o = self.owner;
 self.count.set(val);
 self.owner.set(addr);"""
-        fixed = tool._fix_code(broken, None)
-        assert "self.count.get()" in fixed, "bare self.count should get .get()"
-        assert "self.owner.get()" in fixed, "bare self.owner should get .get()"
-        assert "self.count.set(val)" in fixed, ".set() should not be changed"
-        assert "self.owner.set(addr)" in fixed, ".set() should not be changed"
-
-    def test_fix_code_enforces_get_on_nested_struct_fields(self):
-        """_fix_code should add .get() to nested struct storage field reads."""
-        from src.mcp.tools.generate_stylus_code import GenerateStylusCodeTool
-
-        tool = GenerateStylusCodeTool.__new__(GenerateStylusCodeTool)
-        broken = """sol_storage! {
-    #[entrypoint]
-    pub struct PredictionMarket {
-        mapping(uint256 => Market) markets;
-    }
-}
-sol_storage! {
-    pub struct Market {
-        bool resolved;
-        uint256 total_up;
-        uint256 total_down;
-    }
-}
-let market = self.markets.get(market_id);
-if !market.resolved {
-    let total = market.total_up + market.total_down;
-}
-market.resolved.set(true);"""
-        fixed = tool._fix_code(broken, None)
-        assert "market.resolved.get()" in fixed, "nested market.resolved should get .get()"
-        assert "market.total_up.get()" in fixed, "nested market.total_up should get .get()"
-        assert "market.total_down.get()" in fixed, "nested market.total_down should get .get()"
-        assert "market.resolved.set(true)" in fixed, ".set() should not be changed"
+        fixed = tool._fix_code(code, None)
+        # Fix 16 removed — bare reads pass through (cargo check catches them)
+        assert "self.count.set(val)" in fixed, ".set() should be preserved"
+        assert "self.owner.set(addr)" in fixed, ".set() should be preserved"
 
     def test_ask_stylus_fix_code_in_response(self):
         """ask_stylus _fix_code_in_response should fix wrong patterns in code blocks."""
