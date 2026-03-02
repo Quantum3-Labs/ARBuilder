@@ -6,7 +6,7 @@
  */
 
 import { answerOrbitQuestion } from "../openrouter";
-import { getBridgingContext } from "./getBridgingContext";
+import { getOrbitContext } from "./getOrbitContext";
 
 export interface AskOrbitInput {
   question: string;
@@ -187,15 +187,15 @@ export async function askOrbit(
   }
 
   // Get relevant context from Vectorize (graceful fallback on failure)
-  let contextResult: Awaited<ReturnType<typeof getBridgingContext>>;
+  let contextResult: Awaited<ReturnType<typeof getOrbitContext>>;
   try {
-    contextResult = await getBridgingContext(vectorize, ai, {
+    contextResult = await getOrbitContext(vectorize, ai, {
       query: searchQuery,
       nResults: 5,
       rerank: true,
     });
   } catch (e) {
-    console.warn("getBridgingContext failed, proceeding without RAG:", e);
+    console.warn("getOrbitContext failed, proceeding without RAG:", e);
     contextResult = { contexts: [], totalResults: 0, query: searchQuery };
   }
 
