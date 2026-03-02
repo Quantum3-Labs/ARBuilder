@@ -25,17 +25,16 @@ declare namespace Cloudflare {
     TURNSTILE_SITE_KEY: string;
     TURNSTILE_SECRET_KEY: string;
     OPENROUTER_API_KEY: string;
+    GITHUB_TOKEN?: string;
+
+    // Queue for async ingestion
+    INGEST_QUEUE: Queue;
 
     // Auto-generated bindings
     WORKER_SELF_REFERENCE: Fetcher;
     IMAGES: ImagesBinding;
     ASSETS: Fetcher;
 
-    // Durable Object for Python scraper container
-    SCRAPER_CONTAINER: DurableObjectNamespace;
-
-    // Durable Object for batch job processing
-    BATCH_JOB: DurableObjectNamespace;
   }
 }
 

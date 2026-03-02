@@ -11,17 +11,13 @@ Supports:
 import json
 from typing import Any, Optional
 
-from .base import BaseTool
 from ...templates.indexer_templates import (
     IndexerTemplate,
-    select_indexer_template,
     get_indexer_template,
-    list_indexer_templates,
-    ERC20_SUBGRAPH_TEMPLATE,
-    ERC721_SUBGRAPH_TEMPLATE,
-    DEFI_SUBGRAPH_TEMPLATE,
-    CUSTOM_EVENTS_SUBGRAPH_TEMPLATE,
+    select_indexer_template,
 )
+from .base import BaseTool
+
 # Removed: agentic_rag import (template-based generation)
 
 
@@ -202,7 +198,14 @@ The generated code includes schema.graphql, mappings, and configuration."""
         ]
 
         if not event_items:
-            return {}
+            return {
+                "warning": (
+                    "No indexable events found in the provided ABI. "
+                    "Custom subgraphs require at least one event definition. "
+                    "Ensure your ABI contains event entries, e.g.: "
+                    '{"type": "event", "name": "Transfer", "inputs": [...]}'
+                ),
+            }
 
         # Generate schema.graphql
         schema_lines = ['"""', "Custom indexed events", '"""']
@@ -339,7 +342,7 @@ dataSources:
             "codegen": "graph codegen",
             "build": "graph build",
             "deploy_studio": "graph deploy --studio <subgraph-name>",
-            "deploy_hosted": f"graph deploy --node https://api.thegraph.com/deploy/ --ipfs https://api.thegraph.com/ipfs/ <github-user>/<subgraph-name>",
+            "deploy_hosted": "graph deploy --node https://api.thegraph.com/deploy/ --ipfs https://api.thegraph.com/ipfs/ <github-user>/<subgraph-name>",
             "create_local": "graph create --node http://localhost:8020/ <subgraph-name>",
             "deploy_local": "graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 <subgraph-name>",
         }

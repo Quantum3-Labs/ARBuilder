@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 
-type Tool = "context" | "generate" | "ask" | "tests" | "workflow" | "bridge" | "messaging" | "askBridging";
+type Tool =
+  | "context" | "generate" | "ask" | "tests" | "workflow"
+  | "bridge" | "messaging" | "askBridging"
+  | "backend" | "frontend" | "indexer" | "oracle" | "orchestrate";
 
 interface ToolConfig {
   name: string;
@@ -41,7 +44,7 @@ const tools: Record<Tool, ToolConfig> = {
         required: true,
       },
       {
-        name: "top_k",
+        name: "nResults",
         label: "Number of Results",
         type: "select",
         options: [
@@ -63,14 +66,14 @@ const tools: Record<Tool, ToolConfig> = {
     iconColor: "text-emerald-600",
     inputs: [
       {
-        name: "description",
+        name: "prompt",
         label: "Contract Description",
         type: "textarea",
         placeholder: "Describe the contract you want to generate...",
         required: true,
       },
       {
-        name: "context",
+        name: "contextQuery",
         label: "Additional Context",
         type: "textarea",
         placeholder: "Additional context or requirements (optional)",
@@ -107,14 +110,14 @@ const tools: Record<Tool, ToolConfig> = {
     iconColor: "text-amber-600",
     inputs: [
       {
-        name: "code",
+        name: "contractCode",
         label: "Contract Code",
         type: "textarea",
         placeholder: "Paste your Stylus contract code here...",
         required: true,
       },
       {
-        name: "test_type",
+        name: "testTypes",
         label: "Test Type",
         type: "select",
         options: [
@@ -136,7 +139,7 @@ const tools: Record<Tool, ToolConfig> = {
     iconColor: "text-rose-600",
     inputs: [
       {
-        name: "workflow_type",
+        name: "workflowType",
         label: "Workflow Type",
         type: "select",
         options: [
@@ -169,7 +172,7 @@ const tools: Record<Tool, ToolConfig> = {
     iconColor: "text-purple-600",
     inputs: [
       {
-        name: "bridge_type",
+        name: "bridgeType",
         label: "Bridge Type",
         type: "select",
         options: [
@@ -189,7 +192,7 @@ const tools: Record<Tool, ToolConfig> = {
         placeholder: "e.g., 0.1",
       },
       {
-        name: "token_address",
+        name: "tokenAddress",
         label: "Token Address (for ERC20)",
         type: "text",
         placeholder: "0x...",
@@ -207,7 +210,7 @@ const tools: Record<Tool, ToolConfig> = {
     iconColor: "text-cyan-600",
     inputs: [
       {
-        name: "message_type",
+        name: "messageType",
         label: "Message Type",
         type: "select",
         options: [
@@ -238,7 +241,7 @@ const tools: Record<Tool, ToolConfig> = {
         required: true,
       },
       {
-        name: "include_code",
+        name: "includeCodeExample",
         label: "Include Code Example",
         type: "select",
         options: [
@@ -248,7 +251,198 @@ const tools: Record<Tool, ToolConfig> = {
       },
     ],
   },
+  backend: {
+    name: "Generate Backend",
+    description: "NestJS/Express backend with viem integration",
+    endpoint: "/api/v1/tools/backend",
+    icon: (
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+    ),
+    iconBg: "bg-orange-100",
+    iconColor: "text-orange-600",
+    inputs: [
+      {
+        name: "prompt",
+        label: "Backend Description",
+        type: "textarea",
+        placeholder: "Describe the backend you want to generate...",
+        required: true,
+      },
+      {
+        name: "framework",
+        label: "Framework",
+        type: "select",
+        options: [
+          { value: "nestjs", label: "NestJS" },
+          { value: "express", label: "Express" },
+        ],
+      },
+      {
+        name: "contractAbi",
+        label: "Contract ABI (optional)",
+        type: "textarea",
+        placeholder: "Paste contract ABI JSON for auto-generated endpoints...",
+      },
+    ],
+  },
+  frontend: {
+    name: "Generate Frontend",
+    description: "Next.js + wagmi + RainbowKit frontend",
+    endpoint: "/api/v1/tools/frontend",
+    icon: (
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+    ),
+    iconBg: "bg-sky-100",
+    iconColor: "text-sky-600",
+    inputs: [
+      {
+        name: "prompt",
+        label: "Frontend Description",
+        type: "textarea",
+        placeholder: "Describe the frontend you want to generate...",
+        required: true,
+      },
+      {
+        name: "uiFramework",
+        label: "UI Framework",
+        type: "select",
+        options: [
+          { value: "daisyui", label: "DaisyUI (Tailwind)" },
+          { value: "shadcn", label: "shadcn/ui" },
+          { value: "none", label: "None (plain Tailwind)" },
+        ],
+      },
+      {
+        name: "contractAbi",
+        label: "Contract ABI (optional)",
+        type: "textarea",
+        placeholder: "Paste contract ABI JSON for auto-generated hooks...",
+      },
+    ],
+  },
+  indexer: {
+    name: "Generate Indexer",
+    description: "The Graph subgraph for on-chain data",
+    endpoint: "/api/v1/tools/indexer",
+    icon: (
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+    ),
+    iconBg: "bg-indigo-100",
+    iconColor: "text-indigo-600",
+    inputs: [
+      {
+        name: "contractAddress",
+        label: "Contract Address",
+        type: "text",
+        placeholder: "0x...",
+        required: true,
+      },
+      {
+        name: "subgraphType",
+        label: "Subgraph Type",
+        type: "select",
+        options: [
+          { value: "erc20", label: "ERC20 Token" },
+          { value: "erc721", label: "ERC721 NFT" },
+          { value: "defi", label: "DeFi Protocol" },
+          { value: "custom", label: "Custom" },
+        ],
+      },
+      {
+        name: "network",
+        label: "Network",
+        type: "select",
+        options: [
+          { value: "arbitrum-sepolia", label: "Arbitrum Sepolia" },
+          { value: "arbitrum-one", label: "Arbitrum One" },
+        ],
+      },
+    ],
+  },
+  oracle: {
+    name: "Generate Oracle",
+    description: "Chainlink oracle integrations",
+    endpoint: "/api/v1/tools/oracle",
+    icon: (
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+    ),
+    iconBg: "bg-yellow-100",
+    iconColor: "text-yellow-600",
+    inputs: [
+      {
+        name: "oracleType",
+        label: "Oracle Type",
+        type: "select",
+        options: [
+          { value: "price_feed", label: "Price Feed" },
+          { value: "vrf", label: "VRF (Random Numbers)" },
+          { value: "automation", label: "Automation (Keepers)" },
+          { value: "functions", label: "Functions (Off-chain Compute)" },
+        ],
+        required: true,
+      },
+      {
+        name: "network",
+        label: "Network",
+        type: "select",
+        options: [
+          { value: "arbitrum-sepolia", label: "Arbitrum Sepolia" },
+          { value: "arbitrum-one", label: "Arbitrum One" },
+        ],
+      },
+    ],
+  },
+  orchestrate: {
+    name: "Orchestrate dApp",
+    description: "Full-stack dApp scaffolding",
+    endpoint: "/api/v1/tools/orchestrate",
+    icon: (
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+    ),
+    iconBg: "bg-pink-100",
+    iconColor: "text-pink-600",
+    inputs: [
+      {
+        name: "prompt",
+        label: "dApp Description",
+        type: "textarea",
+        placeholder: "Describe your full-stack dApp (e.g., 'A token vending machine with admin dashboard')...",
+        required: true,
+      },
+      {
+        name: "network",
+        label: "Network",
+        type: "select",
+        options: [
+          { value: "arbitrum-sepolia", label: "Arbitrum Sepolia" },
+          { value: "arbitrum-one", label: "Arbitrum One" },
+        ],
+      },
+      {
+        name: "contractAbi",
+        label: "Contract ABI (optional)",
+        type: "textarea",
+        placeholder: "Paste contract ABI JSON to auto-inject into backend and frontend...",
+      },
+    ],
+  },
 };
+
+interface ApiKey {
+  id: string;
+  keyPrefix: string;
+  name: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+interface SessionUser {
+  id: string;
+  email: string;
+  name?: string | null;
+}
+
+type AuthMode = "session" | "apikey";
 
 export default function PlaygroundPage() {
   const [selectedTool, setSelectedTool] = useState<Tool>("context");
@@ -258,6 +452,40 @@ export default function PlaygroundPage() {
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Auth state
+  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const [userKeys, setUserKeys] = useState<ApiKey[]>([]);
+  const [selectedKeyId, setSelectedKeyId] = useState<string>("session");
+  const [authMode, setAuthMode] = useState<AuthMode>("session");
+
+  // Check session and fetch keys on mount
+  useEffect(() => {
+    async function init() {
+      try {
+        const res = await fetch("/api/auth/session");
+        const data = (await res.json()) as { user: SessionUser | null };
+        if (data.user) {
+          setSessionUser(data.user);
+          setAuthMode("session");
+          // Fetch user's API keys
+          const keysRes = await fetch("/api/keys");
+          if (keysRes.ok) {
+            const keysData = (await keysRes.json()) as { keys: ApiKey[] };
+            setUserKeys(keysData.keys || []);
+          }
+        } else {
+          setAuthMode("apikey");
+        }
+      } catch {
+        setAuthMode("apikey");
+      } finally {
+        setSessionLoading(false);
+      }
+    }
+    init();
+  }, []);
+
   const currentTool = tools[selectedTool];
 
   function handleInputChange(name: string, value: string) {
@@ -265,8 +493,14 @@ export default function PlaygroundPage() {
   }
 
   async function handleSubmit() {
-    if (!apiKey) {
-      setError("Please enter your API key");
+    // Determine effective auth: if API key mode with a stored key (no raw value),
+    // fall back to session auth since the user is logged in
+    const useApiKeyAuth = authMode === "apikey" && apiKey;
+    const useSessionAuth = authMode === "session" || (authMode === "apikey" && !apiKey && sessionUser);
+
+    // Block only if truly unauthenticated: no session AND no API key
+    if (!useApiKeyAuth && !useSessionAuth) {
+      setError("Please enter your API key or sign in");
       return;
     }
 
@@ -283,22 +517,77 @@ export default function PlaygroundPage() {
     setResult(null);
 
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      // Use API key auth only if a raw key value is available
+      if (useApiKeyAuth) {
+        headers["Authorization"] = `Bearer ${apiKey}`;
+      }
+      // Otherwise session auth: cookies are sent automatically
+
       const res = await fetch(currentTool.endpoint, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
+        headers,
+        credentials: "include", // Ensure cookies are sent for session auth
         body: JSON.stringify(inputs),
       });
 
-      const data = (await res.json()) as { error?: string; [key: string]: unknown };
-
-      if (!res.ok) {
-        throw new Error(data.error || "Request failed");
+      // Handle auth expiration: try to refresh session and retry once
+      if (res.status === 401 && !useApiKeyAuth && sessionUser) {
+        // Access token may have expired — try refreshing the session
+        const refreshRes = await fetch("/api/auth/session");
+        const refreshData = (await refreshRes.json()) as { user: SessionUser | null; refreshed?: boolean };
+        if (refreshData.user && refreshData.refreshed) {
+          // Session refreshed — retry the request with new cookies
+          const retryRes = await fetch(currentTool.endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify(inputs),
+          });
+          const retryData = (await retryRes.json()) as { error?: string; warning?: string; [key: string]: unknown };
+          if (!retryRes.ok) {
+            throw new Error(retryData.error || `Request failed (${retryRes.status})`);
+          }
+          const retryKeys = Object.keys(retryData).filter((k) => k !== "disclaimer" && k !== "warning");
+          const retryEmpty = retryKeys.length === 0 || retryKeys.every((k) => {
+            const v = retryData[k];
+            return v === null || v === undefined || v === "" || (typeof v === "object" && Object.keys(v as object).length === 0);
+          });
+          if (retryEmpty) {
+            setError(retryData.warning as string || "Tool completed but produced no output. Try adjusting your inputs.");
+          } else {
+            setResult(JSON.stringify(retryData, null, 2));
+          }
+          return;
+        } else {
+          // Session truly expired — clear session state
+          setSessionUser(null);
+          setAuthMode("apikey");
+          throw new Error("Session expired. Please sign in again or use an API key.");
+        }
       }
 
-      setResult(JSON.stringify(data, null, 2));
+      const data = (await res.json()) as { error?: string; warning?: string; [key: string]: unknown };
+
+      if (!res.ok) {
+        throw new Error(data.error || `Request failed (${res.status})`);
+      }
+
+      // Detect empty or near-empty tool results
+      const keys = Object.keys(data).filter((k) => k !== "disclaimer" && k !== "warning");
+      const isEmpty = keys.length === 0 || keys.every((k) => {
+        const v = data[k];
+        return v === null || v === undefined || v === "" || (typeof v === "object" && Object.keys(v as object).length === 0);
+      });
+
+      if (isEmpty) {
+        setError(data.warning as string || "Tool completed but produced no output. Try adjusting your inputs.");
+      } else {
+        setResult(JSON.stringify(data, null, 2));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Request failed");
     } finally {
@@ -321,12 +610,24 @@ export default function PlaygroundPage() {
             <span className="text-gray-300 hidden sm:block">/</span>
             <span className="text-gray-600 font-medium">Playground</span>
           </div>
-          <Link
-            href="/login"
-            className="text-blue-600 hover:text-blue-700 font-medium transition-colors"
-          >
-            Get API Key
-          </Link>
+          {sessionUser ? (
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-600 hidden sm:block">{sessionUser.email}</span>
+              <Link
+                href="/dashboard/keys"
+                className="text-blue-600 hover:text-blue-700 font-medium transition-colors text-sm"
+              >
+                Manage Keys
+              </Link>
+            </div>
+          ) : (
+            <Link
+              href="/login"
+              className="text-blue-600 hover:text-blue-700 font-medium transition-colors"
+            >
+              Sign In
+            </Link>
+          )}
         </div>
       </header>
 
@@ -373,22 +674,147 @@ export default function PlaygroundPage() {
               </div>
             </div>
 
-            {/* API Key Input */}
+            {/* Authentication */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-              <h2 className="font-semibold text-gray-900 mb-4 px-2">API Key</h2>
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="arb_..."
-                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
-              />
-              <p className="text-xs text-gray-500 mt-3 px-2">
-                Get your API key from the{" "}
-                <Link href="/dashboard/keys" className="text-blue-600 hover:text-blue-700">
-                  dashboard
-                </Link>
-              </p>
+              <h2 className="font-semibold text-gray-900 mb-4 px-2">Authentication</h2>
+              {sessionLoading ? (
+                <div className="flex items-center gap-2 px-2 py-2 text-sm text-gray-500">
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Checking session...
+                </div>
+              ) : sessionUser ? (
+                <div className="space-y-3">
+                  {/* Auth mode selector */}
+                  <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+                    <button
+                      onClick={() => setAuthMode("session")}
+                      className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-all ${
+                        authMode === "session"
+                          ? "bg-white text-gray-900 shadow-sm"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      Session
+                    </button>
+                    <button
+                      onClick={() => setAuthMode("apikey")}
+                      className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-all ${
+                        authMode === "apikey"
+                          ? "bg-white text-gray-900 shadow-sm"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      API Key
+                    </button>
+                  </div>
+
+                  {authMode === "session" ? (
+                    <div className="flex items-center gap-2 px-2 py-2 bg-green-50 border border-green-100 rounded-xl">
+                      <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                      </svg>
+                      <span className="text-sm text-green-700">Signed in as {sessionUser.email}</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {userKeys.length > 0 ? (
+                        <>
+                          <select
+                            value={selectedKeyId}
+                            onChange={(e) => {
+                              setSelectedKeyId(e.target.value);
+                              if (e.target.value !== "manual") {
+                                setApiKey("");
+                              }
+                            }}
+                            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all bg-white"
+                          >
+                            {userKeys.map((key) => (
+                              <option key={key.id} value={key.id}>
+                                {key.name || key.keyPrefix}
+                              </option>
+                            ))}
+                            <option value="manual">Enter key manually...</option>
+                          </select>
+                          {selectedKeyId === "manual" ? (
+                            <input
+                              type="password"
+                              value={apiKey}
+                              onChange={(e) => setApiKey(e.target.value)}
+                              placeholder="arb_..."
+                              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                            />
+                          ) : (
+                            <div className="flex items-center gap-1.5 px-2 py-1.5 bg-blue-50 border border-blue-100 rounded-lg">
+                              <svg className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              <p className="text-xs text-blue-600">
+                                Using your session to authenticate (key selected for tracking).
+                              </p>
+                            </div>
+                          )}
+                          <p className="text-xs text-gray-500 px-2">
+                            <Link href="/dashboard/keys" className="text-blue-600 hover:text-blue-700">
+                              Manage keys
+                            </Link>
+                          </p>
+                        </>
+                      ) : (
+                        <div className="space-y-2">
+                          <input
+                            type="password"
+                            value={apiKey}
+                            onChange={(e) => setApiKey(e.target.value)}
+                            placeholder="arb_..."
+                            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                          />
+                          <p className="text-xs text-gray-500 px-2">
+                            No keys yet.{" "}
+                            <Link href="/dashboard/keys" className="text-blue-600 hover:text-blue-700">
+                              Create one
+                            </Link>
+                            {" "}or use session mode.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="px-2 py-3 bg-amber-50 border border-amber-100 rounded-xl">
+                    <p className="text-sm text-amber-800 font-medium">Sign in to get started</p>
+                    <p className="text-xs text-amber-600 mt-1">
+                      Sign in to use the playground with your session, or enter an API key manually.
+                    </p>
+                  </div>
+                  <Link
+                    href="/login"
+                    className="block w-full text-center bg-blue-600 text-white py-2.5 rounded-xl text-sm font-medium hover:bg-blue-700 transition-all"
+                  >
+                    Sign In
+                  </Link>
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-gray-200" />
+                    </div>
+                    <div className="relative flex justify-center text-xs">
+                      <span className="bg-white px-2 text-gray-500">or use API key</span>
+                    </div>
+                  </div>
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder="arb_..."
+                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                  />
+                </div>
+              )}
             </div>
           </div>
 

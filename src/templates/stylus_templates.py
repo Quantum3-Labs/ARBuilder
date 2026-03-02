@@ -8,6 +8,8 @@ Sources (migrated to SDK 0.10.0):
 - ERC20: Simplified version based on Stylus patterns
 """
 
+import json
+import re
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -15,6 +17,7 @@ from typing import List, Optional
 @dataclass
 class StylusTemplate:
     """A curated Stylus contract template."""
+
     name: str
     description: str
     contract_type: str  # token, nft, defi, utility, custom
@@ -35,7 +38,7 @@ COUNTER_TEMPLATE = StylusTemplate(
     contract_type="utility",
     sdk_version="0.10.0",
     features=["storage", "public functions", "payable", "tests"],
-    lib_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+    lib_rs="""#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
 #[macro_use]
 extern crate alloc;
@@ -103,7 +106,7 @@ mod test {
         contract.add_from_msg_value();
         assert_eq!(U256::from(102), contract.number());
     }
-}''',
+}""",
     cargo_toml='''[package]
 name = "stylus_counter"
 version = "0.1.0"
@@ -137,7 +140,7 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"''',
-    main_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+    main_rs="""#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 
 #[cfg(not(any(test, feature = "export-abi")))]
 #[unsafe(no_mangle)]
@@ -146,9 +149,9 @@ pub extern "C" fn main() {}
 #[cfg(feature = "export-abi")]
 fn main() {
     stylus_counter::print_from_args();
-}''',
-    stylus_toml='[workspace]\n\n[workspace.networks]\n\n[contract]\n',
-    rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
+}""",
+    stylus_toml="[workspace]\n\n[workspace.networks]\n\n[contract]\n",
+    rust_toolchain_toml='[toolchain]\nchannel = "1.91.0"\ntargets = ["wasm32-unknown-unknown"]\n',
 )
 
 # Vending Machine template - Mappings and time-based logic
@@ -158,7 +161,7 @@ VENDING_MACHINE_TEMPLATE = StylusTemplate(
     contract_type="defi",
     sdk_version="0.10.0",
     features=["mappings", "timestamps", "rate limiting", "tests"],
-    lib_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+    lib_rs="""#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
 #[macro_use]
 extern crate alloc;
@@ -247,7 +250,7 @@ mod test {
         assert!(contract.claim(user).unwrap());
         assert_eq!(contract.balance_of(user), U256::from(2));
     }
-}''',
+}""",
     cargo_toml='''[package]
 name = "stylus_vending_machine"
 version = "0.1.0"
@@ -281,7 +284,7 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"''',
-    main_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+    main_rs="""#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 
 #[cfg(not(any(test, feature = "export-abi")))]
 #[unsafe(no_mangle)]
@@ -290,9 +293,9 @@ pub extern "C" fn main() {}
 #[cfg(feature = "export-abi")]
 fn main() {
     stylus_vending_machine::print_from_args();
-}''',
-    stylus_toml='[workspace]\n\n[workspace.networks]\n\n[contract]\n',
-    rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
+}""",
+    stylus_toml="[workspace]\n\n[workspace.networks]\n\n[contract]\n",
+    rust_toolchain_toml='[toolchain]\nchannel = "1.91.0"\ntargets = ["wasm32-unknown-unknown"]\n',
 )
 
 # Simple ERC20 template - Basic token without OpenZeppelin
@@ -302,7 +305,7 @@ SIMPLE_ERC20_TEMPLATE = StylusTemplate(
     contract_type="token",
     sdk_version="0.10.0",
     features=["ERC20", "mappings", "events", "error handling"],
-    lib_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+    lib_rs="""#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
 #[macro_use]
 extern crate alloc;
@@ -476,7 +479,7 @@ mod test {
         assert_eq!(contract.balance_of(owner), U256::from(999000));
         assert_eq!(contract.balance_of(recipient), U256::from(1000));
     }
-}''',
+}""",
     cargo_toml='''[package]
 name = "stylus_erc20"
 version = "0.1.0"
@@ -510,7 +513,7 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"''',
-    main_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+    main_rs="""#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 
 #[cfg(not(any(test, feature = "export-abi")))]
 #[unsafe(no_mangle)]
@@ -519,9 +522,9 @@ pub extern "C" fn main() {}
 #[cfg(feature = "export-abi")]
 fn main() {
     stylus_erc20::print_from_args();
-}''',
-    stylus_toml='[workspace]\n\n[workspace.networks]\n\n[contract]\n',
-    rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
+}""",
+    stylus_toml="[workspace]\n\n[workspace.networks]\n\n[contract]\n",
+    rust_toolchain_toml='[toolchain]\nchannel = "1.91.0"\ntargets = ["wasm32-unknown-unknown"]\n',
 )
 
 # Access Control template - Owner-only functions
@@ -531,7 +534,7 @@ ACCESS_CONTROL_TEMPLATE = StylusTemplate(
     contract_type="utility",
     sdk_version="0.10.0",
     features=["access control", "ownership", "modifiers"],
-    lib_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+    lib_rs="""#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
 #[macro_use]
 extern crate alloc;
@@ -661,7 +664,7 @@ mod test {
         assert!(contract.transfer_ownership(other).is_ok());
         assert_eq!(contract.owner(), other);
     }
-}''',
+}""",
     cargo_toml='''[package]
 name = "stylus_ownable"
 version = "0.1.0"
@@ -695,7 +698,7 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"''',
-    main_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+    main_rs="""#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 
 #[cfg(not(any(test, feature = "export-abi")))]
 #[unsafe(no_mangle)]
@@ -704,9 +707,9 @@ pub extern "C" fn main() {}
 #[cfg(feature = "export-abi")]
 fn main() {
     stylus_ownable::print_from_args();
-}''',
-    stylus_toml='[workspace]\n\n[workspace.networks]\n\n[contract]\n',
-    rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
+}""",
+    stylus_toml="[workspace]\n\n[workspace.networks]\n\n[contract]\n",
+    rust_toolchain_toml='[toolchain]\nchannel = "1.91.0"\ntargets = ["wasm32-unknown-unknown"]\n',
 )
 
 # DeFi Vault template - ETH deposits, withdrawals, cross-contract calls
@@ -721,8 +724,15 @@ DEFI_VAULT_TEMPLATE = StylusTemplate(
     description="ETH vault with deposits, withdrawals, oracle price feeds, and access control",
     contract_type="defi",
     sdk_version="0.10.0",
-    features=["ETH transfer", "cross-contract calls", "events", "errors", "access control", "mappings"],
-    lib_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+    features=[
+        "ETH transfer",
+        "cross-contract calls",
+        "events",
+        "errors",
+        "access control",
+        "mappings",
+    ],
+    lib_rs="""#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
 #[macro_use]
 extern crate alloc;
@@ -753,10 +763,13 @@ pub enum VaultError {
     Unauthorized(Unauthorized),
 }
 
-// Cross-contract interface — use sol_interface! (NOT sol!) for external calls
+// Cross-contract interfaces — use sol_interface! (NOT sol!) for external calls
 sol_interface! {
     interface IPriceFeed {
         function latestPrice() external view returns (uint256);
+    }
+    interface IToken {
+        function transfer(address to, uint256 amount) external returns (bool);
     }
 }
 
@@ -827,13 +840,27 @@ impl Vault {
         Ok(())
     }
 
-    /// Read price from external oracle — sol_interface! call pattern
+    /// Read price from external oracle — VIEW call uses Call::new()
     pub fn get_price(&mut self) -> Result<U256, Vec<u8>> {
         let feed_addr = self.price_feed.get();
         let feed = IPriceFeed::new(feed_addr);
-        // Cross-contract call: (self.vm(), Call::new(), ...args)
+        // VIEW (read-only) cross-contract call: Call::new() is fine
         let price = feed.latest_price(self.vm(), Call::new())?;
         Ok(price)
+    }
+
+    /// Transfer tokens via external contract (state-modifying)
+    pub fn transfer_tokens(
+        &mut self,
+        token: Address,
+        to: Address,
+        amount: U256,
+    ) -> Result<bool, Vec<u8>> {
+        let tok = IToken::new(token);
+        // State-modifying call: extract Call first to avoid borrow conflict
+        let call = Call::new_mutating(self);
+        let success = tok.transfer(self.vm(), call, to, amount)?;
+        Ok(success)
     }
 
     /// Get balance for a user
@@ -882,7 +909,7 @@ mod test {
         assert_eq!(contract.balance_of(user), U256::from(1000));
         assert_eq!(contract.total_deposits(), U256::from(1000));
     }
-}''',
+}""",
     cargo_toml='''[package]
 name = "stylus_vault"
 version = "0.1.0"
@@ -916,7 +943,7 @@ strip = true
 lto = true
 panic = "abort"
 opt-level = "s"''',
-    main_rs='''#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+    main_rs="""#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 
 #[cfg(not(any(test, feature = "export-abi")))]
 #[unsafe(no_mangle)]
@@ -925,9 +952,304 @@ pub extern "C" fn main() {}
 #[cfg(feature = "export-abi")]
 fn main() {
     stylus_vault::print_from_args();
-}''',
-    stylus_toml='[workspace]\n\n[workspace.networks]\n\n[contract]\n',
-    rust_toolchain_toml='[toolchain]\nchannel = "1.88.0"\ntargets = ["wasm32-unknown-unknown"]\n',
+}""",
+    stylus_toml="[workspace]\n\n[workspace.networks]\n\n[contract]\n",
+    rust_toolchain_toml='[toolchain]\nchannel = "1.91.0"\ntargets = ["wasm32-unknown-unknown"]\n',
+)
+
+# NFT Registry template - Dynamic arrays and mappings
+# Demonstrates push() for StorageVec, sol! events with camelCase fields
+NFT_REGISTRY_TEMPLATE = StylusTemplate(
+    name="NftRegistry",
+    description="NFT registry with minting, ownership tracking, and dynamic token ID array",
+    contract_type="nft",
+    sdk_version="0.10.0",
+    features=["dynamic arrays", "mappings", "events", "access control", "mint"],
+    lib_rs="""#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+#![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
+#[macro_use]
+extern crate alloc;
+
+use alloc::{vec, vec::Vec};
+use stylus_sdk::{
+    alloy_primitives::{Address, U256},
+    alloy_sol_types::{sol, SolError},
+    prelude::*,
+};
+
+// Events — use camelCase for field names (Solidity convention)
+sol! {
+    event Transfer(address indexed from, address indexed to, uint256 tokenId);
+    event Approval(address indexed owner, address indexed approved, uint256 tokenId);
+}
+
+// Errors
+sol! {
+    error TokenNotFound(uint256 tokenId);
+    error NotOwner(address caller, address owner);
+    error AlreadyMinted(uint256 tokenId);
+    error ZeroAddress();
+}
+
+#[derive(SolidityError)]
+pub enum NftError {
+    TokenNotFound(TokenNotFound),
+    NotOwner(NotOwner),
+    AlreadyMinted(AlreadyMinted),
+    ZeroAddress(ZeroAddress),
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct NftRegistry {
+        address contract_owner;
+        uint256 next_token_id;
+        mapping(uint256 => address) owners;
+        mapping(address => uint256) balances;
+        mapping(uint256 => address) token_approvals;
+        uint256[] all_token_ids;
+    }
+}
+
+#[public]
+impl NftRegistry {
+    /// Initialize the registry with deployer as contract owner
+    pub fn initialize(&mut self) {
+        self.contract_owner.set(self.vm().msg_sender());
+    }
+
+    /// Mint a new NFT to the given address
+    pub fn mint(&mut self, to: Address) -> Result<U256, Vec<u8>> {
+        if to == Address::ZERO {
+            return Err(ZeroAddress {}.abi_encode());
+        }
+
+        // Get and increment token ID
+        let token_id = self.next_token_id.get();
+        self.next_token_id.set(token_id + U256::from(1));
+
+        // Set ownership
+        self.owners.setter(token_id).set(to);
+
+        // Update balance
+        let balance = self.balances.get(to);
+        self.balances.setter(to).set(balance + U256::from(1));
+
+        // Track token ID in dynamic array — use push() for primitives
+        self.all_token_ids.push(token_id);
+
+        self.vm().log(Transfer {
+            from: Address::ZERO,
+            to,
+            tokenId: token_id,
+        });
+
+        Ok(token_id)
+    }
+
+    /// Transfer NFT from one address to another
+    pub fn transfer_from(
+        &mut self,
+        from: Address,
+        to: Address,
+        token_id: U256,
+    ) -> Result<(), Vec<u8>> {
+        let token_owner = self.owners.get(token_id);
+        if token_owner == Address::ZERO {
+            return Err(TokenNotFound { tokenId: token_id }.abi_encode());
+        }
+
+        let caller = self.vm().msg_sender();
+        let approved = self.token_approvals.get(token_id);
+        if caller != token_owner && caller != approved {
+            return Err(NotOwner {
+                caller,
+                owner: token_owner,
+            }
+            .abi_encode());
+        }
+
+        if to == Address::ZERO {
+            return Err(ZeroAddress {}.abi_encode());
+        }
+
+        // Update ownership
+        self.owners.setter(token_id).set(to);
+
+        // Update balances
+        let from_balance = self.balances.get(from);
+        self.balances.setter(from).set(from_balance - U256::from(1));
+        let to_balance = self.balances.get(to);
+        self.balances.setter(to).set(to_balance + U256::from(1));
+
+        // Clear approval
+        self.token_approvals.setter(token_id).set(Address::ZERO);
+
+        self.vm().log(Transfer {
+            from,
+            to,
+            tokenId: token_id,
+        });
+
+        Ok(())
+    }
+
+    /// Approve another address to transfer a specific token
+    pub fn approve(&mut self, to: Address, token_id: U256) -> Result<(), Vec<u8>> {
+        let token_owner = self.owners.get(token_id);
+        if token_owner == Address::ZERO {
+            return Err(TokenNotFound { tokenId: token_id }.abi_encode());
+        }
+
+        let caller = self.vm().msg_sender();
+        if caller != token_owner {
+            return Err(NotOwner {
+                caller,
+                owner: token_owner,
+            }
+            .abi_encode());
+        }
+
+        self.token_approvals.setter(token_id).set(to);
+        self.vm().log(Approval {
+            owner: token_owner,
+            approved: to,
+            tokenId: token_id,
+        });
+
+        Ok(())
+    }
+
+    /// Get the owner of a token
+    pub fn owner_of(&self, token_id: U256) -> Address {
+        self.owners.get(token_id)
+    }
+
+    /// Get token balance for an address
+    pub fn balance_of(&self, owner: Address) -> U256 {
+        self.balances.get(owner)
+    }
+
+    /// Get total number of minted tokens
+    pub fn total_supply(&self) -> U256 {
+        self.next_token_id.get()
+    }
+
+    /// Get token ID at a specific index in the all_token_ids array
+    pub fn token_by_index(&self, index: U256) -> U256 {
+        self.all_token_ids.get(index).unwrap_or_default()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use stylus_sdk::testing::*;
+    use stylus_sdk::alloy_primitives::address;
+
+    #[test]
+    fn test_mint_and_transfer() {
+        let vm = TestVM::default();
+        let mut contract = NftRegistry::from(&vm);
+
+        let owner = address!("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266");
+        let recipient = address!("0x70997970C51812dc3A010C7d01b50e0d17dc79C8");
+
+        vm.set_sender(owner);
+        contract.initialize();
+
+        // Mint first token
+        let token_id = contract.mint(owner).unwrap();
+        assert_eq!(token_id, U256::ZERO);
+        assert_eq!(contract.owner_of(U256::ZERO), owner);
+        assert_eq!(contract.balance_of(owner), U256::from(1));
+        assert_eq!(contract.total_supply(), U256::from(1));
+
+        // Check dynamic array tracking
+        assert_eq!(contract.token_by_index(U256::ZERO), U256::ZERO);
+
+        // Mint second token
+        let token_id_2 = contract.mint(owner).unwrap();
+        assert_eq!(token_id_2, U256::from(1));
+        assert_eq!(contract.balance_of(owner), U256::from(2));
+
+        // Transfer token 0 to recipient
+        assert!(contract
+            .transfer_from(owner, recipient, U256::ZERO)
+            .is_ok());
+        assert_eq!(contract.owner_of(U256::ZERO), recipient);
+        assert_eq!(contract.balance_of(owner), U256::from(1));
+        assert_eq!(contract.balance_of(recipient), U256::from(1));
+    }
+
+    #[test]
+    fn test_approve_and_transfer() {
+        let vm = TestVM::default();
+        let mut contract = NftRegistry::from(&vm);
+
+        let owner = address!("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266");
+        let approved = address!("0x70997970C51812dc3A010C7d01b50e0d17dc79C8");
+
+        vm.set_sender(owner);
+        contract.initialize();
+
+        // Mint and approve
+        contract.mint(owner).unwrap();
+        assert!(contract.approve(approved, U256::ZERO).is_ok());
+
+        // Approved address can transfer
+        vm.set_sender(approved);
+        assert!(contract
+            .transfer_from(owner, approved, U256::ZERO)
+            .is_ok());
+        assert_eq!(contract.owner_of(U256::ZERO), approved);
+    }
+}""",
+    cargo_toml='''[package]
+name = "stylus_nft_registry"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+stylus-sdk = "0.10.0"
+alloy-primitives = "1.0.1"
+alloy-sol-types = "1.0.1"
+
+[dev-dependencies]
+stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
+
+[features]
+default = ["mini-alloc"]
+export-abi = ["stylus-sdk/export-abi"]
+debug = ["stylus-sdk/debug"]
+mini-alloc = ["stylus-sdk/mini-alloc"]
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[[bin]]
+name = "stylus_nft_registry"
+path = "src/main.rs"
+
+[profile.release]
+codegen-units = 1
+strip = true
+lto = true
+panic = "abort"
+opt-level = "s"''',
+    main_rs="""#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+
+#[cfg(not(any(test, feature = "export-abi")))]
+#[unsafe(no_mangle)]
+pub extern "C" fn main() {}
+
+#[cfg(feature = "export-abi")]
+fn main() {
+    stylus_nft_registry::print_from_args();
+}""",
+    stylus_toml="[workspace]\n\n[workspace.networks]\n\n[contract]\n",
+    rust_toolchain_toml='[toolchain]\nchannel = "1.91.0"\ntargets = ["wasm32-unknown-unknown"]\n',
 )
 
 # All available templates indexed by contract type
@@ -941,34 +1263,172 @@ TEMPLATES = {
     "erc20": SIMPLE_ERC20_TEMPLATE,
     "access_control": ACCESS_CONTROL_TEMPLATE,
     "ownable": ACCESS_CONTROL_TEMPLATE,
+    "nft": NFT_REGISTRY_TEMPLATE,
+    "erc721": NFT_REGISTRY_TEMPLATE,
+    "registry": NFT_REGISTRY_TEMPLATE,
 }
 
 
-def select_template(contract_type: str, prompt: str) -> StylusTemplate:
-    """Select the best template based on contract type and prompt keywords."""
+def adapt_template(template: StylusTemplate, target_version: str) -> StylusTemplate:
+    """Adapt a template to a different SDK version.
+
+    For 0.10.x targets: returns template as-is (templates are already 0.10.0).
+    For 0.9.x targets: reverse-transforms lib_rs, adjusts Cargo.toml deps,
+    clears 0.10-only files (main_rs, stylus_toml, rust_toolchain_toml),
+    adds back evm/msg imports.
+
+    Args:
+        template: Source template (always 0.10.0).
+        target_version: Target SDK version (e.g., "0.9.0", "0.10.0").
+
+    Returns:
+        Adapted StylusTemplate (new object if changed, same object if no change).
+    """
+    # Import version_manager lazily to avoid circular imports
+    try:
+        from src.utils.version_manager import (
+            _to_major_minor,
+            apply_version_transforms,
+            get_cargo_deps_for_version,
+            is_at_least_010,
+        )
+    except ImportError:
+        return template
+
+    target_mm = _to_major_minor(target_version)
+    template_mm = _to_major_minor(template.sdk_version)
+
+    # No adaptation needed if same major.minor
+    if target_mm == template_mm:
+        return template
+
+    # Apply reverse transforms to lib.rs (0.10.0 → 0.9.x)
+    adapted_lib_rs = apply_version_transforms(template.lib_rs, template.sdk_version, target_version)
+
+    # Get dependency versions for target
+    deps = get_cargo_deps_for_version(target_version)
+
+    # Adapt Cargo.toml
+    adapted_cargo = template.cargo_toml
+    adapted_cargo = re.sub(
+        r'stylus-sdk = "([^"]+)"',
+        f'stylus-sdk = "{deps["stylus_sdk"]}"',
+        adapted_cargo,
+    )
+    adapted_cargo = re.sub(
+        r'(stylus-sdk = \{{ version = )"([^"]+)"',
+        rf'\1"{deps["stylus_sdk"]}"',
+        adapted_cargo,
+    )
+    adapted_cargo = re.sub(
+        r'alloy-primitives = "([^"]+)"',
+        f'alloy-primitives = "{deps["alloy_primitives"]}"',
+        adapted_cargo,
+    )
+    adapted_cargo = re.sub(
+        r'alloy-sol-types = "([^"]+)"',
+        f'alloy-sol-types = "{deps["alloy_sol_types"]}"',
+        adapted_cargo,
+    )
+
+    # Adjust crate-type for 0.9.x (only cdylib, no lib)
+    crate_type_str = json.dumps(deps["crate_type"])
+    adapted_cargo = re.sub(
+        r"crate-type = \[.*?\]",
+        f"crate-type = {crate_type_str}",
+        adapted_cargo,
+    )
+
+    # For 0.9.x: remove [[bin]] section and dev-dependencies stylus-test feature
+    is_pre_010 = not is_at_least_010(target_version)
+    if is_pre_010:
+        # Remove [[bin]] section
+        adapted_cargo = re.sub(
+            r'\[\[bin\]\]\n.*?path = "src/main\.rs"\n\n?',
+            "",
+            adapted_cargo,
+            flags=re.DOTALL,
+        )
+
+    # Build adapted template
+    return StylusTemplate(
+        name=template.name,
+        description=template.description,
+        contract_type=template.contract_type,
+        sdk_version=target_version,
+        features=template.features,
+        lib_rs=adapted_lib_rs,
+        cargo_toml=adapted_cargo,
+        # 0.9.x doesn't need main_rs, stylus_toml, rust_toolchain_toml
+        main_rs="" if is_pre_010 else template.main_rs,
+        stylus_toml="" if is_pre_010 else template.stylus_toml,
+        rust_toolchain_toml="" if is_pre_010 else template.rust_toolchain_toml,
+    )
+
+
+def select_template(
+    contract_type: str, prompt: str, target_version: Optional[str] = None
+) -> StylusTemplate:
+    """Select the best template based on contract type, prompt keywords, and target version.
+
+    Args:
+        contract_type: Type of contract (token, defi, utility, custom).
+        prompt: User's description of the contract.
+        target_version: Target SDK version. If not 0.10.x, template is adapted.
+
+    Returns:
+        Best-matching StylusTemplate, adapted to target_version if needed.
+    """
     lower_prompt = prompt.lower()
 
     # Check for specific keywords in prompt
-    if any(kw in lower_prompt for kw in ["erc20", "token", "transfer", "balance"]):
-        return SIMPLE_ERC20_TEMPLATE
+    # NFT keywords checked first to avoid "token" matching ERC20
+    if any(
+        kw in lower_prompt
+        for kw in ["nft", "erc721", "mint", "token id", "collectible", "registry"]
+    ):
+        template = NFT_REGISTRY_TEMPLATE
+    elif any(kw in lower_prompt for kw in ["erc20", "token", "transfer", "balance"]):
+        template = SIMPLE_ERC20_TEMPLATE
+    elif any(kw in lower_prompt for kw in ["owner", "admin", "access control", "permission"]):
+        template = ACCESS_CONTROL_TEMPLATE
+    elif any(kw in lower_prompt for kw in ["vending", "claim", "cooldown", "rate limit"]):
+        template = VENDING_MACHINE_TEMPLATE
+    elif any(
+        kw in lower_prompt
+        for kw in [
+            "vault",
+            "deposit",
+            "withdraw",
+            "stake",
+            "staking",
+            "swap",
+            "pool",
+            "liquidity",
+            "oracle",
+            "price",
+            "feed",
+            "prediction",
+            "market",
+            "bet",
+            "wager",
+            "auction",
+            "lending",
+            "borrow",
+            "collateral",
+            "bridge",
+        ]
+    ):
+        template = DEFI_VAULT_TEMPLATE
+    else:
+        # Fall back to contract type
+        template = TEMPLATES.get(contract_type, COUNTER_TEMPLATE)
 
-    if any(kw in lower_prompt for kw in ["owner", "admin", "access control", "permission"]):
-        return ACCESS_CONTROL_TEMPLATE
+    # Adapt to target version if specified and different from template's version
+    if target_version:
+        template = adapt_template(template, target_version)
 
-    if any(kw in lower_prompt for kw in ["vending", "claim", "cooldown", "rate limit"]):
-        return VENDING_MACHINE_TEMPLATE
-
-    # DeFi patterns that need transfer_eth, sol_interface!, cross-contract calls
-    if any(kw in lower_prompt for kw in [
-        "vault", "deposit", "withdraw", "stake", "staking", "swap",
-        "pool", "liquidity", "oracle", "price", "feed",
-        "prediction", "market", "bet", "wager", "auction",
-        "lending", "borrow", "collateral", "bridge",
-    ]):
-        return DEFI_VAULT_TEMPLATE
-
-    # Fall back to contract type
-    return TEMPLATES.get(contract_type, COUNTER_TEMPLATE)
+    return template
 
 
 def get_template(contract_type: str) -> Optional[StylusTemplate]:
@@ -984,4 +1444,5 @@ def list_templates() -> List[StylusTemplate]:
         DEFI_VAULT_TEMPLATE,
         SIMPLE_ERC20_TEMPLATE,
         ACCESS_CONTROL_TEMPLATE,
+        NFT_REGISTRY_TEMPLATE,
     ]

@@ -1,292 +1,199 @@
 """
 Configuration for ARBuilder data scraping.
-Contains all target URLs organized by type: Documentation vs Project Examples.
 
-CURATION POLICY:
-- Only include sources verified to work with current SDK version
-- Official docs: Always include (maintained by Arbitrum team)
-- Code repos: Must compile with stylus-sdk >= 0.8.0
-- No meta-lists (awesome-stylus) - causes outdated code ingestion
-- No unverified community submissions
+Thin wrapper around sources.json — the single source of truth for all data sources.
+This module loads sources.json and provides backward-compatible helpers for existing
+consumers (scraper.py, github_scraper.py, processor.py, etc.).
 
-INCLUSION CRITERIA:
-- Docs: Official Arbitrum/Stylus documentation pages, blog articles
-- Projects (official_examples): Maintained by OffchainLabs/ArbitrumFoundation, SDK >= 0.8.0
-- Projects (verified_production): Reputable orgs (OpenZeppelin, Gnosis, Oak Security), SDK >= 0.9.0
-- Projects (community_projects): Verified compilation with SDK >= 0.8.0, date-stamped
-- Projects (scaffold_projects): scaffold-stylus based, SDK 0.9.0
-- Projects (challenge_submissions): Arbitrum challenge repos, SDK 0.9.0
-- Projects (official_repos): SDK/tutorial repos maintained by OffchainLabs
+See sources.json for the full source registry and
+docs/plans/2026-02-22-single-source-of-truth-design.md for the design rationale.
 """
 
-# SDK version requirements (from shared/stylus-versions.json)
-MAIN_STYLUS_SDK_VERSION = "0.10.0"
-MIN_STYLUS_SDK_VERSION = "0.8.0"  # Minimum supported
-DEPRECATED_BELOW = "0.8.0"  # Anything below this is deprecated
+import json
+from pathlib import Path
 
 # ──────────────────────────────────────────────────────────────
-# DOCUMENTATION SOURCES
-# Pure documentation pages (no runnable code to version-track)
+# LOAD SOURCES.JSON
 # ──────────────────────────────────────────────────────────────
-DOCS = {
-    "stylus": {
-        "official": [
-            "https://docs.arbitrum.io/stylus/stylus-overview",
-            "https://docs.arbitrum.io/stylus/quickstart",
-            "https://docs.arbitrum.io/stylus/cli-tools-overview",
-            "https://docs.arbitrum.io/stylus/reference/rust-sdk-guide",
-            "https://docs.arbitrum.io/stylus/gentle-introduction",
-            "https://docs.arbitrum.io/stylus/reference/overview",
-            "https://docs.arbitrum.io/stylus/concepts/gas-metering",
-        ],
-        "articles": [
-            "https://blog.arbitrum.io/how-thirdweb-uses-arbitrum-stylus-to-power-the-next-wave-of-onchain-apps/",
-        ],
-    },
-    "arbitrum_sdk": {
-        "official": [
-            "https://docs.arbitrum.io/build-decentralized-apps/token-bridging/overview",
-            "https://docs.arbitrum.io/build-decentralized-apps/token-bridging/token-bridge-erc20",
-            "https://docs.arbitrum.io/build-decentralized-apps/cross-chain-messaging",
-            "https://docs.arbitrum.io/sdk",
-            "https://docs.arbitrum.io/build-decentralized-apps/precompiles/reference",
-            "https://docs.arbitrum.io/build-decentralized-apps/precompiles/overview",
-        ],
-    },
-    "orbit_sdk": {
-        "docs": [
-            "https://docs.superposition.so/",
-        ],
-    },
-    "arbitrum_general": {
-        "general": [
-            "https://docs.arbitrum.io/welcome/get-started",
-            "https://docs.arbitrum.io/for-devs/quickstart-solidity-hardhat",
-        ],
-    },
-}
+
+_SOURCES_PATH = Path(__file__).parent.parent / "sources.json"
+_DATA = json.loads(_SOURCES_PATH.read_text())
+SOURCES = _DATA["sources"]
+
+# SDK version constants
+_SDK_CONFIG = _DATA.get("sdkConfig", {})
+MAIN_STYLUS_SDK_VERSION = _SDK_CONFIG.get("mainVersion", "0.10.0")
+MIN_STYLUS_SDK_VERSION = _SDK_CONFIG.get("minVersion", "0.8.0")
+DEPRECATED_BELOW = _SDK_CONFIG.get("deprecatedBelow", "0.8.0")
+
 
 # ──────────────────────────────────────────────────────────────
-# PROJECT EXAMPLES
-# Repositories with runnable code — each entry tracks SDK version
+# HELPER FUNCTIONS
 # ──────────────────────────────────────────────────────────────
-PROJECT_EXAMPLES = {
-    "stylus": {
-        "official_examples": [
-            # Official examples maintained by OffchainLabs/ArbitrumFoundation
-            # VERIFIED 2025-01-25 (all >= 0.8.0 minimum):
-            {"url": "https://github.com/OffchainLabs/stylus-hello-world", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/OffchainLabs/stylus-quickstart-vending-machine", "sdk_version": "0.8.4", "verified": "2025-01-25"},
-            {"url": "https://github.com/ArbitrumFoundation/stylus-workshop-gol", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-        ],
-        "verified_production": [
-            # Production codebases verified to use current SDK
-            {"url": "https://github.com/OpenZeppelin/rust-contracts-stylus", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/OpenZeppelin/stylus-test-helpers", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/stylus-developers-guild/reentrancy-transient-storage", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/oak-security/stylusport", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/gnosisguild/stylus-provider", "sdk_version": "0.8.4", "verified": "2025-01-25"},
-        ],
-        "community_projects": [
-            # VERIFIED 2025-01-25 (all >= 0.8.0):
-            {"url": "https://github.com/philogicae/ethbuc2025-gyges", "sdk_version": "0.8.4", "verified": "2025-01-25"},
-            {"url": "https://github.com/Oluwatobilobaoke/erc6909-with-arbitrum-stylus", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/hummusonrails/fortune-generator", "sdk_version": "0.8.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/IndexMaker/vaultworks", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/Inteli-Club5/EdCation", "sdk_version": "0.8.0", "verified": "2025-01-25"},
-        ],
-        "scaffold_projects": [
-            # VERIFIED 2025-01-25 - scaffold-stylus based projects (all SDK 0.9.0):
-            {"url": "https://github.com/Arb-Stylus/scaffold-stylus", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/iyansr/cross-protocol-defi-tracker", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/Einarmig/WalletNaming-scaffold-stylus", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/mavix21/poap-scaffold-stylus", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/dchagast/scaffold-stylus-staking", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/cidkagenow/EmersonApp-scaffold-stylus", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/autodidacttrade/DeFi-Project-ERC20-scaffold-stylus", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/ByteToHex/VRF-scaffold-stylus", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            # NOTE: Oyase-shinobi/scaffold-stylus excluded - has mixed SDK versions (0.9.0 + 0.6.1)
-        ],
-        "challenge_submissions": [
-            # VERIFIED 2025-01-25 - Arbitrum challenge submissions (all SDK 0.9.0):
-            # NOTE: dante4rt/challenge-001 removed — repo no longer exists (404 as of 2026-02-09)
-            {"url": "https://github.com/Huygon764/challenge-001", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/Fnz11/challenge-001", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/ndrewlex/challenge-001", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/athallarizky/challenge-001", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/dimasd-angga/challenge-001", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/ammar-rasyidi/challenge-001", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/rizkianakbar/challenge-001", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/math-marcellino/challenge-002", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/lucky-ivanius/challenge-001", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-            {"url": "https://github.com/lucky-ivanius/challenge-002", "sdk_version": "0.9.0", "verified": "2025-01-25"},
-        ],
-    },
-    "arbitrum_sdk": {
-        "official_repos": [
-            # SDK repo - contains library code and some examples
-            {"url": "https://github.com/OffchainLabs/arbitrum-sdk", "sdk_version": "N/A", "verified": "2025-01-25"},
-            # Tutorials - VERIFIED working examples for bridging/messaging
-            {"url": "https://github.com/OffchainLabs/arbitrum-tutorials", "sdk_version": "N/A", "verified": "2025-01-25"},
-        ],
-    },
-    "orbit_sdk": {
-        "sdk_repo": [
-            {"url": "https://github.com/OffchainLabs/arbitrum-orbit-sdk", "sdk_version": "N/A", "verified": "2025-01-25"},
-        ],
-    },
-}
 
 
 def get_all_config_repo_urls() -> set[str]:
-    """Return the set of all GitHub repo URLs configured in PROJECT_EXAMPLES."""
-    urls = set()
-    for _category, subcategories in PROJECT_EXAMPLES.items():
-        for _subcat, entries in subcategories.items():
-            for entry in entries:
-                urls.add(entry["url"])
-    return urls
+    """Return the set of all GitHub repo URLs from sources.json."""
+    return {s["url"] for s in SOURCES if s["type"] == "github"}
 
 
 def get_config_repo_info() -> dict[str, dict]:
-    """Return a mapping of repo URL -> {category, subcategory, sdk_version, verified}."""
+    """Return a mapping of repo URL -> config info.
+
+    Each value contains: category, subcategory,
+    sdk_version, verified, forked_from, versions.
+    """
     info = {}
-    for category, subcategories in PROJECT_EXAMPLES.items():
-        for subcategory, entries in subcategories.items():
-            for entry in entries:
-                info[entry["url"]] = {
-                    "category": category,
-                    "subcategory": subcategory,
-                    "sdk_version": entry.get("sdk_version", ""),
-                    "verified": entry.get("verified", ""),
-                }
+    for s in SOURCES:
+        if s["type"] != "github":
+            continue
+        # For versioned repos, use the first version's sdkVersion
+        versions = s.get("versions", [])
+        sdk_version = ""
+        if versions:
+            sdk_version = versions[0].get("sdkVersion", "")
+        elif s.get("sdkVersion"):
+            sdk_version = s["sdkVersion"]
+        info[s["url"]] = {
+            "category": s["category"],
+            "subcategory": s["subcategory"],
+            "sdk_version": sdk_version,
+            "verified": s.get("verified", ""),
+            "forked_from": s.get("forkedFrom", ""),
+            "versions": versions,
+        }
     return info
+
+
+def get_sources_by_milestone(milestone: str) -> list[dict]:
+    """Return all sources for a given milestone."""
+    return [s for s in SOURCES if s["milestone"] == milestone]
+
+
+def get_sources_by_type(source_type: str) -> list[dict]:
+    """Return all sources of a given type ('documentation' or 'github')."""
+    return [s for s in SOURCES if s["type"] == source_type]
 
 
 # ──────────────────────────────────────────────────────────────
 # BACKWARD COMPATIBILITY
-# Flat URL lists for existing consumers (scraper.py web scraping)
+# Reconstructed dicts for existing consumers
 # ──────────────────────────────────────────────────────────────
 
-def _flatten_docs(category: str) -> dict[str, list[str]]:
-    """Flatten DOCS[category] to {subcategory: [url, ...]}."""
-    return DOCS.get(category, {})
 
-
-def _flatten_projects(category: str) -> dict[str, list[str]]:
-    """Flatten PROJECT_EXAMPLES[category] to {subcategory: [url, ...]}."""
-    result = {}
-    for subcat, entries in PROJECT_EXAMPLES.get(category, {}).items():
-        result[subcat] = [e["url"] for e in entries]
+def _build_docs_dict(category: str) -> dict[str, list[str]]:
+    """Build a {subcategory: [url, ...]} dict for documentation sources."""
+    result: dict[str, list[str]] = {}
+    for s in SOURCES:
+        if s["type"] == "documentation" and s["category"] == category:
+            subcat = s["subcategory"]
+            if subcat not in result:
+                result[subcat] = []
+            result[subcat].append(s["url"])
     return result
 
 
-# Legacy names used by scraper.py and github_scraper.py
-STYLUS_SOURCES = {**_flatten_docs("stylus"), **_flatten_projects("stylus")}
-ARBITRUM_SDK_SOURCES = {**_flatten_docs("arbitrum_sdk"), **_flatten_projects("arbitrum_sdk")}
-ORBIT_SDK_SOURCES = {**_flatten_docs("orbit_sdk"), **_flatten_projects("orbit_sdk")}
-ARBITRUM_DOCS = _flatten_docs("arbitrum_general")
+def _build_project_examples_dict(category: str) -> dict[str, list[dict]]:
+    """Build a {subcategory: [{url, sdk_version, ...}, ...]} dict for GitHub repos."""
+    result: dict[str, list[dict]] = {}
+    for s in SOURCES:
+        if s["type"] != "github" or s["category"] != category:
+            continue
+        subcat = s["subcategory"]
+        if subcat not in result:
+            result[subcat] = []
+        versions = s.get("versions", [])
+        sdk_version = ""
+        if versions:
+            sdk_version = versions[0].get("sdkVersion", "")
+        elif s.get("sdkVersion"):
+            sdk_version = s["sdkVersion"]
+        entry = {
+            "url": s["url"],
+            "sdk_version": sdk_version,
+        }
+        if s.get("verified"):
+            entry["verified"] = s["verified"]
+        if s.get("forkedFrom"):
+            entry["forked_from"] = s["forkedFrom"]
+        if s.get("note"):
+            entry["note"] = s["note"]
+        result[subcat].append(entry)
+    return result
 
-# M3: Full dApp Builder Sources
-# Documentation and examples for backend, frontend, indexer, and oracle components
-M3_SOURCES = {
-    "backend": {
-        "nestjs": [
-            "https://docs.nestjs.com/first-steps",
-            "https://docs.nestjs.com/modules",
-            "https://docs.nestjs.com/providers",
-            "https://docs.nestjs.com/controllers",
-            "https://docs.nestjs.com/techniques/configuration",
-        ],
-        "express": [
-            "https://expressjs.com/en/starter/basic-routing.html",
-            "https://expressjs.com/en/guide/routing.html",
-            "https://expressjs.com/en/guide/error-handling.html",
-        ],
-    },
-    "frontend": {
-        "wagmi": [
-            "https://wagmi.sh/react/getting-started",
-            "https://wagmi.sh/react/guides/connect-wallet",
-            "https://wagmi.sh/react/guides/read-from-contract",
-            "https://wagmi.sh/react/guides/write-to-contract",
-            "https://wagmi.sh/react/guides/transactions",
-        ],
-        "viem": [
-            "https://viem.sh/docs/getting-started.html",
-            "https://viem.sh/docs/contract/readContract.html",
-            "https://viem.sh/docs/contract/writeContract.html",
-            "https://viem.sh/docs/actions/public/waitForTransactionReceipt.html",
-        ],
-        "rainbowkit": [
-            "https://www.rainbowkit.com/docs/introduction",
-            "https://www.rainbowkit.com/docs/installation",
-            "https://www.rainbowkit.com/docs/connect-button",
-            "https://www.rainbowkit.com/docs/custom-chains",
-        ],
-        "daisyui": [
-            "https://daisyui.com/docs/install/",
-            "https://daisyui.com/components/button/",
-            "https://daisyui.com/components/card/",
-            "https://daisyui.com/components/modal/",
-            "https://daisyui.com/components/input/",
-        ],
-    },
-    "indexer": {
-        "the_graph": [
-            "https://thegraph.com/docs/en/developing/creating-a-subgraph/",
-            "https://thegraph.com/docs/en/developing/assemblyscript-api/",
-            "https://thegraph.com/docs/en/developing/graph-ts/api/",
-            "https://thegraph.com/docs/en/cookbook/arweave/",
-            "https://thegraph.com/docs/en/developing/unit-testing-framework/",
-        ],
-    },
-    "oracle": {
-        "chainlink": [
-            "https://docs.chain.link/data-feeds/price-feeds",
-            "https://docs.chain.link/vrf/v2-5/subscription/get-a-random-number",
-            "https://docs.chain.link/chainlink-automation/overview/getting-started",
-            "https://docs.chain.link/chainlink-functions/getting-started",
-            "https://docs.chain.link/data-feeds/price-feeds/addresses?network=arbitrum&page=1",
-        ],
-    },
+
+def _build_project_urls_dict(category: str) -> dict[str, list[str]]:
+    """Build a {subcategory: [url, ...]} dict for GitHub repos (URL-only)."""
+    result: dict[str, list[str]] = {}
+    for s in SOURCES:
+        if s["type"] == "github" and s["category"] == category:
+            subcat = s["subcategory"]
+            if subcat not in result:
+                result[subcat] = []
+            result[subcat].append(s["url"])
+    return result
+
+
+def _build_m3_sources_dict() -> dict[str, dict[str, list[str]]]:
+    """Build the M3_SOURCES dict (documentation only, grouped by category/subcategory)."""
+    result: dict[str, dict[str, list[str]]] = {}
+    for s in SOURCES:
+        if s["milestone"] != "m3" or s["type"] != "documentation":
+            continue
+        cat = s["category"]
+        subcat = s["subcategory"]
+        if cat not in result:
+            result[cat] = {}
+        if subcat not in result[cat]:
+            result[cat][subcat] = []
+        result[cat][subcat].append(s["url"])
+    return result
+
+
+def _build_m3_github_repos_dict() -> dict[str, list[str]]:
+    """Build the M3_GITHUB_REPOS dict (repos only, grouped by category)."""
+    result: dict[str, list[str]] = {}
+    for s in SOURCES:
+        if s["milestone"] != "m3" or s["type"] != "github":
+            continue
+        cat = s["category"]
+        if cat not in result:
+            result[cat] = []
+        result[cat].append(s["url"])
+    return result
+
+
+# Reconstructed top-level dicts
+DOCS = {
+    "stylus": _build_docs_dict("stylus"),
+    "arbitrum_sdk": _build_docs_dict("arbitrum_sdk"),
+    "orbit_sdk": _build_docs_dict("orbit_sdk"),
+    "arbitrum_general": _build_docs_dict("arbitrum_general"),
 }
 
-# M3: GitHub repositories for code examples
-M3_GITHUB_REPOS = {
-    "frontend": [
-        # wagmi examples and patterns
-        "https://github.com/wevm/wagmi",
-        "https://github.com/wevm/viem",
-        # RainbowKit
-        "https://github.com/rainbow-me/rainbowkit",
-        # DaisyUI
-        "https://github.com/saadeghi/daisyui",
-        # Scaffold-ETH 2 (full-stack template)
-        "https://github.com/scaffold-eth/scaffold-eth-2",
-    ],
-    "indexer": [
-        # The Graph tooling
-        "https://github.com/graphprotocol/graph-tooling",
-        # Subgraph examples
-        "https://github.com/messari/subgraphs",
-        # Arbitrum subgraphs
-        "https://github.com/OffchainLabs/arbitrum-subgraphs",
-    ],
-    "oracle": [
-        # Chainlink examples
-        "https://github.com/smartcontractkit/smart-contract-examples",
-        "https://github.com/smartcontractkit/chainlink",
-    ],
-    "backend": [
-        # NestJS
-        "https://github.com/nestjs/nest",
-        # Arbitrum token bridge (for integration patterns)
-        "https://github.com/OffchainLabs/arbitrum-token-bridge",
-    ],
+PROJECT_EXAMPLES = {
+    "stylus": _build_project_examples_dict("stylus"),
+    "arbitrum_sdk": _build_project_examples_dict("arbitrum_sdk"),
+    "orbit_sdk": _build_project_examples_dict("orbit_sdk"),
 }
 
-# All sources combined for easy iteration
+# Legacy flat URL dicts
+STYLUS_SOURCES = {**_build_docs_dict("stylus"), **_build_project_urls_dict("stylus")}
+ARBITRUM_SDK_SOURCES = {
+    **_build_docs_dict("arbitrum_sdk"),
+    **_build_project_urls_dict("arbitrum_sdk"),
+}
+ORBIT_SDK_SOURCES = {
+    **_build_docs_dict("orbit_sdk"),
+    **_build_project_urls_dict("orbit_sdk"),
+}
+ARBITRUM_DOCS = _build_docs_dict("arbitrum_general")
+
+# M3 dicts
+M3_SOURCES = _build_m3_sources_dict()
+M3_GITHUB_REPOS = _build_m3_github_repos_dict()
+
+# All sources combined
 ALL_SOURCES = {
     "stylus": STYLUS_SOURCES,
     "arbitrum_sdk": ARBITRUM_SDK_SOURCES,

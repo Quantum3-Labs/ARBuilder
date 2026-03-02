@@ -11,19 +11,20 @@ from typing import Optional
 
 from dotenv import load_dotenv
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
+from .chunker import CodeChunker, DocumentChunker
 from .cleaner import TextCleaner
-from .chunker import DocumentChunker, CodeChunker, Chunk
 
 # Import version extractor - handle import error gracefully
 try:
     from scraper.version_extractor import (
-        get_latest_sdk_version_sync,
-        extract_sdk_version_from_repo,
         detect_deprecated_patterns,
+        extract_sdk_version_from_repo,
+        get_latest_sdk_version_sync,
         is_version_current,
     )
+
     HAS_VERSION_EXTRACTOR = True
 except ImportError:
     HAS_VERSION_EXTRACTOR = False
@@ -31,10 +32,13 @@ except ImportError:
 # Import version manager for deprecation checking
 try:
     from src.utils.version_manager import (
-        is_version_deprecated as check_version_deprecated,
         get_main_version,
         get_minimum_version,
     )
+    from src.utils.version_manager import (
+        is_version_deprecated as check_version_deprecated,
+    )
+
     HAS_VERSION_MANAGER = True
 except ImportError:
     HAS_VERSION_MANAGER = False
@@ -42,6 +46,7 @@ except ImportError:
 # Import config for repo filtering
 try:
     from scraper.config import get_all_config_repo_urls, get_config_repo_info
+
     HAS_CONFIG = True
 except ImportError:
     HAS_CONFIG = False
@@ -88,10 +93,146 @@ class DataProcessor:
         self._latest_sdk_version: Optional[str] = None
         # Cache for repo SDK versions
         self._repo_sdk_versions: dict[str, Optional[str]] = {}
+        # Data quality filter stats
+        self._filter_stats: dict = {
+            "file_pattern_excluded": 0,
+            "file_pattern_breakdown": {},
+            "hex_content_excluded": 0,
+            "cross_repo_dedup_excluded": 0,
+            "total_excluded": 0,
+        }
 
     def _compute_content_hash(self, content: str) -> str:
         """Compute a short hash of the content for diff detection."""
         return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
+
+    # ── Data Quality Filters ────────────────────────────────────
+
+    # Same patterns as Layer 1 (scraper) — defense-in-depth for files
+    # already captured in github_repos_*.json before these filters existed.
+    _SKIP_DIRS = {
+        "vendor",
+        "third_party",
+        "artifacts",
+        ".next",
+        "coverage",
+        "node_modules",
+        "target",
+        ".git",
+        "dist",
+        "build",
+    }
+    _SKIP_FILE_NAMES = {"package-lock.json", "yarn.lock", "Cargo.lock", "pnpm-lock.yaml"}
+    _SKIP_FILE_SUBSTRINGS = ("__factory.ts", "__factory.js")
+    _SKIP_TS_JS_IN_DIRS = {"abi"}
+    _SKIP_DIR_PREFIXES = ("abi-",)
+
+    # Subcategory → priority (lower = higher priority, kept during dedup)
+    _SUBCATEGORY_PRIORITY = {
+        "official_examples": 1,
+        "official_repos": 1,
+        "official": 1,
+        "verified_production": 2,
+        "community_projects": 3,
+        "community_examples": 3,
+        "scaffold_projects": 4,
+        "forked_0_10_0": 2,
+    }
+
+    def _should_skip_file(self, file_path: str, extension: str) -> Optional[str]:
+        """
+        Check if a file should be skipped based on path patterns.
+
+        Returns a skip reason string, or None if the file should be kept.
+        """
+        parts = file_path.replace("\\", "/").split("/")
+
+        # Skip files in junk directories
+        for part in parts:
+            if part in self._SKIP_DIRS:
+                return f"dir_{part}"
+
+        # Skip lock files
+        file_name = parts[-1] if parts else ""
+        if file_name in self._SKIP_FILE_NAMES:
+            return "lock_file"
+
+        # Skip __factory generated files
+        if any(sub in file_path for sub in self._SKIP_FILE_SUBSTRINGS):
+            return "factory_generated"
+
+        # For .ts/.js: skip if inside abi/ dirs or abi-* dirs
+        if extension in (".ts", ".js"):
+            for part in parts:
+                if part in self._SKIP_TS_JS_IN_DIRS:
+                    return "abi_ts_js"
+                if any(part.startswith(prefix) for prefix in self._SKIP_DIR_PREFIXES):
+                    return "abi_ts_js"
+
+        return None
+
+    @staticmethod
+    def _is_hex_heavy(content: str) -> bool:
+        """
+        Check if content is dominated by hex data (bytecode, ABI hex dumps).
+
+        Returns True if >40% of chars are hex digits and content >= 50 chars.
+        """
+        if len(content) < 50:
+            return False
+        hex_chars = sum(1 for c in content if c in "0123456789abcdefABCDEF")
+        return hex_chars / len(content) > 0.4
+
+    def _cross_repo_dedup(self, chunks: list[dict]) -> tuple[list[dict], int]:
+        """
+        Remove exact-content duplicates across different repos.
+
+        When the same content appears in multiple repos, keep the chunk from
+        the highest-priority source (official > verified > community > scaffold).
+        Same-repo duplicates are preserved (handled by vectordb ID-based dedup).
+        Modernized chunks have different content and are never caught by this.
+
+        Returns:
+            (filtered_chunks, removed_count)
+        """
+        # Group chunks by full content hash
+        hash_groups: dict[str, list[tuple[int, dict]]] = {}
+        for idx, chunk in enumerate(chunks):
+            content = chunk.get("content", "")
+            full_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+            hash_groups.setdefault(full_hash, []).append((idx, chunk))
+
+        keep_indices = set()
+        removed = 0
+
+        for content_hash, group in hash_groups.items():
+            if len(group) == 1:
+                keep_indices.add(group[0][0])
+                continue
+
+            # Check if all chunks are from the same repo
+            repos = {c.get("repo_name", "") for _, c in group}
+            if len(repos) <= 1:
+                # Same-repo duplicates — keep all
+                for idx, _ in group:
+                    keep_indices.add(idx)
+                continue
+
+            # Cross-repo duplicate: keep chunk from highest-priority source
+            best_idx = group[0][0]
+            best_priority = 99
+            for idx, chunk in group:
+                subcat = chunk.get("subcategory", "")
+                priority = self._SUBCATEGORY_PRIORITY.get(subcat, 5)
+                if priority < best_priority:
+                    best_priority = priority
+                    best_idx = idx
+            keep_indices.add(best_idx)
+            removed += len(group) - 1
+
+        filtered = [c for idx, c in enumerate(chunks) if idx in keep_indices]
+        return filtered, removed
+
 
     def _get_latest_sdk_version(self) -> Optional[str]:
         """Get the latest SDK version, with caching."""
@@ -170,11 +311,14 @@ class DataProcessor:
                 chunks = self.doc_chunker.chunk(content, metadata)
 
                 for chunk in chunks:
-                    all_chunks.append(chunk.to_dict())
+                    chunk_dict = chunk.to_dict()
+                    all_chunks.append(chunk_dict)
 
                 progress.advance(task)
 
-        console.print(f"[green]Processed {len(raw_data)} documents into {len(all_chunks)} chunks[/green]")
+        console.print(
+            f"[green]Processed {len(raw_data)} documents into {len(all_chunks)} chunks[/green]"
+        )
         return all_chunks
 
     def process_github_repos(
@@ -227,7 +371,11 @@ class DataProcessor:
             total_files += len(repo.get("files", []))
 
         if skipped_repos:
-            console.print(f"[yellow]Skipped {len(skipped_repos)} repos not in config: {', '.join(skipped_repos)}[/yellow]")
+            console.print(
+                f"[yellow]Skipped {len(skipped_repos)}"
+                f" repos not in config:"
+                f" {', '.join(skipped_repos)}[/yellow]"
+            )
 
         with Progress(
             SpinnerColumn(),
@@ -267,9 +415,7 @@ class DataProcessor:
                     display_sdk_version = repo_sdk_version
                 else:
                     # Check if this repo has any .rs files — if not, it's non-Rust
-                    has_rust = any(
-                        f.get("extension") == ".rs" for f in repo.get("files", [])
-                    )
+                    has_rust = any(f.get("extension") == ".rs" for f in repo.get("files", []))
                     display_sdk_version = "" if has_rust else "N/A"
 
                 if repo_sdk_version and repo_sdk_version != "N/A":
@@ -281,6 +427,21 @@ class DataProcessor:
                     extension = file_info.get("extension", "")
 
                     if not content.strip():
+                        progress.advance(task)
+                        continue
+
+                    # Layer 2: file pattern filter (defense-in-depth)
+                    skip_reason = self._should_skip_file(file_path, extension)
+                    if skip_reason:
+                        self._filter_stats["file_pattern_excluded"] += 1
+                        breakdown = self._filter_stats["file_pattern_breakdown"]
+                        breakdown[skip_reason] = breakdown.get(skip_reason, 0) + 1
+                        progress.advance(task)
+                        continue
+
+                    # Layer 2: hex content filter
+                    if self._is_hex_heavy(content):
+                        self._filter_stats["hex_content_excluded"] += 1
                         progress.advance(task)
                         continue
 
@@ -302,7 +463,9 @@ class DataProcessor:
                     # Check if repo SDK version is current
                     latest_sdk = self._get_latest_sdk_version()
                     is_current = True
-                    effective_version = repo_sdk_version if repo_sdk_version and repo_sdk_version != "N/A" else None
+                    effective_version = (
+                        repo_sdk_version if repo_sdk_version and repo_sdk_version != "N/A" else None
+                    )
                     if effective_version and latest_sdk and HAS_VERSION_EXTRACTOR:
                         is_current = is_version_current(effective_version, latest_sdk)
 
@@ -312,7 +475,11 @@ class DataProcessor:
                         version_deprecated = check_version_deprecated(effective_version)
 
                     # Determine source type for cleaner classification
-                    source_type = "project" if category in ("stylus",) and subcategory not in ("official", "articles") else "github"
+                    source_type = (
+                        "project"
+                        if category in ("stylus",) and subcategory not in ("official", "articles")
+                        else "github"
+                    )
 
                     # Metadata for code files
                     metadata = {
@@ -342,7 +509,8 @@ class DataProcessor:
                         chunks = self.code_chunker.chunk(content, extension, metadata)
 
                     for chunk in chunks:
-                        all_chunks.append(chunk.to_dict())
+                        chunk_dict = chunk.to_dict()
+                        all_chunks.append(chunk_dict)
 
                     progress.advance(task)
 
@@ -366,6 +534,23 @@ class DataProcessor:
 
         # Combine all chunks
         all_chunks = doc_chunks + code_chunks
+
+        # Layer 2: cross-repo dedup (exact content matches across repos)
+        pre_dedup = len(all_chunks)
+        all_chunks, dedup_removed = self._cross_repo_dedup(all_chunks)
+        self._filter_stats["cross_repo_dedup_excluded"] = dedup_removed
+        if dedup_removed > 0:
+            console.print(
+                f"[yellow]Cross-repo dedup: removed {dedup_removed} exact duplicates "
+                f"({pre_dedup} → {len(all_chunks)} chunks)[/yellow]"
+            )
+
+        # Compute total excluded
+        self._filter_stats["total_excluded"] = (
+            self._filter_stats["file_pattern_excluded"]
+            + self._filter_stats["hex_content_excluded"]
+            + self._filter_stats["cross_repo_dedup_excluded"]
+        )
 
         # Add deterministic IDs based on content hash
         # This ensures same content always gets same ID (for upsert to work correctly)
@@ -417,7 +602,6 @@ class DataProcessor:
         deprecated_version_count = 0  # Chunks with deprecated SDK version
         current_count = 0
         outdated_count = 0
-
         for chunk in chunks:
             # By source
             source = chunk.get("source", "unknown")
@@ -476,6 +660,7 @@ class DataProcessor:
             "outdated_chunks": outdated_count,
             "deprecated_pattern_chunks": deprecated_count,
             "deprecated_version_chunks": deprecated_version_count,
+            "filter_stats": dict(self._filter_stats),
             "processed_at": datetime.utcnow().isoformat(),
         }
 
@@ -501,7 +686,7 @@ class DataProcessor:
 
         # SDK version info
         if stats.get("latest_sdk_version") or stats.get("main_supported_version"):
-            console.print(f"\n[bold]SDK Version Info:[/bold]")
+            console.print("\n[bold]SDK Version Info:[/bold]")
             if stats.get("main_supported_version"):
                 console.print(f"  Main supported: {stats['main_supported_version']}")
             if stats.get("minimum_supported_version"):
@@ -510,13 +695,31 @@ class DataProcessor:
                 console.print(f"  Latest on crates.io: {stats['latest_sdk_version']}")
             console.print(f"  Current chunks: {stats.get('current_chunks', 0):,}")
             console.print(f"  Outdated chunks: {stats.get('outdated_chunks', 0):,}")
-            console.print(f"  Deprecated version chunks: {stats.get('deprecated_version_chunks', 0):,}")
-            console.print(f"  With deprecated patterns: {stats.get('deprecated_pattern_chunks', 0):,}")
+            console.print(
+                f"  Deprecated version chunks: {stats.get('deprecated_version_chunks', 0):,}"
+            )
+            console.print(
+                f"  With deprecated patterns: {stats.get('deprecated_pattern_chunks', 0):,}"
+            )
 
             if stats.get("by_sdk_version"):
                 console.print("\n[bold]By SDK Version:[/bold]")
                 for version, count in sorted(stats["by_sdk_version"].items(), key=lambda x: -x[1]):
                     console.print(f"  {version}: {count:,}")
+
+        # Data quality filter stats
+        fstats = stats.get("filter_stats", {})
+        if fstats.get("total_excluded", 0) > 0:
+            console.print("\n[bold]Data Quality Filters:[/bold]")
+            console.print(f"  File pattern excluded: {fstats.get('file_pattern_excluded', 0):,}")
+            breakdown = fstats.get("file_pattern_breakdown", {})
+            for reason, count in sorted(breakdown.items(), key=lambda x: -x[1]):
+                console.print(f"    {reason}: {count:,}")
+            console.print(f"  Hex content excluded: {fstats.get('hex_content_excluded', 0):,}")
+            console.print(
+                f"  Cross-repo dedup excluded: {fstats.get('cross_repo_dedup_excluded', 0):,}"
+            )
+            console.print(f"  [bold]Total excluded: {fstats.get('total_excluded', 0):,}[/bold]")
 
 
 def main():

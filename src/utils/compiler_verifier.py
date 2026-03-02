@@ -15,7 +15,7 @@ import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +218,83 @@ class CompilerVerifier:
             )
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+# Stylus-specific error guidance keyed by Rust error code.
+# Maps cargo check errors to actionable Stylus SDK fix instructions.
+ERROR_GUIDANCE = {
+    "E0599": (
+        "Method not found. Common Stylus fixes:\n"
+        "  - StorageString: use .set_str() to write, .get_string() to read\n"
+        "  - StorageVec: use .push() to append, .get(i) to read\n"
+        "  - Mapping string values: use .getter(key).get_string() to read, "
+        ".setter(key).set_str(val) to write"
+    ),
+    "E0502": (
+        "Borrow conflict. Common Stylus fixes:\n"
+        "  - Extract .get() values to local vars before calling .set()\n"
+        "  - For sol_interface! calls: let call = Call::new_mutating(self); "
+        "then tok.transfer(self.vm(), call, ...)\n"
+        "  - For nested mappings: chain in one expression — "
+        "self.map.setter(k1).setter(k2).set(v)"
+    ),
+    "E0277": (
+        "Type mismatch. Common Stylus fixes:\n"
+        "  - B256 is FixedBytes<32>, NOT Uint — use "
+        "B256::from(value.to_be_bytes::<32>())\n"
+        "  - Mapping .get(key) returns the value directly, NOT Option — "
+        "do not use .unwrap_or_default()\n"
+        "  - StorageVec .setter(i) returns Option — must .unwrap() before .set()"
+    ),
+    "E0015": (
+        "Not const-compatible. Common Stylus fixes:\n"
+        "  - Use U256::from_limbs([N, 0, 0, 0]) instead of U256::from(N) "
+        "for const declarations\n"
+        "  - U256::ZERO is fine in const context"
+    ),
+    "E0603": (
+        "Private module. Common Stylus fixes:\n"
+        "  - stylus_sdk::evm and stylus_sdk::msg are removed in SDK 0.10.0\n"
+        "  - Use self.vm().msg_sender(), self.vm().msg_value(), "
+        "self.vm().log() instead"
+    ),
+    "E0432": (
+        "Unresolved import. Common Stylus fixes:\n"
+        "  - stylus_sdk::evm → removed, use self.vm() methods\n"
+        "  - stylus_sdk::msg → removed, use self.vm() methods\n"
+        "  - transfer_eth → use stylus_sdk::call::transfer::transfer_eth\n"
+        "  - Call is in prelude — no separate import needed"
+    ),
+    "E0658": (
+        "Unstable feature. Common Stylus fixes:\n"
+        "  - pub const inside #[public] impl is not supported — "
+        "move constants above the impl block\n"
+        "  - Use standalone const MY_VAL: U256 = U256::from_limbs(...);"
+    ),
+}
+
+
+def format_fix_guidance(errors: List[CompileError]) -> str:
+    """Map cargo check errors to Stylus-specific fix guidance.
+
+    Args:
+        errors: List of CompileError objects from cargo check.
+
+    Returns:
+        Formatted guidance string for each matched error code.
+    """
+    seen_codes: set = set()
+    parts: list = []
+
+    for err in errors:
+        if err.code and err.code not in seen_codes and err.code in ERROR_GUIDANCE:
+            seen_codes.add(err.code)
+            parts.append(f"[{err.code}] {ERROR_GUIDANCE[err.code]}")
+
+    if not parts:
+        return ""
+
+    return "\n\n".join(parts)
 
 
 def format_errors_for_llm(errors: List[CompileError], code: str) -> str:

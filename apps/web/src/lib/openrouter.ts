@@ -28,6 +28,7 @@ export interface ChatCompletionOptions {
 export interface ChatCompletionResponse {
   content: string;
   model: string;
+  finishReason: string;
   usage: {
     promptTokens: number;
     completionTokens: number;
@@ -35,15 +36,92 @@ export interface ChatCompletionResponse {
   };
 }
 
-// Default models - using Gemini for all operations
+// Default models — FALLBACK used when primary exhausts retries
 export const MODELS = {
-  CODE_GEN: "google/gemini-3-flash-preview",
-  QA: "google/gemini-3-flash-preview",
-  FAST: "google/gemini-3-flash-preview",
+  CODE_GEN: "openai/gpt-oss-120b",
+  QA: "openai/gpt-oss-120b",
+  FAST: "openai/gpt-oss-120b",
+  FALLBACK: "qwen/qwen3.5-flash-02-23",
 } as const;
 
+const EMPTY_RESPONSE: ChatCompletionResponse = {
+  content: "",
+  model: "unknown",
+  finishReason: "error",
+  usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+};
+
 /**
- * Call OpenRouter API for chat completions.
+ * Make a single OpenRouter API call. Returns parsed response or throws.
+ */
+async function singleCall(
+  apiKey: string,
+  model: string,
+  messages: Message[],
+  temperature: number,
+  maxTokens: number,
+): Promise<{
+  content: string;
+  finishReason: string;
+  model: string;
+  usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+}> {
+  const response = await fetch(OPENROUTER_API_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://arbuilder.app",
+      "X-Title": "ARBuilder",
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature,
+      max_tokens: maxTokens,
+      stream: false,
+    }),
+  });
+
+  // Non-retryable client errors
+  if (response.status === 400 || response.status === 401 || response.status === 403) {
+    const error = await response.text();
+    throw new Error(`NON_RETRYABLE: HTTP ${response.status}: ${error.slice(0, 200)}`);
+  }
+
+  // Retryable server errors
+  if (response.status === 429 || response.status >= 500) {
+    throw new Error(`RETRYABLE: HTTP ${response.status}`);
+  }
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`NON_RETRYABLE: HTTP ${response.status}: ${error.slice(0, 200)}`);
+  }
+
+  const data = (await response.json()) as {
+    choices: Array<{ message?: { content?: string }; finish_reason?: string }>;
+    model: string;
+    usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+  };
+
+  const content = data.choices[0]?.message?.content ?? "";
+  const finishReason = data.choices[0]?.finish_reason ?? "unknown";
+
+  return { content, finishReason, model: data.model, usage: data.usage ?? {} };
+}
+
+/**
+ * Call OpenRouter API for chat completions with production-grade resilience.
+ *
+ * Strategy:
+ * 1. Try primary model up to 3 times with exponential backoff (1s, 2s, 4s)
+ * 2. On finish_reason="length" (truncation), increase maxTokens by 1.5x
+ * 3. On empty response or transient error, retry with backoff
+ * 4. After primary model exhausted, try fallback model up to 2 times
+ * 5. Returns empty content only after ALL attempts fail
+ *
+ * Never throws — callers can use their own fallback logic.
  */
 export async function chatCompletion(
   apiKey: string,
@@ -57,47 +135,128 @@ export async function chatCompletion(
     stream = false,
   } = options;
 
-  const response = await fetch(OPENROUTER_API_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://arbbuilder.whymelabs.com",
-      "X-Title": "ARBuilder",
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature,
-      max_tokens: maxTokens,
-      stream,
-    }),
-  });
+  // Phase 1: Primary model — 3 attempts with escalation
+  let currentMaxTokens = maxTokens;
+  const PRIMARY_ATTEMPTS = 3;
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`OpenRouter API error: ${response.status} - ${error}`);
+  for (let attempt = 0; attempt < PRIMARY_ATTEMPTS; attempt++) {
+    try {
+      const result = await singleCall(apiKey, model, messages, temperature, currentMaxTokens);
+
+      // Check for truncation — increase maxTokens and retry
+      if (result.finishReason === "length") {
+        const oldTokens = currentMaxTokens;
+        currentMaxTokens = Math.min(Math.ceil(currentMaxTokens * 1.5), 32000);
+        console.warn(
+          `[chatCompletion] Truncated (finish_reason=length) on attempt ${attempt + 1}/${PRIMARY_ATTEMPTS}. ` +
+          `Model: ${result.model}. Escalating maxTokens: ${oldTokens} → ${currentMaxTokens}`
+        );
+        // If content is non-empty despite truncation, it may still be usable on last attempt
+        if (attempt === PRIMARY_ATTEMPTS - 1 && result.content.trim().length > 0) {
+          console.warn(`[chatCompletion] Using truncated response on final primary attempt`);
+          return {
+            content: result.content,
+            model: result.model,
+            finishReason: result.finishReason,
+            usage: {
+              promptTokens: result.usage.prompt_tokens ?? 0,
+              completionTokens: result.usage.completion_tokens ?? 0,
+              totalTokens: result.usage.total_tokens ?? 0,
+            },
+          };
+        }
+        // No backoff on truncation — retry immediately with higher maxTokens
+        continue;
+      }
+
+      // Check for empty response — retry immediately (no backoff)
+      if (!result.content || result.content.trim().length === 0) {
+        console.warn(
+          `[chatCompletion] Empty response on attempt ${attempt + 1}/${PRIMARY_ATTEMPTS}. ` +
+          `Model: ${result.model}, finish_reason: ${result.finishReason}`
+        );
+        continue;
+      }
+
+      // Success
+      return {
+        content: result.content,
+        model: result.model,
+        finishReason: result.finishReason,
+        usage: {
+          promptTokens: result.usage.prompt_tokens ?? 0,
+          completionTokens: result.usage.completion_tokens ?? 0,
+          totalTokens: result.usage.total_tokens ?? 0,
+        },
+      };
+    } catch (e) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      if (errMsg.startsWith("NON_RETRYABLE:")) {
+        console.error(`[chatCompletion] Non-retryable error: ${errMsg}`);
+        break; // Skip to fallback
+      }
+      console.warn(
+        `[chatCompletion] Error on attempt ${attempt + 1}/${PRIMARY_ATTEMPTS}: ${errMsg}`
+      );
+      await backoff(attempt);
+    }
   }
 
-  const data = (await response.json()) as {
-    choices: Array<{ message?: { content?: string } }>;
-    model: string;
-    usage?: {
-      prompt_tokens?: number;
-      completion_tokens?: number;
-      total_tokens?: number;
-    };
-  };
+  // Phase 2: Fallback model — 2 attempts
+  const FALLBACK_ATTEMPTS = 2;
+  console.warn(
+    `[chatCompletion] Primary model ${model} exhausted. Trying fallback: ${MODELS.FALLBACK}`
+  );
 
-  return {
-    content: data.choices[0]?.message?.content ?? "",
-    model: data.model,
-    usage: {
-      promptTokens: data.usage?.prompt_tokens ?? 0,
-      completionTokens: data.usage?.completion_tokens ?? 0,
-      totalTokens: data.usage?.total_tokens ?? 0,
-    },
-  };
+  for (let attempt = 0; attempt < FALLBACK_ATTEMPTS; attempt++) {
+    try {
+      const result = await singleCall(
+        apiKey, MODELS.FALLBACK, messages, temperature, currentMaxTokens
+      );
+
+      if (!result.content || result.content.trim().length === 0) {
+        console.warn(
+          `[chatCompletion] Fallback empty on attempt ${attempt + 1}/${FALLBACK_ATTEMPTS}. ` +
+          `finish_reason: ${result.finishReason}`
+        );
+        continue;
+      }
+
+      console.warn(
+        `[chatCompletion] Fallback model succeeded: ${result.model} ` +
+        `(${result.usage.total_tokens ?? 0} tokens)`
+      );
+      return {
+        content: result.content,
+        model: result.model,
+        finishReason: result.finishReason,
+        usage: {
+          promptTokens: result.usage.prompt_tokens ?? 0,
+          completionTokens: result.usage.completion_tokens ?? 0,
+          totalTokens: result.usage.total_tokens ?? 0,
+        },
+      };
+    } catch (e) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.warn(
+        `[chatCompletion] Fallback error on attempt ${attempt + 1}/${FALLBACK_ATTEMPTS}: ${errMsg}`
+      );
+      if (errMsg.startsWith("NON_RETRYABLE:")) break;
+      await backoff(attempt);
+    }
+  }
+
+  console.error(
+    `[chatCompletion] All attempts failed. Primary: ${model} (${PRIMARY_ATTEMPTS}x), ` +
+    `Fallback: ${MODELS.FALLBACK} (${FALLBACK_ATTEMPTS}x). maxTokens escalated to ${currentMaxTokens}`
+  );
+  return EMPTY_RESPONSE;
+}
+
+/** Exponential backoff: 1s, 2s, 4s */
+function backoff(attempt: number): Promise<void> {
+  const delay = Math.min(1000 * Math.pow(2, attempt), 4000);
+  return new Promise((r) => setTimeout(r, delay));
 }
 
 /**
@@ -135,10 +294,49 @@ Key patterns for v${targetVersion}:
 - Package name in Cargo.toml MUST use underscores (e.g., "my_contract") — hyphens break cargo-stylus
 - src/main.rs is REQUIRED — use print_from_args() (NOT print_abi()) for ABI export
 - crate-type in [lib] must be ["lib", "cdylib"]
-- EXTERNAL INTERFACES: use \`sol_interface!\` (NOT \`sol!\`) for external contract interfaces. CALL PATTERN: \`ifoo.method(self.vm(), Call::new(), arg1, arg2)?\` — first arg is ALWAYS self.vm(), second is a Call context (\`Call::new()\` for non-reentrant, \`Call::new_in(self)\` for reentrant contracts).
+- EXTERNAL INTERFACES: use \`sol_interface!\` (NOT \`sol!\`) for external contract interfaces. VIEW calls: \`ifoo.method(self.vm(), Call::new(), args)?\`. STATE-MODIFYING calls: extract Call first: \`let call = Call::new_mutating(self);\` then \`ifoo.method(self.vm(), call, args)?\` — avoids borrow conflict.
 - Stylus exports snake_case Rust fn names as camelCase in the ABI (create_market → createMarket). Frontend must use camelCase in functionName.
 - Stylus &self view functions CANNOT make external contract calls (they revert). Use &mut self or read from frontend.
+- DYNAMIC ARRAYS: In sol_storage!, declare as \`uint256[] items;\`. Append primitives with \`self.items.push(val)\`. For struct arrays, use \`self.items.grow()\` then set fields. Do NOT use \`.setter(len).unwrap()\`.
+- sol! MACRO IMPORT: When using sol! for events/errors, you MUST import it: \`use alloy_sol_types::{sol, SolError};\` — sol! is NOT in prelude.
+- BORROW CHECKER: Extract values to local vars before combining storage reads/writes. Never \`self.field.setter(self.vm().something())\`.
+- sol! EVENT/ERROR FIELDS: Use camelCase (Solidity convention): \`tokenId\` NOT \`token_id\`.
 - On Arbitrum Sepolia, MetaMask may underestimate maxFeePerGas — add explicit gas overrides if "max fee per gas less than block base fee"
+- CRITICAL: \`sol!\` is for events and errors ONLY. External contract interfaces MUST use \`sol_interface!\`. If you write \`sol! { interface IToken { ... } }\`, the macro generates an EVENT named IToken, not a callable interface. ALWAYS use \`sol_interface! { interface IToken { ... } }\` for cross-contract calls.
+- sol_interface! SNAKE_CASE METHODS: sol_interface! generates Rust methods in snake_case from Solidity camelCase. \`transferFrom\` → \`.transfer_from()\`, \`totalSupply\` → \`.total_supply()\`, \`balanceOf\` → \`.balance_of()\`. NEVER use camelCase when calling sol_interface! methods from Rust.
+- sol_interface! HOST ARG: sol_interface! methods require \`self.vm()\` as the FIRST argument, then CallContext, then Solidity args. Pattern: \`token.transfer(self.vm(), Call::new(), to, amount)?;\` — NOT \`token.transfer(Call::new(), to, amount)?;\`
+- CONTRACT ADDRESS: Use \`self.vm().contract_address()\` — NOT \`self.vm().address()\` which does not exist
+- ZERO CONSTANTS: Use \`U256::ZERO\`, \`Address::ZERO\` (uppercase const) — NOT \`U256::zero()\` or \`Address::zero()\` which do not exist
+- BLOCK TIMESTAMP: \`self.vm().block_timestamp()\` returns \`u64\`. Wrap with \`U256::from()\` before storing in uint256 fields
+- StorageString: Use \`.set_str("value")\` and \`.get_string()\` — NOT \`.set()\` or \`.get()\` on string storage fields
+- NO STD: Do NOT use \`std::time\`, \`std::collections\`, or any std library. For timestamps: \`self.vm().block_timestamp()\`
+- EVENT/ERROR NAMING: Never give an event and error the same name — they generate conflicting Rust structs. Use distinct names like \`event Paused(address)\` + \`error ContractPaused()\`
+- RESULT PROPAGATION: Always use \`?\` when calling helper methods that return Result: \`self.check()?\` not \`self.check()\`
+- Call IMPORT: \`Call\` is available from \`prelude::*\` — do NOT add \`use stylus_sdk::call::Call;\` separately
+- DUPLICATE DEFINITIONS: Put all errors in one \`sol! {}\` block. Never define the same error/event name twice
+- sol! STRUCT INIT: When constructing sol! event/error structs, ALWAYS use explicit field assignment: \`MyEvent { fieldName: my_var }\`. NEVER use Rust shorthand \`MyEvent { fieldName }\` — sol! fields are camelCase but Rust variables are snake_case, so shorthand WILL fail.
+- StorageVec API: \`len()\` returns \`usize\` (NOT U256). Use \`usize\` for loop indices. \`setter(i)\` returns \`Option\` — call \`.unwrap()\` before \`.set()\`. \`getter(i)\` also returns \`Option\` — call \`.unwrap()\`. Convert U256 to usize: \`index.to::<usize>()\`. Do NOT use \`.as_usize()\`.
+- SolidityError ENUM: Each variant must wrap a DISTINCT error type. Two variants wrapping the same inner type cause conflicting \`From\` impls.
+- U8 TYPE: \`uint8\` in sol_storage! maps to \`U8\` (Uint<8,1>), NOT native \`u8\`. Set: \`self.field.set(U8::from(18u8))\`. Read: \`self.field.get().to::<u8>()\`.
+- MUTABLE BINDINGS: \`.setter()\` result stored in a variable needs \`let mut\` if methods are called on it.
+- vm().log() returns \`()\` — do NOT use \`?\` after it. Just call: \`self.vm().log(MyEvent { ... });\`
+- unwrap_or vs unwrap_or_else: \`.unwrap_or(VALUE)\` for values, \`.unwrap_or_else(|| VALUE)\` for closures. Do NOT pass a value to unwrap_or_else.
+- sol_storage! TYPES: Inside sol_storage! {}, use SOLIDITY syntax: \`uint256\`, \`address\`, \`bool\`, \`string\`, \`mapping(address => uint256)\`, \`uint256[]\`. Do NOT use Rust Storage* types: \`StorageU256\`, \`StorageAddress\`, \`StorageString\`, \`StorageMap<...>\`, \`StorageVec<...>\`.
+- NESTED MAPPING WRITES: Chain \`.setter()\` calls: \`self.allowances.setter(owner).setter(spender).set(amount);\`. Do NOT use tuple keys \`(owner, spender)\`. Do NOT mix \`.get()\` then \`.setter()\` — \`.get()\` returns immutable ref conflicting with \`.setter()\`'s mutable borrow. ALWAYS chain \`.setter()\` for writes.
+- MAPPING READS return value directly: \`StorageMap::get(key)\` returns the value type (zero-default for uninitialized), NOT \`Option\`. Do NOT call \`.unwrap_or_default()\` on mapping reads. Nested: \`.getter(k1).get(k2)\` also returns value directly.
+- sol_interface! SNAKE_CASE: \`sol_interface!\` converts Solidity camelCase to Rust snake_case. \`transferFrom\` → \`.transfer_from()\`, \`balanceOf\` → \`.balance_of()\`. ALWAYS use snake_case when calling sol_interface! methods.
+- B256 CONVERSION: \`B256::from_uint()\` does NOT exist. To convert U256 to B256, use \`B256::from(value.to_be_bytes::<32>())\`.
+- CONST U256: \`U256::from()\` is NOT const-compatible. For const declarations use \`U256::from_limbs([N, 0, 0, 0])\` e.g. \`const MY_ROLE: U256 = U256::from_limbs([1, 0, 0, 0]);\`. \`U256::ZERO\` is fine.
+- sol_interface! HOST ARGUMENT: When calling methods on sol_interface!-generated types, \`self.vm()\` MUST be the FIRST argument, followed by the Call context, then Solidity parameters. Example: \`token.transfer(self.vm(), Call::new_mutating(self), to, amount)?;\` NOT \`token.transfer(Call::new_mutating(self), to, amount)?;\` — the \`self.vm()\` host reference is ALWAYS required as the first arg.
+- B256 IS NOT Uint: B256 is \`FixedBytes<32>\`, NOT \`Uint<256>\`. \`B256::from_limbs()\` does NOT exist — \`from_limbs\` is a Uint method. To create B256 from limbs: \`B256::from(U256::from_limbs([1, 0, 0, 0]).to_be_bytes::<32>())\`. Use \`B256::ZERO\` for zero, \`B256::with_last_byte(n)\` for small values.
+- STRING MAPPING READS: \`mapping(... => string)\` — \`.get(key)\` returns \`StorageGuard<StorageString>\`, NOT String. Use \`.getter(key).get_string()\` to read as String. Do NOT call \`.get_string()\` again on the result — it already IS a String. Write: \`.setter(key).set_str("val")\`.
+- abi_encode() ON ERRORS: \`.abi_encode()\` is on the inner \`sol!\` error struct (SolError trait), NOT on the \`#[derive(SolidityError)]\` enum. WRONG: \`MyErrors::NotOwner(NotOwner{...}).abi_encode()\`. CORRECT: \`NotOwner{caller, owner}.abi_encode()\`. The enum is for Stylus runtime dispatch, not manual encoding.
+- STORAGESTRING VIEW FUNCTIONS: When returning a \`string\` field from sol_storage! in a view function, ALWAYS call \`.get_string()\`: \`pub fn name(&self) -> String { self.name.get_string() }\`. NEVER return \`self.name\` directly — it is StorageString, not String. Do NOT use \`.push_str()\` on StorageString — extract first: \`let s = self.name.get_string(); format!("{}{}", s, other)\`.
+- STRING IMPORTS (no_std): When using \`String\` type, add \`use alloc::string::String;\`. When using \`.to_string()\`, ALSO add \`use alloc::string::ToString;\`. These are NOT in prelude in no_std.
+- NO CONST IN #[public] IMPL: Do NOT put \`pub const\` declarations inside \`#[public] impl MyContract { ... }\` — the proc macro does not support associated constants. Move constants to module level: \`const ADMIN_ROLE: U256 = U256::ZERO;\` BEFORE the impl block.
+- sol! ERROR/EVENT TYPE MATCHING: When defining sol! errors/events, Solidity field types MUST match the Rust values you pass. \`address\` → Address, \`uint256\` → U256, \`bool\` → bool. If you pass a U256 value, the field MUST be \`uint256\`, NOT \`address\`. CRITICAL: if a value comes from a \`mapping(... => uint256)\` via \`.get()\`, it IS U256 — the event/error field MUST be \`uint256\` even if the field name sounds like an address (e.g., admin, owner, sender). The Solidity type MUST match the RUST TYPE, not the semantic meaning. For comparison errors (InsufficientBalance, InsufficientStake), ALL value fields (have/want, available/required) should be \`uint256\`.
+- CLEAN OUTPUT: Output ONLY valid Rust code in code blocks. NEVER include natural language commentary, corrections, or "thinking aloud" text inside code. No \`<< ??? >\`, no \`Wait, we need...\`, no \`Correction:\` inside code blocks.
+- INTERNAL HELPERS — NO PHANTOM VARIABLES: Internal check functions (only_owner, ensure_admin, check_role) must get ALL data from storage or parameters. If a function body uses a variable, it MUST be: (a) a declared function parameter, (b) a local \`let\` binding from a storage read or computation, or (c) \`self.field\`. NEVER write \`let role = role;\` — this references a non-existent variable. For owner checks: read \`self.owner.get()\` and compare to \`self.vm().msg_sender()\`. For role checks with a specific role: define as \`const\` or read from storage. For dynamic role checks: add \`role: U256\` as a function parameter.
 
 Security best practices:
 - Check for overflows using checked_add/checked_sub
@@ -177,6 +375,7 @@ export async function generateCode(
   return chatCompletion(apiKey, messages, {
     model: MODELS.CODE_GEN,
     temperature: 0.2,
+    maxTokens: 12000,
   });
 }
 
@@ -221,7 +420,7 @@ ABSOLUTE RULES - NEVER VIOLATE THESE:
 3. There must be EXACTLY ONE sol_storage! block - NEVER create empty sol_storage! blocks
 4. KEEP the #[entrypoint] attribute inside sol_storage!
 5. KEEP the #[public] attribute on the impl block
-6. The sol! macro is available via prelude — do NOT add standalone "use alloy_sol_types::sol;". BUT if using .abi_encode() on errors, MUST import SolError: use alloy_sol_types::SolError;
+6. When using sol! for events or errors, you MUST explicitly import it: \`use alloy_sol_types::{sol, SolError};\` — sol! is NOT available from prelude. If only using events (no .abi_encode()), \`use alloy_sol_types::sol;\` is sufficient.
 7. If adding events/errors with sol! macro, they must be BEFORE sol_storage!
 8. KEEP the Cargo.toml [profile.release] section exactly as provided
 
@@ -229,8 +428,46 @@ COMPILATION-CRITICAL — these mistakes WILL break the build:
 - STORAGE ACCESS: ALWAYS use .get() to read storage: \`self.field.get()\` NOT \`self.field\`. ALWAYS use .set(val) to write: \`self.field.set(val)\`. For mappings: read with \`self.map.get(key)\`, write with \`self.map.setter(key).set(val)\`.
 - TRANSFER ETH: \`use stylus_sdk::call::transfer::transfer_eth;\` then \`transfer_eth(self.vm(), to, amount)?;\`. Do NOT use \`self.transfer_eth()\`, \`call::transfer_eth()\`, or any other path.
 - EXTERNAL INTERFACES: use \`sol_interface!\` macro (NOT \`sol!\`). \`sol!\` is ONLY for events and errors.
-- CROSS-CONTRACT CALLS: pattern is \`ifoo.method(self.vm(), Call::new(), arg1, arg2)?\`. The first arg is ALWAYS \`self.vm()\`, second is a Call context (\`Call::new()\` for non-reentrant, \`Call::new_in(self)\` for reentrant contracts). Do NOT use \`ifoo.method(self, arg1, arg2)\` or \`ifoo.method(arg1, arg2)\`.
+- CROSS-CONTRACT CALLS: VIEW calls: \`ifoo.method(self.vm(), Call::new(), args)?\`. STATE-MODIFYING calls: extract Call first: \`let call = Call::new_mutating(self);\` then \`ifoo.method(self.vm(), call, args)?\` — avoids borrow conflict.
 - External calls require \`&mut self\` (NOT \`&self\` — view functions revert on external calls)
+- DYNAMIC ARRAYS: In sol_storage!, declare as \`uint256[] items;\`. Append with \`self.items.push(val)\` for primitives, \`self.items.grow()\` for structs. Do NOT use \`.setter(len).unwrap()\`.
+- BORROW CHECKER: Extract values to local vars before combining storage reads and writes.
+- sol! EVENT/ERROR FIELDS: Use camelCase (Solidity convention): \`tokenId\` NOT \`token_id\`.
+- CONTRACT ADDRESS: \`self.vm().contract_address()\` NOT \`self.vm().address()\` (does not exist).
+- ZERO CONSTANTS: \`U256::ZERO\`, \`Address::ZERO\` (uppercase const). NOT \`U256::zero()\` (does not exist).
+- BLOCK TIMESTAMP: \`self.vm().block_timestamp()\` returns \`u64\`. Wrap with \`U256::from()\` before storing in uint256 fields.
+- StorageString: \`.set_str("val")\` and \`.get_string()\`. NOT \`.set()\` or \`.get()\`.
+- NO STD: Do NOT use \`std::time\`, \`std::collections\`. For timestamps: \`self.vm().block_timestamp()\`.
+- EVENT/ERROR NAMING: Never give an event and error the same name — they generate conflicting Rust structs. Use \`event Paused(address)\` and \`error ContractPaused()\`.
+- RESULT PROPAGATION: Always use \`?\` to propagate Result from helper methods.
+- Call IMPORT: \`Call\` comes from \`prelude::*\`. Do NOT add \`use stylus_sdk::call::Call;\` separately.
+- DUPLICATE DEFINITIONS: Put all errors in one \`sol! {}\` block. Never define the same name twice.
+- sol! STRUCT INIT: When constructing sol! event/error structs, ALWAYS use explicit field assignment: \`MyEvent { fieldName: my_var }\`. NEVER use Rust shorthand \`MyEvent { fieldName }\` — sol! fields are camelCase but Rust variables are snake_case.
+- StorageVec API: \`len()\` returns \`usize\` (NOT U256). Use \`usize\` for loop indices. \`setter(i)\` returns \`Option\` — call \`.unwrap()\` before \`.set()\`. Convert U256 to usize: \`index.to::<usize>()\`. Do NOT use \`.as_usize()\`.
+- SolidityError ENUM: Each variant must wrap a DISTINCT error type. Two variants wrapping the same inner type cause conflicting \`From\` impls.
+- U8 TYPE: \`uint8\` → \`U8\` (Uint<8,1>), not native u8. Set: \`U8::from(val)\`. Read: \`.to::<u8>()\`.
+- MUTABLE BINDINGS: \`.setter()\` result stored in a variable needs \`let mut\`.
+- vm().log() returns \`()\` — do NOT use \`?\` after it.
+- unwrap_or vs unwrap_or_else: \`.unwrap_or(VALUE)\` for values, not \`.unwrap_or_else(VALUE)\`.
+- sol_storage! TYPES: Use SOLIDITY syntax inside sol_storage!: \`uint256\`, \`address\`, \`bool\`, \`string\`, \`mapping(...)\`, \`type[]\`. NOT Rust Storage* types.
+- NESTED MAPPING WRITES: Chain \`.setter()\` calls: \`self.map.setter(k1).setter(k2).set(v)\`. Do NOT use tuple keys \`(k1, k2)\`. Do NOT mix \`.get()\` then \`.setter()\`.
+- MAPPING READS: \`StorageMap::get(key)\` returns value directly (zero-default), NOT Option. Do NOT use \`.unwrap_or_default()\` on mapping reads.
+- sol_interface! SNAKE_CASE: \`transferFrom\` → \`.transfer_from()\`, \`balanceOf\` → \`.balance_of()\`. Always snake_case for sol_interface! calls.
+- B256 CONVERSION: \`B256::from_uint()\` does NOT exist. Use \`B256::from(value.to_be_bytes::<32>())\`.
+- CONST U256: \`U256::from()\` is NOT const-compatible. Use \`U256::from_limbs([N, 0, 0, 0])\` for const declarations.
+- sol_interface! HOST ARGUMENT: When calling methods on sol_interface!-generated types, \`self.vm()\` MUST be the FIRST argument, followed by Call context, then Solidity parameters. Example: \`token.transfer(self.vm(), call, to, amount)?;\` NOT \`token.transfer(call, to, amount)?;\`.
+- B256 IS NOT Uint: B256 is \`FixedBytes<32>\`, NOT \`Uint<256>\`. \`B256::from_limbs()\` does NOT exist. Use \`B256::from(U256::from_limbs([...]).to_be_bytes::<32>())\`.
+- STRING MAPPING READS: \`mapping(... => string)\` — \`.get(key)\` returns \`StorageGuard<StorageString>\`, NOT String. Use \`.getter(key).get_string()\` to read as String. Do NOT call \`.get_string()\` again on the result — it already IS a String. Write: \`.setter(key).set_str("val")\`.
+- abi_encode() ON ERRORS: \`.abi_encode()\` is on the inner \`sol!\` error struct, NOT the \`#[derive(SolidityError)]\` enum. WRONG: \`MyErrors::Variant(Inner{..}).abi_encode()\`. CORRECT: \`Inner{..}.abi_encode()\`.
+- CRITICAL: \`sol!\` is for events and errors ONLY. External contract interfaces MUST use \`sol_interface!\`. If you write \`sol! { interface IToken { ... } }\`, the macro generates an EVENT named IToken, not a callable interface. ALWAYS use \`sol_interface! { interface IToken { ... } }\` for cross-contract calls.
+- sol_interface! SNAKE_CASE METHODS: sol_interface! generates Rust methods in snake_case from Solidity camelCase. \`transferFrom\` → \`.transfer_from()\`, \`totalSupply\` → \`.total_supply()\`, \`balanceOf\` → \`.balance_of()\`. NEVER use camelCase when calling sol_interface! methods from Rust.
+- sol_interface! HOST ARG: sol_interface! methods require \`self.vm()\` as the FIRST argument, then CallContext, then Solidity args. Pattern: \`token.transfer(self.vm(), Call::new(), to, amount)?;\` — NOT \`token.transfer(Call::new(), to, amount)?;\`
+- STORAGESTRING VIEW FUNCTIONS: When returning a \`string\` field from sol_storage! in a view function, ALWAYS call \`.get_string()\`: \`pub fn name(&self) -> String { self.name.get_string() }\`. NEVER return \`self.name\` directly — it is StorageString, not String. Do NOT use \`.push_str()\` on StorageString — extract first: \`let s = self.name.get_string(); format!("{}{}", s, other)\`.
+- STRING IMPORTS (no_std): When using \`String\`, add \`use alloc::string::String;\`. When using \`.to_string()\`, ALSO add \`use alloc::string::ToString;\`. These are NOT in prelude in no_std.
+- NO CONST IN #[public] IMPL: Do NOT put \`pub const\` inside \`#[public] impl\` — the proc macro doesn't support associated constants. Put constants at module level BEFORE the impl block.
+- sol! ERROR/EVENT TYPE MATCHING: Solidity field types MUST match the Rust values you pass. \`address\` → Address, \`uint256\` → U256. If passing U256 values, the sol! field MUST be \`uint256\`, NOT \`address\`. Comparison errors (InsufficientBalance, InsufficientStake) — ALL value fields (have/want, available/required) should be \`uint256\`.
+- CLEAN OUTPUT: Output ONLY valid Rust code. NEVER include natural language commentary or corrections inside code blocks. No "Wait,", "Correction:", or thinking-aloud text.
+- INTERNAL HELPERS — NO PHANTOM VARIABLES: Internal check functions (only_owner, ensure_admin, check_role) must get ALL data from storage or parameters. If a function body uses a variable, it MUST be: (a) a declared function parameter, (b) a local \`let\` binding from a storage read or computation, or (c) \`self.field\`. NEVER write \`let role = role;\` — this references a non-existent variable. For owner checks: read \`self.owner.get()\` and compare to \`self.vm().msg_sender()\`. For role checks with a specific role: define as \`const\` or read from storage. For dynamic role checks: add \`role: U256\` as a function parameter.
 
 WHAT YOU MAY DO:
 - Rename the contract struct in sol_storage! to match the user's request (e.g., PredictionMarket, Lottery, etc.)
@@ -243,14 +480,14 @@ WHAT YOU MAY DO:
 
 IMPORTS - USE THESE PATTERNS:
 - Types from stylus_sdk::alloy_primitives::{Address, U256, U8, ...}
-- sol! macro is available from stylus_sdk::prelude::*
+- sol! macro: \`use alloy_sol_types::sol;\` (NOT from prelude)
 - For events: self.vm().log(EventName { field1, field2 }) (NOT evm::log)
 - For caller: self.vm().msg_sender() (NOT msg::sender())
 - For ETH transfers: \`use stylus_sdk::call::transfer::transfer_eth;\` then \`transfer_eth(self.vm(), to, amount)?;\`
 - For errors: return Err(ErrorName { ... }.abi_encode()) — requires use alloy_sol_types::SolError;
 - For cross-contract calls: define with sol_interface! { interface IFoo { function bar(address) external returns (uint256); } }
-- Call pattern: \`ifoo.bar(self.vm(), Call::new(), addr)?\` — self.vm() is ALWAYS first arg
-- For reentrant contracts use \`Call::new_in(self)\` instead of \`Call::new()\`
+- VIEW calls: \`ifoo.bar(self.vm(), Call::new(), addr)?\`
+- STATE-MODIFYING calls: \`let call = Call::new_mutating(self); ifoo.bar(self.vm(), call, args)?\`
 - External calls require &mut self (NOT &self — view functions revert on external calls)
 - Do NOT use stylus_sdk::evm (removed in 0.10.0) or stylus_sdk::msg
 
@@ -266,21 +503,45 @@ pub fn withdraw(&mut self, to: Address, amount: U256) -> Result<(), Vec<u8>> {
 }
 \`\`\`
 
-Cross-contract call (interact with another deployed contract):
+Cross-contract VIEW call (read-only — Call::new() is fine):
+\`\`\`rust
+sol_interface! {
+    interface IPriceFeed {
+        function latestPrice() external view returns (uint256);
+    }
+}
+
+pub fn get_price(&mut self, feed_addr: Address) -> Result<U256, Vec<u8>> {
+    let feed = IPriceFeed::new(feed_addr);
+    let price = feed.latest_price(self.vm(), Call::new())?;
+    Ok(price)
+}
+\`\`\`
+
+Cross-contract state-modifying call (extract Call to avoid borrow conflict):
 \`\`\`rust
 sol_interface! {
     interface IToken {
-        function balanceOf(address account) external view returns (uint256);
         function transfer(address to, uint256 amount) external returns (bool);
     }
 }
 
-// In a #[public] &mut self method:
-pub fn get_token_balance(&mut self, token: Address, account: Address) -> Result<U256, Vec<u8>> {
-    let token = IToken::new(token);
-    let balance = token.balance_of(self.vm(), Call::new(), account)?;
-    Ok(balance)
+pub fn transfer_tokens(
+    &mut self, token: Address, to: Address, amount: U256,
+) -> Result<bool, Vec<u8>> {
+    let tok = IToken::new(token);
+    let call = Call::new_mutating(self);
+    let success = tok.transfer(self.vm(), call, to, amount)?;
+    Ok(success)
 }
+\`\`\`
+
+Dynamic array (append to sol_storage! array):
+\`\`\`rust
+// In sol_storage!: uint256[] items;
+// Append primitive:
+self.items.push(new_val);
+// For structs: let mut entry = self.items.grow(); entry.field.set(val);
 \`\`\`
 
 Output format:
@@ -341,7 +602,7 @@ ALWAYS use these versions - ignore any outdated version info in retrieved contex
 - stylus-sdk: ${mainVersion} (latest stable, recommended for new projects)
 - alloy-primitives: ${alloyVersion}
 - alloy-sol-types: ${alloyVersion}
-- Rust version: 1.88.0 (via rust-toolchain.toml)
+- Rust version: 1.91.0 (via rust-toolchain.toml)
 
 IMPORTANT SDK 0.10.0 changes:
 - msg::sender() is replaced by self.vm().msg_sender()
@@ -353,7 +614,7 @@ IMPORTANT SDK 0.10.0 changes:
 - For .abi_encode() on errors: import use alloy_sol_types::SolError;
 - Nested mapping writes: chain in one expression: self.map.setter(k1).setter(k2).set(v). Do NOT split into separate variables (causes multiple active borrows)
 - Projects MUST include Stylus.toml with [workspace], [workspace.networks], and [contract] sections
-- Projects MUST include rust-toolchain.toml with channel = "1.88.0"
+- Projects MUST include rust-toolchain.toml with channel = "1.91.0"
 - Projects MUST include src/main.rs — cargo stylus deploy uses cargo run to check constructors
 - ABI export function in 0.10.0 is print_from_args() (NOT print_abi())
 - Package name MUST use underscores (e.g., "my_contract") — hyphens break cargo-stylus WASM lookup
@@ -414,6 +675,11 @@ let allowance = self.allowances.get(owner).get(spender);
 
 // Write nested: chain .setter() calls in ONE expression
 self.allowances.setter(owner).setter(spender).set(value);
+
+// WRONG — .get() returns immutable, can't call .setter():
+// self.allowances.get(owner).setter(spender).set(value);
+// WRONG — tuple keys don't exist:
+// self.allowances.setter((owner, spender)).set(value);
 \`\`\`
 
 Dynamic arrays (sol_storage! uses Solidity syntax: uint256[], address[]):
@@ -439,6 +705,7 @@ item.field_a.set(val_a);
   return chatCompletion(apiKey, messages, {
     model: MODELS.QA,
     temperature: 0.3,
+    maxTokens: 6000,
   });
 }
 
@@ -474,6 +741,7 @@ Reference the correct SDK v4 classes: ParentTransactionReceipt, ChildTransaction
   return chatCompletion(apiKey, messages, {
     model: MODELS.QA,
     temperature: 0.3,
+    maxTokens: 6000,
   });
 }
 
@@ -488,18 +756,30 @@ export async function generateTests(
   const messages: Message[] = [
     {
       role: "system",
-      content: `You are a Stylus testing expert.
+      content: `You are a Stylus testing expert for SDK 0.10.0.
 Generate comprehensive tests for the provided contract.
 Framework: ${testFramework === "rust_native" ? "Rust native #[test] with stylus-test" : "Foundry Solidity tests"}
 
-For Rust native tests:
-- Use #[cfg(test)] module
-- Import stylus_sdk::testing if needed
-- Test all public functions
-- Include edge cases and error conditions
+For Rust native tests (stylus-sdk 0.10.0):
+- Use #[cfg(test)] module with \`use super::*;\` and \`use stylus_sdk::testing::*;\`
+- SETUP: \`let vm = TestVM::default(); let mut contract = MyContract::from(&vm);\`
+  Do NOT use MyContract::default() — it does not exist in SDK 0.10.0
+- Use vm.set_sender(addr) to set msg.sender for tests
+- Use vm.set_value(amount) to set msg.value for payable tests
+- Use vm.set_block_timestamp(ts) to set block.timestamp
+- Test all public functions with happy path, error cases, and edge cases
+- Use assert!, assert_eq!, assert_ne! with descriptive messages
+- EVENT CHECKING: Use \`vm.get_emitted_logs()\` to check events. Do NOT use \`vm.logs()\` — it does not exist. Return type is \`Vec<(Vec<B256>, Vec<u8>)>\`. Do NOT use a \`Log\` type — it doesn't exist in stylus-test.
+- ZERO CONSTANTS: Use \`U256::ZERO\`, \`Address::ZERO\` (uppercase). Do NOT use \`U256::zero()\` or \`Address::zero()\`.
+- STORAGE ACCESS: ALWAYS use \`.get()\` to read storage, \`.set()\` to write, \`.setter(key).set(val)\` for mappings
+- Cargo.toml needs: [dev-dependencies] stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
+- IMPORTANT: Run tests with \`--target\` flag (tests run on host, not WASM):
+  \`cargo test --target=x86_64-unknown-linux-gnu\` (Linux) or \`cargo test --target=aarch64-apple-darwin\` (macOS)
+  Do NOT run \`cargo test\` without \`--target\` — it compiles for wasm32-unknown-unknown which cannot run unit tests
+- If you get alloy-consensus or alloy-* version conflicts, pin alloy crate versions in workspace Cargo.toml
 
 For Foundry tests:
-- Create Solidity interface matching the contract ABI
+- Create Solidity interface matching the contract ABI (use camelCase function names)
 - Use forge-std Test contract
 - Mock contract deployment`,
     },
@@ -512,5 +792,6 @@ For Foundry tests:
   return chatCompletion(apiKey, messages, {
     model: MODELS.CODE_GEN,
     temperature: 0.2,
+    maxTokens: 8192,
   });
 }

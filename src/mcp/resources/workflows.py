@@ -15,7 +15,7 @@ BUILD_WORKFLOW = {
     "description": "Complete workflow for building a Stylus smart contract",
     "prerequisites": [
         {"check": "rustup --version", "install": "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"},
-        {"check": "rustup default", "install": "rustup default 1.88.0", "note": "Rust 1.88.0 recommended (use rust-toolchain.toml)"},
+        {"check": "rustup default", "install": "rustup default 1.91.0", "note": "Rust 1.91.0 recommended (use rust-toolchain.toml)"},
         {"check": "rustup target list --installed | grep wasm32-unknown-unknown", "install": "rustup target add wasm32-unknown-unknown"},
         {"check": "cargo stylus --version", "install": "cargo install --force cargo-stylus"},
         {"check": "docker --version", "install": "Install Docker from docker.com", "note": "Required for reproducible builds"},

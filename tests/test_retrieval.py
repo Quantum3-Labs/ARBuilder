@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import requires_api_key
+
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -96,6 +98,8 @@ class RetrievalMetrics:
         return relevant / k if k > 0 else 0.0
 
 
+@requires_api_key
+@pytest.mark.integration
 class TestRetrievalQuality:
     """Test suite for retrieval quality."""
 
@@ -133,19 +137,23 @@ class TestRetrievalQuality:
             mrr = metrics.mrr(docs, keywords)
             p_at_5 = metrics.precision_at_k(docs, keywords, k=5)
 
-            results_summary.append({
-                "query": query_info["query"],
-                "recall": recall,
-                "mrr": mrr,
-                "p@5": p_at_5,
-            })
+            results_summary.append(
+                {
+                    "query": query_info["query"],
+                    "recall": recall,
+                    "mrr": mrr,
+                    "p@5": p_at_5,
+                }
+            )
 
         # Calculate averages
         avg_recall = sum(r["recall"] for r in results_summary) / len(results_summary)
         avg_mrr = sum(r["mrr"] for r in results_summary) / len(results_summary)
         avg_p5 = sum(r["p@5"] for r in results_summary) / len(results_summary)
 
-        print(f"\nBasic Queries - Avg Recall: {avg_recall:.3f}, MRR: {avg_mrr:.3f}, P@5: {avg_p5:.3f}")
+        print(
+            f"\nBasic Queries - Avg Recall: {avg_recall:.3f}, MRR: {avg_mrr:.3f}, P@5: {avg_p5:.3f}"
+        )
 
         # Basic queries should have good recall
         assert avg_recall >= 0.5, f"Basic query recall too low: {avg_recall}"
@@ -167,11 +175,13 @@ class TestRetrievalQuality:
             recall = metrics.keyword_recall(docs, keywords)
             mrr = metrics.mrr(docs, keywords)
 
-            results_summary.append({
-                "query": query_info["query"],
-                "recall": recall,
-                "mrr": mrr,
-            })
+            results_summary.append(
+                {
+                    "query": query_info["query"],
+                    "recall": recall,
+                    "mrr": mrr,
+                }
+            )
 
         avg_recall = sum(r["recall"] for r in results_summary) / len(results_summary)
         avg_mrr = sum(r["mrr"] for r in results_summary) / len(results_summary)
@@ -196,10 +206,12 @@ class TestRetrievalQuality:
 
             recall = metrics.keyword_recall(docs, keywords)
 
-            results_summary.append({
-                "query": query_info["query"],
-                "recall": recall,
-            })
+            results_summary.append(
+                {
+                    "query": query_info["query"],
+                    "recall": recall,
+                }
+            )
 
         avg_recall = sum(r["recall"] for r in results_summary) / len(results_summary)
 
@@ -233,6 +245,8 @@ class TestRetrievalQuality:
         assert hybrid_recall >= vector_recall * 0.9, "Hybrid search significantly worse than vector"
 
 
+@requires_api_key
+@pytest.mark.integration
 class TestRetrievalBenchmark:
     """Comprehensive retrieval benchmark."""
 

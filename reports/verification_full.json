@@ -1,0 +1,1574 @@
+[
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/stylus-hello-world",
+    "repo_name": "ARBuilder-Forks_stylus-hello-world",
+    "repo_type": "stylus",
+    "sdk_version": "0.10.0",
+    "verified_at": "2026-02-20T09:37:39.895028",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "0.10.0",
+        "meets_minimum": true,
+        "is_main_version": true,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0"
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "command": "cargo check --target wasm32-unknown-unknown --lib",
+        "exit_code": 0,
+        "stderr_tail": "",
+        "clippy_warnings": 4
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "host_fn_crash": true,
+        "last_commit": "2026-02-16T11:27:24Z",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 0,
+        "forks": 0,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": true,
+          "tool": "cargo audit",
+          "has_vulnerabilities": false,
+          "count": 0,
+          "vulnerabilities": []
+        }
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "official_examples",
+    "config_sdk_version": "0.10.0"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/stylus-quickstart-vending-machine",
+    "repo_name": "ARBuilder-Forks_stylus-quickstart-vending-machine",
+    "repo_type": "stylus",
+    "sdk_version": "0.10.0",
+    "verified_at": "2026-02-20T09:38:33.391753",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "0.10.0",
+        "meets_minimum": true,
+        "is_main_version": true,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0"
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "command": "cargo check --target wasm32-unknown-unknown --lib",
+        "exit_code": 0,
+        "stderr_tail": "",
+        "clippy_warnings": 5
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "host_fn_crash": true,
+        "last_commit": "2026-02-16T11:27:28Z",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 0,
+        "forks": 0,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": true,
+          "tool": "cargo audit",
+          "has_vulnerabilities": false,
+          "count": 0,
+          "vulnerabilities": []
+        }
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "official_examples",
+    "config_sdk_version": "0.10.0"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/stylus-workshop-gol",
+    "repo_name": "ARBuilder-Forks_stylus-workshop-gol",
+    "repo_type": "stylus",
+    "sdk_version": "=0.9.0",
+    "verified_at": "2026-02-20T09:39:44.805146",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "=0.9.0",
+        "meets_minimum": true,
+        "is_main_version": true,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0"
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "command": "cargo check --target wasm32-unknown-unknown --lib",
+        "exit_code": 0,
+        "stderr_tail": "",
+        "clippy_warnings": 1
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "host_fn_crash": true,
+        "last_commit": "2026-02-16T14:01:01Z",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 0,
+        "forks": 0,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": true,
+          "tool": "cargo audit",
+          "has_vulnerabilities": false,
+          "count": 0,
+          "vulnerabilities": []
+        }
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "official_examples",
+    "config_sdk_version": "0.9.0"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/rust-contracts-stylus",
+    "repo_name": "ARBuilder-Forks_rust-contracts-stylus",
+    "repo_type": "stylus",
+    "sdk_version": "=0.9.0",
+    "verified_at": "2026-02-20T09:43:40.211948",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "=0.9.0",
+        "meets_minimum": true,
+        "is_main_version": true,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0"
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "command": "cargo check --target wasm32-unknown-unknown --lib",
+        "exit_code": 0,
+        "stderr_tail": "",
+        "clippy_warnings": 0
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "Timed out after 180s",
+        "tests_timed_out": true,
+        "last_commit": "2026-02-16T14:01:26Z",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 0,
+        "forks": 0,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": true,
+          "tool": "cargo audit",
+          "has_vulnerabilities": false,
+          "count": 0,
+          "vulnerabilities": []
+        }
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "verified_production",
+    "config_sdk_version": "0.9.0"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/stylus-test-helpers",
+    "repo_name": "ARBuilder-Forks_stylus-test-helpers",
+    "repo_type": "stylus",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T09:46:35.170547",
+    "overall_status": "failed",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": false,
+        "skipped": false,
+        "error": "stylus-sdk not found in Cargo.toml"
+      },
+      {
+        "step": "compile",
+        "passed": false,
+        "skipped": false,
+        "command": "cargo check --target wasm32-unknown-unknown --lib",
+        "exit_code": 101,
+        "stderr_tail": "gistry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.15/src/lib.rs:398:9\n    |\n398 |         imp::getrandom_inner(dest)?;\n    |         ^^^ use of unresolved module or unlinked crate `imp`\n    |\n    = help: if you wanted to use a crate named `imp`, use `cargo add imp` to add it to your `Cargo.toml`\n\nFor more information about this error, try `rustc --explain E0433`.\nerror: could not compile `getrandom` (lib) due to 2 previous errors\nwarning: build failed, waiting for other jobs to finish..."
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": true,
+        "test_count": 47,
+        "test_output": "tsu/src/lib.rs - (line 144) ... ok\ntest crates/motsu/src/lib.rs - (line 113) ... ok\ntest crates/motsu/src/lib.rs - (line 37) ... ok\ntest crates/motsu/src/lib.rs - (line 61) ... ok\ntest crates/motsu/src/lib.rs - (line 212) ... ok\n\ntest result: ok. 7 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 6.44s\n\n\nrunning 1 test\ntest crates/motsu-proc/src/lib.rs - test (line 28) ... ignored\n\ntest result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+        "last_commit": "2026-02-16T14:01:30Z",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 0,
+        "forks": 0,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": true,
+          "tool": "cargo audit",
+          "has_vulnerabilities": false,
+          "count": 0,
+          "vulnerabilities": []
+        }
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "verified_production",
+    "config_sdk_version": "0.9.0"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/stylusport",
+    "repo_name": "ARBuilder-Forks_stylusport",
+    "repo_type": "stylus",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T10:40:17.676769",
+    "overall_status": "failed",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": false,
+        "skipped": false,
+        "error": "stylus-sdk not found in Cargo.toml"
+      },
+      {
+        "step": "compile",
+        "passed": false,
+        "skipped": false,
+        "command": "cargo check --target wasm32-unknown-unknown --lib",
+        "exit_code": 101,
+        "stderr_tail": " function defined here\n   --> /Users/sohweimeng/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/solana-zk-sdk-2.3.7/src/zk_elgamal_proof_program/proof_data/batched_grouped_ciphertext_validity/handles_2.rs:114:12\n    |\n114 |     pub fn new(\n    |            ^^^\n\nFor more information about this error, try `rustc --explain E0308`.\nerror: could not compile `spl-token-confidential-transfer-proof-generation` (lib) due to 5 previous errors\nwarning: build failed, waiting for other jobs to finish..."
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "Timed out after 180s",
+        "tests_timed_out": true,
+        "last_commit": "2026-02-16T14:01:17Z",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 0,
+        "forks": 0,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": true,
+          "tool": "cargo audit",
+          "has_vulnerabilities": false,
+          "count": 0,
+          "vulnerabilities": []
+        }
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "verified_production",
+    "config_sdk_version": "0.9.0"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/stylus-provider",
+    "repo_name": "ARBuilder-Forks_stylus-provider",
+    "repo_type": "stylus",
+    "sdk_version": "0.8.4",
+    "verified_at": "2026-02-20T10:44:17.479340",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "0.8.4",
+        "meets_minimum": true,
+        "is_main_version": false,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0"
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "command": "cargo check --target wasm32-unknown-unknown --lib",
+        "exit_code": 0,
+        "stderr_tail": "",
+        "clippy_warnings": 1
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "host_fn_crash": true,
+        "last_commit": "2026-02-16T14:01:21Z",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 0,
+        "forks": 0,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": true,
+          "tool": "cargo audit",
+          "has_vulnerabilities": false,
+          "count": 0,
+          "vulnerabilities": []
+        }
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "verified_production",
+    "config_sdk_version": "0.8.4"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/ethbuc2025-gyges",
+    "repo_name": "ARBuilder-Forks_ethbuc2025-gyges",
+    "repo_type": "stylus",
+    "sdk_version": "0.10.0",
+    "verified_at": "2026-02-20T10:46:54.790893",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "0.10.0",
+        "meets_minimum": true,
+        "is_main_version": true,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0"
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "command": "cargo check --target wasm32-unknown-unknown --lib",
+        "exit_code": 0,
+        "stderr_tail": "",
+        "clippy_warnings": 6
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "host_fn_crash": true,
+        "last_commit": "2026-02-16T11:56:24Z",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 0,
+        "forks": 0,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": true,
+          "tool": "cargo audit",
+          "has_vulnerabilities": false,
+          "count": 0,
+          "vulnerabilities": []
+        }
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "community_projects",
+    "config_sdk_version": "0.10.0"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/erc6909-with-arbitrum-stylus",
+    "repo_name": "ARBuilder-Forks_erc6909-with-arbitrum-stylus",
+    "repo_type": "stylus",
+    "sdk_version": "0.10.0",
+    "verified_at": "2026-02-20T10:49:25.702144",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "0.10.0",
+        "meets_minimum": true,
+        "is_main_version": true,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0"
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "command": "cargo check --target wasm32-unknown-unknown --lib",
+        "exit_code": 0,
+        "stderr_tail": "",
+        "clippy_warnings": 6
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "host_fn_crash": true,
+        "last_commit": "2026-02-16T11:27:33Z",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 0,
+        "forks": 0,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": true,
+          "tool": "cargo audit",
+          "has_vulnerabilities": false,
+          "count": 0,
+          "vulnerabilities": []
+        }
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "community_projects",
+    "config_sdk_version": "0.10.0"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/fortune-generator",
+    "repo_name": "ARBuilder-Forks_fortune-generator",
+    "repo_type": "stylus",
+    "sdk_version": "0.10.0",
+    "verified_at": "2026-02-20T10:50:22.241426",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "0.10.0",
+        "meets_minimum": true,
+        "is_main_version": true,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0"
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "command": "cargo check --target wasm32-unknown-unknown --lib",
+        "exit_code": 0,
+        "stderr_tail": "",
+        "clippy_warnings": 4
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": false,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "last_commit": "2026-02-16T11:27:37Z",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 0,
+        "forks": 0,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": true,
+          "tool": "cargo audit",
+          "has_vulnerabilities": false,
+          "count": 0,
+          "vulnerabilities": []
+        }
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "community_projects",
+    "config_sdk_version": "0.10.0"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/scaffold-stylus",
+    "repo_name": "ARBuilder-Forks_scaffold-stylus",
+    "repo_type": "stylus",
+    "sdk_version": "0.9.0",
+    "verified_at": "2026-02-20T10:54:35.386667",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "0.9.0",
+        "meets_minimum": true,
+        "is_main_version": true,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0"
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "command": "cargo check --target wasm32-unknown-unknown --lib",
+        "exit_code": 0,
+        "stderr_tail": "",
+        "clippy_warnings": 0
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "Timed out after 180s",
+        "tests_timed_out": true,
+        "last_commit": "2026-02-16T14:01:13Z",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 0,
+        "forks": 0,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": true,
+          "tool": "cargo audit",
+          "has_vulnerabilities": false,
+          "count": 0,
+          "vulnerabilities": []
+        }
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "scaffold_projects",
+    "config_sdk_version": "0.9.0"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/cross-protocol-defi-tracker",
+    "repo_name": "ARBuilder-Forks_cross-protocol-defi-tracker",
+    "repo_type": "stylus",
+    "sdk_version": "0.9.0",
+    "verified_at": "2026-02-20T10:59:45.200808",
+    "overall_status": "failed",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "0.9.0",
+        "meets_minimum": true,
+        "is_main_version": true,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0"
+      },
+      {
+        "step": "compile",
+        "passed": false,
+        "skipped": false,
+        "error": "Compile timed out after 300s"
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": true,
+        "test_count": 1,
+        "test_output": "\nrunning 1 test\ntest test::test_your_contract ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+        "last_commit": "2026-02-16T14:01:07Z",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 0,
+        "forks": 0,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": true,
+          "tool": "cargo audit",
+          "has_vulnerabilities": false,
+          "count": 0,
+          "vulnerabilities": []
+        }
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "scaffold_projects",
+    "config_sdk_version": "0.9.0"
+  },
+  {
+    "repo_url": "https://github.com/ARBuilder-Forks/WalletNaming-scaffold-stylus",
+    "repo_name": "ARBuilder-Forks_WalletNaming-scaffold-stylus",
+    "repo_type": "stylus",
+    "sdk_version": "0.10.0",
+    "verified_at": "2026-02-20T11:01:26.672200",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "0.10.0",
+        "meets_minimum": true,
+        "is_main_version": true,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0"
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "command": "cargo check --target wasm32-unknown-unknown --lib",
+        "exit_code": 0,
+        "stderr_tail": "",
+        "clippy_warnings": 3
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": false,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "last_commit": "2026-02-16T12:09:46Z",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 0,
+        "forks": 0,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": true,
+          "tool": "cargo audit",
+          "has_vulnerabilities": false,
+          "count": 0,
+          "vulnerabilities": []
+        }
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "scaffold_projects",
+    "config_sdk_version": "0.10.0"
+  },
+  {
+    "repo_url": "https://github.com/OffchainLabs/arbitrum-sdk",
+    "repo_name": "OffchainLabs_arbitrum-sdk",
+    "repo_type": "sdk",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T11:05:05.185402",
+    "overall_status": "failed",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": false,
+        "skipped": false,
+        "error": "@arbitrum/sdk not found in package.json"
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "command": "yarn run build",
+        "exit_code": 0,
+        "stderr_tail": "",
+        "lint_run": true,
+        "lint_passed": true,
+        "lint_errors": 0,
+        "lint_warnings": 0
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": false,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "last_commit": "2026-02-19T18:51:57Z",
+        "archived": false,
+        "open_issues": 35,
+        "stars": 273,
+        "forks": 212,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": false,
+          "reason": "No package-lock.json and cannot generate"
+        }
+      }
+    ],
+    "config_category": "arbitrum_sdk",
+    "config_subcategory": "official_repos",
+    "config_sdk_version": "N/A"
+  },
+  {
+    "repo_url": "https://github.com/OffchainLabs/arbitrum-tutorials",
+    "repo_name": "OffchainLabs_arbitrum-tutorials",
+    "repo_type": "sdk",
+    "sdk_version": "4.0.1",
+    "verified_at": "2026-02-20T11:15:55.050615",
+    "overall_status": "failed",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "4.0.1",
+        "meets_minimum": true,
+        "minimum_required": "4.0.0"
+      },
+      {
+        "step": "compile",
+        "passed": false,
+        "skipped": false,
+        "error": "yarn install failed",
+        "stderr_tail": "warning package-lock.json found. Your project contains lock files generated by tools other than Yarn. It is advised not to mix package managers in order to avoid resolution inconsistencies caused by unsynchronized lock files. To clear this warning, remove package-lock.json.\nerror Error: read EHOSTUNREACH\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:216:20)\nerror https://registry.npmjs.org/@openzeppelin/upgrades-core/-/upgrades-core-1.33.1.tgz: read EHOSTUNREACH"
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": false,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "last_commit": "2026-01-29T09:50:03Z",
+        "archived": false,
+        "open_issues": 8,
+        "stars": 502,
+        "forks": 308,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": false,
+          "reason": "npm audit timed out"
+        }
+      }
+    ],
+    "config_category": "arbitrum_sdk",
+    "config_subcategory": "official_repos",
+    "config_sdk_version": "4.0.1"
+  },
+  {
+    "repo_url": "https://github.com/kevinb1003/arbitrum-api",
+    "repo_name": "kevinb1003_arbitrum-api",
+    "repo_type": "sdk",
+    "sdk_version": "4.0.4",
+    "verified_at": "2026-02-20T11:23:00.341136",
+    "overall_status": "failed",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "4.0.4",
+        "meets_minimum": true,
+        "minimum_required": "4.0.0"
+      },
+      {
+        "step": "compile",
+        "passed": false,
+        "skipped": false,
+        "error": "Build timed out"
+      },
+      {
+        "step": "tests_and_health",
+        "passed": false,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "\n> arbitrum-sdk-api@1.0.0 test\n> vitest run --passWithNoTests\n\n",
+        "last_commit": "2026-01-15T00:36:54Z",
+        "archived": false,
+        "open_issues": 5,
+        "stars": 18,
+        "forks": 0,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": false,
+          "reason": "No package-lock.json and cannot generate"
+        }
+      }
+    ],
+    "config_category": "arbitrum_sdk",
+    "config_subcategory": "community_examples",
+    "config_sdk_version": "4.0.4"
+  },
+  {
+    "repo_url": "https://github.com/gelatodigital/how-tos-18-arbitrum-orbit-bridging",
+    "repo_name": "gelatodigital_how-tos-18-arbitrum-orbit-bridging",
+    "repo_type": "sdk",
+    "sdk_version": "4.0.2",
+    "verified_at": "2026-02-20T11:23:35.213524",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "4.0.2",
+        "meets_minimum": true,
+        "minimum_required": "4.0.0"
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "command": "npm run build",
+        "exit_code": 0,
+        "stderr_tail": ""
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": false,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "last_commit": "2025-12-29T09:43:07Z",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 2,
+        "forks": 2,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": true,
+          "tool": "npm audit",
+          "has_vulnerabilities": true,
+          "count": 23,
+          "severity": {
+            "critical": 3,
+            "high": 6,
+            "moderate": 4,
+            "low": 10
+          }
+        }
+      }
+    ],
+    "config_category": "arbitrum_sdk",
+    "config_subcategory": "community_examples",
+    "config_sdk_version": "4.0.2"
+  },
+  {
+    "repo_url": "https://github.com/gelatodigital/clink-bridging-cross-messaging",
+    "repo_name": "gelatodigital_clink-bridging-cross-messaging",
+    "repo_type": "sdk",
+    "sdk_version": "4.0.2",
+    "verified_at": "2026-02-20T11:23:39.411619",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "4.0.2",
+        "meets_minimum": true,
+        "minimum_required": "4.0.0"
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "command": "npm run build",
+        "exit_code": 0,
+        "stderr_tail": ""
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": false,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "last_commit": "2025-03-04T19:04:31Z",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 0,
+        "forks": 0,
+        "health_score": "abandoned",
+        "dependency_audit": {
+          "audit_run": true,
+          "tool": "npm audit",
+          "has_vulnerabilities": true,
+          "count": 23,
+          "severity": {
+            "critical": 3,
+            "high": 6,
+            "moderate": 4,
+            "low": 10
+          }
+        }
+      }
+    ],
+    "config_category": "arbitrum_sdk",
+    "config_subcategory": "community_examples",
+    "config_sdk_version": "4.0.2"
+  },
+  {
+    "repo_url": "https://github.com/OffchainLabs/arbitrum-orbit-sdk",
+    "repo_name": "OffchainLabs_arbitrum-orbit-sdk",
+    "repo_type": "sdk",
+    "sdk_version": "4.0.4",
+    "verified_at": "2026-02-20T11:27:27.474587",
+    "overall_status": "failed",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "4.0.4",
+        "meets_minimum": true,
+        "minimum_required": "4.0.0"
+      },
+      {
+        "step": "compile",
+        "passed": false,
+        "skipped": false,
+        "error": "yarn install failed",
+        "stderr_tail": "s@8.17.1\" is incompatible with requested version \"ws@8.13.0\"\nwarning Resolution field \"nanoid@3.3.8\" is incompatible with requested version \"nanoid@^3.3.11\"\nwarning Resolution field \"ws@7.5.10\" is incompatible with requested version \"ws@7.4.6\"\nwarning Resolution field \"elliptic@6.6.1\" is incompatible with requested version \"elliptic@6.5.4\"\nerror vite@7.1.1: The engine \"node\" is incompatible with this module. Expected version \"^20.19.0 || >=22.12.0\". Got \"22.11.0\"\nerror Found incompatible module."
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": false,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "last_commit": "",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 0,
+        "forks": 0,
+        "health_score": "unknown",
+        "dependency_audit": {
+          "audit_run": true,
+          "tool": "npm audit",
+          "has_vulnerabilities": true,
+          "count": 35,
+          "severity": {
+            "critical": 0,
+            "high": 15,
+            "moderate": 3,
+            "low": 17
+          }
+        }
+      }
+    ],
+    "config_category": "orbit_sdk",
+    "config_subcategory": "sdk_repo",
+    "config_sdk_version": "4.0.4"
+  },
+  {
+    "repo_url": "https://github.com/wevm/wagmi",
+    "repo_name": "wevm_wagmi",
+    "repo_type": "typescript",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T11:30:22.875569",
+    "overall_status": "failed",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": true,
+        "note": "No SDK check for repo type: typescript"
+      },
+      {
+        "step": "compile",
+        "passed": false,
+        "skipped": false,
+        "error": "pnpm install failed",
+        "stderr_tail": ""
+      },
+      {
+        "step": "tests_and_health",
+        "passed": false,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "last_commit": "2026-02-19T20:26:03Z",
+        "archived": false,
+        "open_issues": 17,
+        "stars": 6661,
+        "forks": 1351,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": false,
+          "reason": "No package-lock.json and cannot generate"
+        }
+      }
+    ],
+    "config_category": "m3_frontend",
+    "config_subcategory": "frontend",
+    "config_sdk_version": ""
+  },
+  {
+    "repo_url": "https://github.com/wevm/viem",
+    "repo_name": "wevm_viem",
+    "repo_type": "typescript",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T11:34:59.899282",
+    "overall_status": "failed",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": true,
+        "note": "No SDK check for repo type: typescript"
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "command": "pnpm run build",
+        "exit_code": 0,
+        "stderr_tail": ""
+      },
+      {
+        "step": "tests_and_health",
+        "passed": false,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "\n> test\n> vitest -c ./test/vitest.config.ts --passWithNoTests\n\n",
+        "last_commit": "2026-02-19T20:32:49Z",
+        "archived": false,
+        "open_issues": 27,
+        "stars": 3393,
+        "forks": 1343,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": false,
+          "reason": "No package-lock.json and cannot generate"
+        }
+      }
+    ],
+    "config_category": "m3_frontend",
+    "config_subcategory": "frontend",
+    "config_sdk_version": ""
+  },
+  {
+    "repo_url": "https://github.com/rainbow-me/rainbowkit",
+    "repo_name": "rainbow-me_rainbowkit",
+    "repo_type": "typescript",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T11:38:31.476122",
+    "overall_status": "failed",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": true,
+        "note": "No SDK check for repo type: typescript"
+      },
+      {
+        "step": "compile",
+        "passed": false,
+        "skipped": false,
+        "command": "pnpm run build",
+        "exit_code": 1,
+        "stderr_tail": ""
+      },
+      {
+        "step": "tests_and_health",
+        "passed": false,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "\n> rainbowkit@0.0.0 test\n> pnpm test:unit --passWithNoTests\n\n\n> rainbowkit@0.0.0 test:unit /Users/sohweimeng/Documents/projects/ArbBuilder/data/raw/repos/rainbow-me_rainbowkit\n> vitest \"--passWithNoTests\"\n\n\u2009ELIFECYCLE\u2009 Command failed.\n\u2009WARN\u2009  Local package.json exists, but node_modules missing, did you mean to install?\n",
+        "last_commit": "2026-02-15T07:54:02Z",
+        "archived": false,
+        "open_issues": 61,
+        "stars": 2769,
+        "forks": 787,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": false,
+          "reason": "No package-lock.json and cannot generate"
+        }
+      }
+    ],
+    "config_category": "m3_frontend",
+    "config_subcategory": "frontend",
+    "config_sdk_version": ""
+  },
+  {
+    "repo_url": "https://github.com/saadeghi/daisyui",
+    "repo_name": "saadeghi_daisyui",
+    "repo_type": "typescript",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T11:41:24.043718",
+    "overall_status": "failed",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": true,
+        "note": "No SDK check for repo type: typescript"
+      },
+      {
+        "step": "compile",
+        "passed": false,
+        "skipped": false,
+        "error": "npm install failed",
+        "stderr_tail": "npm error code EUNSUPPORTEDPROTOCOL\nnpm error Unsupported URL Type \"workspace:\": workspace:*\nnpm error A complete log of this run can be found in: /Users/sohweimeng/.npm/_logs/2026-02-20T11_38_33_882Z-debug-0.log"
+      },
+      {
+        "step": "tests_and_health",
+        "passed": false,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "  path: \"/Users/sohweimeng/Documents/projects/ArbBuilder/data/raw/repos/saadeghi_daisyui/packages/daisyui/colors\",\n syscall: \"stat\",\n   errno: -2,\n    code: \"ENOENT\"\n\n      at directoryExists (/Users/sohweimeng/Documents/projects/ArbBuilder/data/raw/repos/saadeghi_daisyui/packages/daisyui/functions/filesExist.test.js:15:12)\n      at <anonymous> (/Users/sohweimeng/Documents/projects/ArbBuilder/data/raw/repos/saadeghi_daisyui/packages/daisyui/functions/filesExist.test.js:60:8)\n\nFound 67 .md files\n",
+        "last_commit": "2026-02-18T10:32:04Z",
+        "archived": false,
+        "open_issues": 53,
+        "stars": 40304,
+        "forks": 1611,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": false,
+          "reason": "No package-lock.json and cannot generate"
+        }
+      }
+    ],
+    "config_category": "m3_frontend",
+    "config_subcategory": "frontend",
+    "config_sdk_version": ""
+  },
+  {
+    "repo_url": "https://github.com/scaffold-eth/scaffold-eth-2",
+    "repo_name": "scaffold-eth_scaffold-eth-2",
+    "repo_type": "typescript",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T11:47:04.785721",
+    "overall_status": "failed",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": true,
+        "note": "No SDK check for repo type: typescript"
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": true,
+        "note": "No build script, install succeeded"
+      },
+      {
+        "step": "tests_and_health",
+        "passed": false,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "\n> se-2@0.0.1 test\n> yarn hardhat:test --passWithNoTests\n\n\n",
+        "last_commit": "2026-02-12T07:22:13Z",
+        "archived": false,
+        "open_issues": 12,
+        "stars": 1980,
+        "forks": 1331,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": false,
+          "reason": "npm audit timed out"
+        }
+      }
+    ],
+    "config_category": "m3_frontend",
+    "config_subcategory": "frontend",
+    "config_sdk_version": ""
+  },
+  {
+    "repo_url": "https://github.com/graphprotocol/graph-tooling",
+    "repo_name": "graphprotocol_graph-tooling",
+    "repo_type": "rust",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T11:47:06.946944",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": true,
+        "note": "No SDK check for repo type: rust"
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": true,
+        "note": "No compile check for: rust"
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": false,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "last_commit": "2026-02-19T01:23:00Z",
+        "archived": false,
+        "open_issues": 177,
+        "stars": 420,
+        "forks": 233,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": false,
+          "reason": "Unknown repo type: rust"
+        }
+      }
+    ],
+    "config_category": "m3_indexer",
+    "config_subcategory": "indexer",
+    "config_sdk_version": ""
+  },
+  {
+    "repo_url": "https://github.com/messari/subgraphs",
+    "repo_name": "messari_subgraphs",
+    "repo_type": "typescript",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T11:47:19.668696",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": true,
+        "note": "No SDK check for repo type: typescript"
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": true,
+        "note": "No build script, install succeeded"
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": false,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "last_commit": "2025-03-25T19:24:27Z",
+        "archived": false,
+        "open_issues": 121,
+        "stars": 551,
+        "forks": 249,
+        "health_score": "abandoned",
+        "dependency_audit": {
+          "audit_run": true,
+          "tool": "npm audit",
+          "has_vulnerabilities": true,
+          "count": 24,
+          "severity": {
+            "critical": 2,
+            "high": 11,
+            "moderate": 10,
+            "low": 1
+          }
+        }
+      }
+    ],
+    "config_category": "m3_indexer",
+    "config_subcategory": "indexer",
+    "config_sdk_version": ""
+  },
+  {
+    "repo_url": "https://github.com/OffchainLabs/arbitrum-subgraphs",
+    "repo_name": "OffchainLabs_arbitrum-subgraphs",
+    "repo_type": "typescript",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T11:47:38.547602",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": true,
+        "note": "No SDK check for repo type: typescript"
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": true,
+        "note": "No build script, install succeeded"
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": false,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "last_commit": "2025-06-04T15:28:13Z",
+        "archived": false,
+        "open_issues": 1,
+        "stars": 21,
+        "forks": 17,
+        "health_score": "abandoned",
+        "dependency_audit": {
+          "audit_run": true,
+          "tool": "npm audit",
+          "has_vulnerabilities": false,
+          "count": 0,
+          "severity": {
+            "critical": 0,
+            "high": 0,
+            "moderate": 0,
+            "low": 0
+          }
+        }
+      }
+    ],
+    "config_category": "m3_indexer",
+    "config_subcategory": "indexer",
+    "config_sdk_version": ""
+  },
+  {
+    "repo_url": "https://github.com/smartcontractkit/smart-contract-examples",
+    "repo_name": "smartcontractkit_smart-contract-examples",
+    "repo_type": "sdk",
+    "sdk_version": "v3.1.2",
+    "verified_at": "2026-02-20T11:52:40.711034",
+    "overall_status": "failed",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "v3.1.2",
+        "meets_minimum": true,
+        "minimum_required": "4.0.0"
+      },
+      {
+        "step": "compile",
+        "passed": false,
+        "skipped": false,
+        "error": "Build timed out"
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": false,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "last_commit": "2025-12-12T02:30:26Z",
+        "archived": false,
+        "open_issues": 17,
+        "stars": 243,
+        "forks": 111,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": false,
+          "reason": "No package.json found"
+        }
+      }
+    ],
+    "config_category": "m3_oracle",
+    "config_subcategory": "oracle",
+    "config_sdk_version": ""
+  },
+  {
+    "repo_url": "https://github.com/smartcontractkit/chainlink",
+    "repo_name": "smartcontractkit_chainlink",
+    "repo_type": "typescript",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T11:53:14.635098",
+    "overall_status": "failed",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": true,
+        "note": "No SDK check for repo type: typescript"
+      },
+      {
+        "step": "compile",
+        "passed": false,
+        "skipped": false,
+        "error": "pnpm install failed",
+        "stderr_tail": ""
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": false,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "last_commit": "2026-02-20T07:11:35Z",
+        "archived": false,
+        "open_issues": 280,
+        "stars": 8166,
+        "forks": 1950,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": true,
+          "tool": "npm audit",
+          "has_vulnerabilities": true,
+          "count": 3,
+          "severity": {
+            "critical": 0,
+            "high": 0,
+            "moderate": 0,
+            "low": 3
+          }
+        }
+      }
+    ],
+    "config_category": "m3_oracle",
+    "config_subcategory": "oracle",
+    "config_sdk_version": ""
+  },
+  {
+    "repo_url": "https://github.com/nestjs/nest",
+    "repo_name": "nestjs_nest",
+    "repo_type": "typescript",
+    "sdk_version": null,
+    "verified_at": "2026-02-20T11:55:09.897784",
+    "overall_status": "failed",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": true,
+        "note": "No SDK check for repo type: typescript"
+      },
+      {
+        "step": "compile",
+        "passed": false,
+        "skipped": false,
+        "error": "npm install failed",
+        "stderr_tail": "15d478f117fd2267eda0f418c2e27ae6584b0347d1c42e246c2762e9d745'\nnpm error File exists: /Users/sohweimeng/.npm/_cacache/content-v2/sha512/27/c4/b4704756b906ea0fdfffb6567188cb8c366c41f0f944c2f630bb1b13991d46e515d478f117fd2267eda0f418c2e27ae6584b0347d1c42e246c2762e9d745\nnpm error Remove the existing file and try again, or run npm\nnpm error with --force to overwrite files recklessly.\nnpm error A complete log of this run can be found in: /Users/sohweimeng/.npm/_logs/2026-02-20T11_53_16_407Z-debug-0.log"
+      },
+      {
+        "step": "tests_and_health",
+        "passed": false,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "\n> @nestjs/core@11.1.10 test\n> mocha packages/**/*.spec.ts --passWithNoTests\n\n",
+        "last_commit": "2026-02-20T10:51:54Z",
+        "archived": false,
+        "open_issues": 44,
+        "stars": 74687,
+        "forks": 8219,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": false,
+          "reason": "npm audit timed out"
+        }
+      }
+    ],
+    "config_category": "m3_backend",
+    "config_subcategory": "backend",
+    "config_sdk_version": ""
+  },
+  {
+    "repo_url": "https://github.com/OffchainLabs/arbitrum-token-bridge",
+    "repo_name": "OffchainLabs_arbitrum-token-bridge",
+    "repo_type": "sdk",
+    "sdk_version": "4.0.3",
+    "verified_at": "2026-02-20T12:01:07.269341",
+    "overall_status": "failed",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "4.0.3",
+        "meets_minimum": true,
+        "minimum_required": "4.0.0"
+      },
+      {
+        "step": "compile",
+        "passed": false,
+        "skipped": false,
+        "error": "Build timed out"
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": false,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "last_commit": "2026-02-16T13:47:53Z",
+        "archived": false,
+        "open_issues": 44,
+        "stars": 181,
+        "forks": 218,
+        "health_score": "active",
+        "dependency_audit": {
+          "audit_run": false,
+          "reason": "No package-lock.json and cannot generate"
+        }
+      }
+    ],
+    "config_category": "m3_backend",
+    "config_subcategory": "backend",
+    "config_sdk_version": ""
+  }
+]

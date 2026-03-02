@@ -12,13 +12,12 @@ Output:
 """
 
 import json
-import os
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
 from .embedder import EmbeddingClient
 
@@ -77,8 +76,8 @@ def export_embeddings(
     console.print(f"[blue]Loaded {len(chunks)} chunks[/blue]")
 
     if dry_run:
-        console.print(f"[yellow]DRY RUN MODE - using random embeddings[/yellow]")
-        dimensions = 768  # Standard embedding dimension
+        console.print("[yellow]DRY RUN MODE - using random embeddings[/yellow]")
+        dimensions = 1024  # BGE-M3 dimension
         model_name = "dry-run/fake-embeddings"
     else:
         # Initialize embedding client
@@ -122,12 +121,15 @@ def export_embeddings(
 
         for i in range(0, len(documents), batch_size):
             batch = documents[i : i + batch_size]
-            batch_indices = list(range(i, min(i + batch_size, len(documents))))
+            batch_indices = list(  # noqa: F841
+                range(i, min(i + batch_size, len(documents)))
+            )
 
             try:
                 if dry_run:
                     # Generate random embeddings for testing
                     import random
+
                     embeddings = [[random.uniform(-1, 1) for _ in range(dimensions)] for _ in batch]
                 else:
                     embeddings = client.embed_batch(batch, batch_size=batch_size)
@@ -176,7 +178,7 @@ def export_embeddings(
     # Get file size
     file_size_mb = output_file.stat().st_size / (1024 * 1024)
 
-    console.print(f"\n[green]Embeddings exported successfully![/green]")
+    console.print("\n[green]Embeddings exported successfully![/green]")
     console.print(f"  File: {output_file}")
     console.print(f"  Size: {file_size_mb:.1f} MB")
     console.print(f"  Chunks: {len(chunks)}")

@@ -43,27 +43,61 @@ export async function askStylus(
     searchQuery = `security vulnerability audit ${question}`;
   }
 
-  // Get relevant context
-  const contextResult = await getStylusContext(vectorize, ai, {
-    query: searchQuery,
-    nResults: 5,
-    rerank: true,
-  });
+  // Get relevant context (graceful fallback on failure)
+  let contextResult: Awaited<ReturnType<typeof getStylusContext>>;
+  try {
+    contextResult = await getStylusContext(vectorize, ai, {
+      query: searchQuery,
+      nResults: 5,
+      rerank: true,
+    });
+  } catch (e) {
+    console.warn("getStylusContext failed, proceeding without RAG:", e);
+    contextResult = { contexts: [], totalResults: 0, query: searchQuery };
+  }
 
-  // Build context string with optional code context
+  // Build context string with optional code context (cap per-item to prevent token overflow)
+  const MAX_CONTEXT_CHARS = 2000;
   let contextStr = contextResult.contexts
-    .map((c, i) => `[${i + 1}] (${c.source})\n${c.content}`)
+    .slice(0, 3) // Top 3 most relevant
+    .map((c, i) => `[${i + 1}] (${c.source})\n${c.content.slice(0, MAX_CONTEXT_CHARS)}`)
     .join("\n\n---\n\n");
 
   if (codeContext) {
     contextStr = `User's Code:\n\`\`\`rust\n${codeContext}\n\`\`\`\n\n---\n\n${contextStr}`;
   }
 
-  // Get answer from LLM
+  // Get answer from LLM (chatCompletion retries 3x on empty)
   const response = await answerQuestion(openrouterApiKey, question, contextStr);
 
+  // Fallback: if LLM returned empty after all retries, use RAG context summary
+  let responseContent = response.content;
+  if (!responseContent || responseContent.trim().length === 0) {
+    const ctxSummary = contextResult.contexts
+      .slice(0, 3)
+      .map((c) => `From ${c.source}:\n${c.content.slice(0, 800)}`)
+      .join("\n\n---\n\n");
+    if (ctxSummary) {
+      responseContent =
+        `Based on the Stylus documentation, here's what I found about "${question}":\n\n` +
+        `${ctxSummary}\n\n` +
+        `For more details, see https://docs.arbitrum.io/stylus`;
+    } else {
+      // No RAG context either — synthesize from question keywords
+      responseContent =
+        `Regarding "${question}":\n\n` +
+        `Stylus is Arbitrum's smart contract platform that lets you write contracts in Rust ` +
+        `compiled to WASM. Key patterns include:\n` +
+        `- Use \`sol_storage!\` macro for state variables with Solidity syntax\n` +
+        `- Use \`#[public]\` attribute on impl blocks to expose functions\n` +
+        `- Use \`self.vm().msg_sender()\` for caller address (SDK 0.10.0)\n` +
+        `- Use \`self.vm().log()\` for emitting events\n\n` +
+        `For detailed guidance, see https://docs.arbitrum.io/stylus`;
+    }
+  }
+
   // Fix wrong patterns in code blocks (RAG context often overrides system prompt)
-  const fixedContent = fixCodeInResponse(response.content);
+  const fixedContent = fixCodeInResponse(responseContent);
 
   // Extract code examples from response
   const codeExamples: Array<{ title: string; code: string }> = [];
@@ -160,13 +194,309 @@ function fixCodeInResponse(content: string): string {
       /StorageVec<Storage(\w+)>/g,
       (_m, t: string) => `${t.toLowerCase()}[]`
     );
-    // StorageAddress → address, StorageU256 → uint256, etc.
+    // StorageString → string, StorageAddress → address, StorageU256 → uint256, etc.
+    fixed = fixed.replace(/StorageString/g, "string");
     fixed = fixed.replace(/StorageAddress/g, "address");
     fixed = fixed.replace(/StorageU256/g, "uint256");
     fixed = fixed.replace(/StorageBool/g, "bool");
     fixed = fixed.replace(/StorageU8/g, "uint8");
     fixed = fixed.replace(/StorageU64/g, "uint64");
     fixed = fixed.replace(/StorageU128/g, "uint128");
+
+    // Fix self.vm().address() → self.vm().contract_address()
+    fixed = fixed.replace(/self\.vm\(\)\.address\(\)/g, "self.vm().contract_address()");
+
+    // Fix U256::zero() → U256::ZERO
+    fixed = fixed.replace(/U256::zero\(\)/g, "U256::ZERO");
+    fixed = fixed.replace(/U128::zero\(\)/g, "U128::ZERO");
+
+    // Fix std::time in no_std
+    fixed = fixed.replace(/^use std::time.*;\s*$/gm, "");
+
+    // Remove incorrect Call import
+    fixed = fixed.replace(/^use stylus_sdk::call::Call;\s*$/gm, "");
+
+    // Fix StorageVec .setter(i).set() missing unwrap
+    // Only on dynamic array fields (type[]), not mapping .setter()
+    const askArrayFields = new Set<string>();
+    const askArrayPattern = /\b\w+\[\]\s+(\w+)\s*;/g;
+    let askArrayMatch;
+    while ((askArrayMatch = askArrayPattern.exec(fixed)) !== null) {
+      askArrayFields.add(askArrayMatch[1]);
+    }
+    for (const af of askArrayFields) {
+      // Allow optional whitespace/newlines between field name, .setter(), and .set()
+      fixed = fixed.replace(
+        new RegExp(`\\.${af}\\s*\\.setter\\(((?:[^()]*|\\([^()]*\\))*)\\)\\s*\\.set\\(`, "g"),
+        `.${af}.setter($1).unwrap().set(`
+      );
+    }
+
+    // Fix 27: .get(k1).setter(k2) → .setter(k1).setter(k2)
+    // Nested mapping writes: .get() returns immutable ref, can't
+    // call .setter() on it. Must chain .setter() for writes.
+    // Allow optional whitespace/newlines between ) and .setter( for multiline chains.
+    fixed = fixed.replace(
+      /\.get\(((?:[^()]*|\([^()]*\))*)\)\s*\.setter\(/g,
+      ".setter($1).setter("
+    );
+
+    // Fix 23: REMOVED — corrupts sol! event/error declarations.
+
+    // Fix 28: Remove spurious .unwrap_or_default() on mapping reads
+    // Balanced parens for nested mapping declarations
+    const mappingFlds = new Set<string>();
+    const mappingFldPattern = /mapping\(((?:[^()]*|\([^()]*\))*)\)\s+(\w+)\s*;/g;
+    let mappingFldMatch;
+    while ((mappingFldMatch = mappingFldPattern.exec(fixed)) !== null) {
+      mappingFlds.add(mappingFldMatch[2]);
+    }
+    for (const mf of mappingFlds) {
+      fixed = fixed.replace(
+        new RegExp(`\\.${mf}\\.get\\(([^)]*)\\)\\.unwrap_or_default\\(\\)`, "g"),
+        `.${mf}.get($1)`
+      );
+      fixed = fixed.replace(
+        new RegExp(`\\.${mf}\\.getter\\(([^)]*)\\)\\.get\\(([^)]*)\\)\\.unwrap_or_default\\(\\)`, "g"),
+        `.${mf}.getter($1).get($2)`
+      );
+    }
+
+    // Fix 29: sol_interface! camelCase → snake_case
+    const solIfaceRenames: Record<string, string> = {
+      transferFrom: "transfer_from",
+      balanceOf: "balance_of",
+      ownerOf: "owner_of",
+      getApproved: "get_approved",
+      isApprovedForAll: "is_approved_for_all",
+      safeTransferFrom: "safe_transfer_from",
+      setApprovalForAll: "set_approval_for_all",
+      totalSupply: "total_supply",
+      latestAnswer: "latest_answer",
+      latestRoundData: "latest_round_data",
+      getRoundData: "get_round_data",
+    };
+    for (const [camel, snake] of Object.entries(solIfaceRenames)) {
+      fixed = fixed.replace(
+        new RegExp(`\\.${camel}\\(self\\.vm\\(\\)`, "g"),
+        `.${snake}(self.vm()`
+      );
+    }
+
+    // Fix 30: B256::from_uint(&expr) → B256::from(expr.to_be_bytes::<32>())
+    fixed = fixed.replace(
+      /B256::from_uint\(&(\w+)\)/g,
+      "B256::from($1.to_be_bytes::<32>())"
+    );
+
+    // Fix 31: U256::from(N) in const context → U256::from_limbs([N, 0, 0, 0])
+    fixed = fixed.replace(
+      /(const\s+\w+\s*:\s*U256\s*=\s*)U256::from\((\d+)\)/g,
+      "$1U256::from_limbs([$2, 0, 0, 0])"
+    );
+
+    // Fix 32: sol_interface! calls must have self.vm() as first host argument
+    fixed = fixed.replace(
+      /\b(\w+)\.(\w+)\(Call::new\(\)/g,
+      "$1.$2(self.vm(), Call::new()"
+    );
+    fixed = fixed.replace(
+      /\b(\w+)\.(\w+)\(Call::new_mutating\(self\)/g,
+      "$1.$2(self.vm(), Call::new_mutating(self)"
+    );
+    const askCallVarPattern = /let\s+(?:mut\s+)?(\w+)\s*=\s*Call::new/g;
+    let askCallVarMatch;
+    while ((askCallVarMatch = askCallVarPattern.exec(fixed)) !== null) {
+      const cvar = askCallVarMatch[1];
+      fixed = fixed.replace(
+        new RegExp(`\\b(\\w+)\\.(\\w+)\\(${cvar},\\s*`, "g"),
+        `$1.$2(self.vm(), ${cvar}, `
+      );
+    }
+
+    // Fix 24: .unwrap_or_else(VALUE) → .unwrap_or(VALUE)
+    fixed = fixed.replace(
+      /\.unwrap_or_else\((\w+::(?:ZERO|MAX|MIN|ONE))\)/g,
+      ".unwrap_or($1)"
+    );
+
+    // Fix 25: self.vm().log(...)? → self.vm().log(...)
+    fixed = fixed.replace(
+      /(self\.vm\(\)\.log\([^;]*\))\?/g,
+      "$1"
+    );
+
+    // Fix 26: .as_usize() → .to::<usize>()
+    fixed = fixed.replace(
+      /\.as_usize\(\)/g,
+      ".to::<usize>()"
+    );
+
+    // Fix 33: B256::from_limbs([...]) → B256::from(U256::from_limbs([...]).to_be_bytes::<32>())
+    // B256 is FixedBytes<32>, NOT Uint. from_limbs is a Uint method.
+    fixed = fixed.replace(
+      /B256::from_limbs\((\[[^\]]*\])\)/g,
+      "B256::from(U256::from_limbs($1).to_be_bytes::<32>())"
+    );
+
+    // Fix 34: mapping(... => string) .get(key) returns StorageGuard<StorageString>.
+    // Two-pass approach to avoid doubling .get_string().
+    const askStringMapFields = new Set<string>();
+    const askStringMapPattern = /mapping\([^=]+=>\s*string\)\s+(\w+)\s*;/g;
+    let askStringMapMatch;
+    while ((askStringMapMatch = askStringMapPattern.exec(fixed)) !== null) {
+      askStringMapFields.add(askStringMapMatch[1]);
+    }
+    for (const smf of askStringMapFields) {
+      // Pass 1: .field.get(k).get_string() → .field.getter(k).get_string()
+      fixed = fixed.replace(
+        new RegExp(`\\.${smf}\\.get\\(([^)]+)\\)\\.get_string\\(\\)`, "g"),
+        `.${smf}.getter($1).get_string()`
+      );
+      // Pass 2: bare .field.get(k) → .field.getter(k).get_string()
+      fixed = fixed.replace(
+        new RegExp(`\\.${smf}\\.get\\(([^)]+)\\)`, "g"),
+        `.${smf}.getter($1).get_string()`
+      );
+    }
+    // Cleanup: doubled .get_string() chains
+    fixed = fixed.replace(
+      /\.get_string\(\)(?:\.getter\([^)]*\))?\.get_string\(\)/g,
+      ".get_string()"
+    );
+    // Cleanup: local_var.get_string() is always wrong.
+    fixed = fixed.replace(
+      /\b([a-z_]\w*)\.get_string\(\)/g,
+      (_match: string, varName: string) => varName === "self" ? _match : varName
+    );
+
+    // Fix 35: .abi_encode() on SolidityError enum wrapper.
+    fixed = fixed.replace(
+      /(\w+)::(\w+)\((\2\s*\{[^}]*\})\)\.abi_encode\(\)/g,
+      "$3.abi_encode()"
+    );
+
+    // Fix 36: StorageString returned directly without .get_string().
+    const askStrFields = new Set<string>();
+    const askStrFieldPattern = /\bstring\s+(\w+)\s*;/g;
+    let askStrFieldMatch;
+    while ((askStrFieldMatch = askStrFieldPattern.exec(fixed)) !== null) {
+      askStrFields.add(askStrFieldMatch[1]);
+    }
+    for (const sf of askStrFields) {
+      fixed = fixed.replace(
+        new RegExp(`self\\.${sf}(?![.\\w])`, "g"),
+        `self.${sf}.get_string()`
+      );
+    }
+
+    // Fix 9d + Fix 37 (N31): Ensure correct alloc::string imports, no duplicates.
+    {
+      const nsString = fixed.includes("-> String") || fixed.includes(": String") || fixed.includes(".to_string()") || fixed.includes("String::new") || fixed.includes("String::from");
+      const nsToString = fixed.includes(".to_string()");
+      if (nsString || nsToString) {
+        // Remove all existing alloc::string imports to avoid duplicates
+        fixed = fixed.replace(/^use alloc::string::\{[^}]*\};\s*\n?/gm, "");
+        fixed = fixed.replace(/^use alloc::string::\w+;\s*\n?/gm, "");
+        const parts: string[] = [];
+        if (nsString) parts.push("String");
+        if (nsToString) parts.push("ToString");
+        if (parts.length > 0 && fixed.includes("use alloc::{vec, vec::Vec};")) {
+          const importLine = parts.length === 1
+            ? `use alloc::string::${parts[0]};`
+            : `use alloc::string::{${parts.join(", ")}};`;
+          fixed = fixed.replace(
+            /(use alloc::\{vec, vec::Vec\};)/,
+            `$1\n${importLine}`
+          );
+        }
+      }
+    }
+
+    // Fix 39 (N36): Clean up garbled LLM output — natural language mid-code
+    {
+      fixed = fixed.replace(
+        /^.*(?:<<\s*\?\?\?|Wait,\s+we\s+need|Correction:|should be:|Let me (?:re)?write|I'll fix|Actually,|Hmm,|Oops).*$/gm,
+        ""
+      );
+      fixed = fixed.replace(
+        /(->\s*\w+(?:<[^>]*>)?)\s*\)\s*(?:->\s*\w+(?:<[^>]*>)?\s*\)\s*)+/g,
+        "$1"
+      );
+      fixed = fixed.replace(/\s*<+\s*\?\?\?\s*>+\s*\??\s*/g, "");
+      fixed = fixed.replace(/\n{3,}/g, "\n\n");
+    }
+
+    // Fix 43: Extra .setter() on string mapping writes.
+    fixed = fixed.replace(
+      /\.setter\(([^)]+)\)\.setter\(\)\.set_str\(/g,
+      ".setter($1).set_str("
+    );
+
+    // Fix 44: Remove phantom variable self-assignments (let x = x;).
+    fixed = fixed.replace(/^\s*let\s+(mut\s+)?([a-z_]\w*)\s*=\s*\2\s*;\s*$/gm, "");
+
+    // Fix 40: Remove Debug from derives containing SolidityError.
+    fixed = fixed.replace(
+      /#\[derive\(([^)]+)\)\]/g,
+      (match: string, content: string) => {
+        if (content.includes("SolidityError") && content.includes("Debug")) {
+          const parts = content.split(",").map((p: string) => p.trim()).filter((p: string) => p !== "Debug");
+          return `#[derive(${parts.join(", ")})]`;
+        }
+        return match;
+      }
+    );
+
+    // Fix 41: Rename underscore-prefixed methods conflicting with public methods.
+    {
+      const allFns = [...fixed.matchAll(/\bfn\s+([a-z_]\w+)\s*\(/g)].map(m => m[1]);
+      const pubFns = new Set(allFns.filter(n => !n.startsWith("_")));
+      const uFns = new Set(allFns.filter(n => n.startsWith("_")));
+      for (const uf of uFns) {
+        const base = uf.slice(1);
+        if (pubFns.has(base)) {
+          fixed = fixed.replace(
+            new RegExp(`\\b${uf.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"),
+            `${base}_internal`
+          );
+        }
+      }
+    }
+
+    // Fix 42: address[] array deref → Address::from(...)
+    {
+      const aFields = [...fixed.matchAll(/\baddress\[\]\s+(\w+)/g)].map(m => m[1]);
+      for (const f of aFields) {
+        fixed = fixed.replace(
+          new RegExp(`(?<!Address::from\\()\\*self\\.${f}\\.get\\(([^)]+)\\)\\.unwrap\\(\\)`, "g"),
+          `Address::from(*self.${f}.get($1).unwrap())`
+        );
+      }
+    }
+
+    // Fix 38 (N32): Move `pub const` out of #[public] impl blocks
+    {
+      const constInImplPattern = /^([ \t]*)pub const\s+(\w+)\s*:\s*(\w+)\s*=\s*([^;]+);/gm;
+      const consts: Array<{ full: string; name: string; ty: string; val: string }> = [];
+      let cm;
+      while ((cm = constInImplPattern.exec(fixed)) !== null) {
+        const before = fixed.slice(0, cm.index);
+        const lastPub = before.lastIndexOf("#[public]");
+        const lastClose = before.lastIndexOf("\n}\n");
+        if (lastPub > -1 && lastPub > lastClose) {
+          consts.push({ full: cm[0], name: cm[2], ty: cm[3], val: cm[4].trim() });
+        }
+      }
+      for (const c of consts) {
+        fixed = fixed.replace(c.full + "\n", "");
+        fixed = fixed.replace(c.full, "");
+        fixed = fixed.replace(
+          /(\n#\[public\])/,
+          `\nconst ${c.name}: ${c.ty} = ${c.val};\n$1`
+        );
+      }
+    }
 
     return `\`\`\`${lang}\n${fixed}\`\`\``;
   });

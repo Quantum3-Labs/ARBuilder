@@ -8,20 +8,20 @@ Endpoints:
 
 import asyncio
 import hashlib
-import json
 import os
 import re
 import subprocess
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from flask import Flask, request, jsonify
+
 import httpx
+from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
 # Environment variables (passed from Worker)
-MIGRATE_URL = os.environ.get("MIGRATE_URL", "https://arbbuilder.whymelabs.com")
+MIGRATE_URL = os.environ.get("MIGRATE_URL", "https://arbuilder.app")
 AUTH_SECRET = os.environ.get("AUTH_SECRET", "")
 
 # Minimum supported stylus-sdk version
@@ -48,8 +48,9 @@ def extract_stylus_version(cargo_content: str) -> str | None:
 
 def compare_versions(v1: str, v2: str) -> int:
     """Compare two semantic versions. Returns -1 if v1 < v2, 0 if equal, 1 if v1 > v2."""
+
     def parse(v: str) -> list[int]:
-        cleaned = re.sub(r'^[\^~>=<]+', '', v)
+        cleaned = re.sub(r"^[\^~>=<]+", "", v)
         parts = cleaned.split(".")
         return [int(x) for x in parts[:3] if x.isdigit()]
 
@@ -81,7 +82,7 @@ class SourceProcessor:
     async def scrape_documentation(self, url: str) -> tuple[str, dict]:
         """Scrape a documentation URL."""
         try:
-            from crawl4ai import AsyncWebCrawler, CrawlerRunConfig, CacheMode
+            from crawl4ai import AsyncWebCrawler, CacheMode, CrawlerRunConfig
 
             config = CrawlerRunConfig(
                 cache_mode=CacheMode.BYPASS,
@@ -165,12 +166,14 @@ class SourceProcessor:
                     try:
                         content = filepath.read_text(encoding="utf-8")
                         if content.strip():
-                            files.append({
-                                "path": str(rel_path),
-                                "extension": ext,
-                                "content": content,
-                                "lines": len(content.splitlines()),
-                            })
+                            files.append(
+                                {
+                                    "path": str(rel_path),
+                                    "extension": ext,
+                                    "content": content,
+                                    "lines": len(content.splitlines()),
+                                }
+                            )
                     except Exception:
                         pass
 
@@ -182,11 +185,16 @@ class SourceProcessor:
             return files, metadata
 
     def chunk_content(
-        self, url: str, content: str | list[dict], source_type: str,
-        category: str, subcategory: str, metadata: dict
+        self,
+        url: str,
+        content: str | list[dict],
+        source_type: str,
+        category: str,
+        subcategory: str,
+        metadata: dict,
     ) -> list[dict]:
         """Chunk content for indexing."""
-        from src.preprocessing.chunker import DocumentChunker, CodeChunker
+        from src.preprocessing.chunker import CodeChunker, DocumentChunker
 
         chunks = []
 
@@ -201,13 +209,15 @@ class SourceProcessor:
 
             for chunk in doc_chunks:
                 chunk_dict = chunk.to_dict()
-                chunk_dict.update({
-                    "source": "documentation",
-                    "url": url,
-                    "title": metadata.get("title", ""),
-                    "category": category,
-                    "subcategory": subcategory,
-                })
+                chunk_dict.update(
+                    {
+                        "source": "documentation",
+                        "url": url,
+                        "title": metadata.get("title", ""),
+                        "category": category,
+                        "subcategory": subcategory,
+                    }
+                )
 
                 # Generate deterministic ID
                 hash_input = f"{url}{chunk_dict['content'][:500]}"
@@ -232,15 +242,17 @@ class SourceProcessor:
 
                 for chunk in file_chunks:
                     chunk_dict = chunk.to_dict()
-                    chunk_dict.update({
-                        "source": "github",
-                        "repo_name": repo_name,
-                        "repo_url": url,
-                        "url": url,
-                        "file_path": file_data["path"],
-                        "category": category,
-                        "subcategory": subcategory,
-                    })
+                    chunk_dict.update(
+                        {
+                            "source": "github",
+                            "repo_name": repo_name,
+                            "repo_url": url,
+                            "url": url,
+                            "file_path": file_data["path"],
+                            "category": category,
+                            "subcategory": subcategory,
+                        }
+                    )
 
                     hash_input = f"{url}/{file_data['path']}{chunk_dict['content'][:500]}"
                     content_hash = hashlib.sha256(hash_input.encode()).hexdigest()[:12]
@@ -259,7 +271,7 @@ class SourceProcessor:
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             for i in range(0, len(chunks), batch_size):
-                batch = chunks[i:i + batch_size]
+                batch = chunks[i : i + batch_size]
 
                 try:
                     response = await client.post(
@@ -270,15 +282,18 @@ class SourceProcessor:
                         },
                         json={
                             "action": "upsert",
-                            "chunks": [{
-                                "id": c["id"],
-                                "content": c["content"],
-                                "chunk_index": c.get("chunk_index", 0),
-                                "source": c.get("source", ""),
-                                "url": c.get("url", ""),
-                                "title": c.get("title", ""),
-                                "category": c.get("category", ""),
-                            } for c in batch],
+                            "chunks": [
+                                {
+                                    "id": c["id"],
+                                    "content": c["content"],
+                                    "chunk_index": c.get("chunk_index", 0),
+                                    "source": c.get("source", ""),
+                                    "url": c.get("url", ""),
+                                    "title": c.get("title", ""),
+                                    "category": c.get("category", ""),
+                                }
+                                for c in batch
+                            ],
                         },
                     )
 
@@ -297,8 +312,13 @@ class SourceProcessor:
         return results
 
     async def update_source_metadata(
-        self, url: str, category: str, subcategory: str, chunk_count: int,
-        stylus_version: str | None = None, is_version_deprecated: bool = False
+        self,
+        url: str,
+        category: str,
+        subcategory: str,
+        chunk_count: int,
+        stylus_version: str | None = None,
+        is_version_deprecated: bool = False,
     ) -> bool:
         """Update source metadata in KV."""
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -326,9 +346,7 @@ class SourceProcessor:
             except Exception:
                 return False
 
-    async def process_source(
-        self, url: str, category: str, subcategory: str
-    ) -> dict:
+    async def process_source(self, url: str, category: str, subcategory: str) -> dict:
         """Full pipeline: scrape, chunk, upload, update metadata."""
         result = {
             "url": url,
@@ -356,9 +374,7 @@ class SourceProcessor:
                 source_type = "documentation"
 
             # Chunk
-            chunks = self.chunk_content(
-                url, content, source_type, category, subcategory, metadata
-            )
+            chunks = self.chunk_content(url, content, source_type, category, subcategory, metadata)
             result["chunks"] = len(chunks)
 
             if not chunks:
@@ -372,9 +388,12 @@ class SourceProcessor:
 
             # Update KV metadata with version info
             await self.update_source_metadata(
-                url, category, subcategory, len(chunks),
+                url,
+                category,
+                subcategory,
+                len(chunks),
                 stylus_version=result["stylusVersion"],
-                is_version_deprecated=result["isVersionDeprecated"]
+                is_version_deprecated=result["isVersionDeprecated"],
             )
 
             result["status"] = "success" if upload_result["failed"] == 0 else "partial"
@@ -420,7 +439,15 @@ def ingest():
 
     # Check auth
     if not auth_secret:
-        return jsonify({"error": "AUTH_SECRET not configured (pass auth_secret in request or set AUTH_SECRET env var)"}), 500
+        return jsonify(
+            {
+                "error": (
+                    "AUTH_SECRET not configured"
+                    " (pass auth_secret in request"
+                    " or set AUTH_SECRET env var)"
+                )
+            }
+        ), 500
 
     # Process the source
     processor = SourceProcessor(MIGRATE_URL, auth_secret)

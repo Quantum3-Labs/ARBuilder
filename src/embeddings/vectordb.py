@@ -16,13 +16,21 @@ from chromadb.config import Settings
 from dotenv import load_dotenv
 from rank_bm25 import BM25Okapi
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
-from .embedder import EmbeddingClient, EmbeddingAPIError
+from .embedder import EmbeddingAPIError, EmbeddingClient
+
+# Import version manager for version-aware boosting
+try:
+    from src.utils.version_manager import load_version_config as _load_version_config
+
+    _HAS_VERSION_MANAGER = True
+except ImportError:
+    _HAS_VERSION_MANAGER = False
 
 load_dotenv()
 
-import logging
+import logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -66,8 +74,15 @@ class VectorDB:
             settings=Settings(anonymized_telemetry=False),
         )
 
-        # Initialize embedding client
-        self.embedding_client = embedding_client or EmbeddingClient()
+        # Initialize embedding client (gracefully handle missing credentials)
+        if embedding_client is not None:
+            self.embedding_client = embedding_client
+        else:
+            try:
+                self.embedding_client = EmbeddingClient()
+            except (ValueError, Exception) as e:
+                logger.warning(f"EmbeddingClient unavailable: {e}")
+                self.embedding_client = None
 
         # Get or create collection
         self.collection = self.client.get_or_create_collection(
@@ -119,7 +134,7 @@ class VectorDB:
             )
 
         batches = [
-            deduped_chunks[i:i + batch_size] for i in range(0, len(deduped_chunks), batch_size)
+            deduped_chunks[i : i + batch_size] for i in range(0, len(deduped_chunks), batch_size)
         ]
         # Reduced default workers from 5 to 2 to avoid rate limiting
         worker_count = max_workers or 2
@@ -189,7 +204,9 @@ class VectorDB:
                     logger.error(error_msg)
                     return 0, error_msg
                 except Exception as e:
-                    error_msg = f"Batch {batch_num}: Unexpected embedding error - {type(e).__name__}: {e}"
+                    error_msg = (
+                        f"Batch {batch_num}: Unexpected embedding error - {type(e).__name__}: {e}"
+                    )
                     logger.error(error_msg)
                     return 0, error_msg
 
@@ -237,7 +254,9 @@ class VectorDB:
                         total_ingested += ingested
                         progress.advance(task, ingested if ingested > 0 else batch_size)
                     except Exception as e:
-                        error_msg = f"Batch {batch_num}: Future execution error - {type(e).__name__}: {e}"
+                        error_msg = (
+                            f"Batch {batch_num}: Future execution error - {type(e).__name__}: {e}"
+                        )
                         logger.error(error_msg)
                         console.print(f"[red]{error_msg}[/red]")
                         failed_batches += 1
@@ -278,6 +297,8 @@ class VectorDB:
             Query results with ids, documents, metadatas, and distances.
         """
         # Generate query embedding
+        if self.embedding_client is None:
+            raise RuntimeError("EmbeddingClient not available. Set OPENROUTER_API_KEY in .env.")
         query_embedding = self.embedding_client.embed(query_text)
 
         # Query collection
@@ -299,6 +320,7 @@ class VectorDB:
         alpha: float = 0.5,
         category_boosts: Optional[dict[str, float]] = None,
         use_bm25: bool = True,
+        target_version: Optional[str] = None,
     ) -> dict:
         """
         Perform hybrid search using vector similarity + BM25 + metadata boosting.
@@ -308,8 +330,11 @@ class VectorDB:
             n_results: Number of results to return.
             where: Metadata filter.
             alpha: Weight between BM25 (1.0) and vector (0.0). Default 0.5 for balanced.
-            category_boosts: Dict mapping category names to boost multipliers (e.g., {"stylus": 1.3}).
+            category_boosts: Dict mapping category names to boost
+                multipliers (e.g., {"stylus": 1.3}).
             use_bm25: Whether to use BM25 scoring (if False, falls back to simple keyword matching).
+            target_version: Target stylus-sdk version for version-aware scoring.
+                          Matching versions get boosted, deprecated versions get penalized.
 
         Returns:
             Query results with combined scoring.
@@ -343,15 +368,15 @@ class VectorDB:
         if use_bm25:
             try:
                 from rank_bm25 import BM25Okapi
-                
+
                 # Tokenize documents
                 tokenized_docs = [doc.lower().split() for doc in documents]
                 query_tokens = query_text.lower().split()
-                
+
                 # Compute BM25 scores
                 bm25 = BM25Okapi(tokenized_docs)
                 bm25_scores = bm25.get_scores(query_tokens)
-                
+
                 # Normalize BM25 scores to 0-1 range
                 if len(bm25_scores) > 0:
                     max_bm25 = max(bm25_scores) if max(bm25_scores) > 0 else 1.0
@@ -370,7 +395,7 @@ class VectorDB:
                 doc_lower = doc.lower()
                 keyword_score = sum(1 for kw in keywords if kw in doc_lower)
                 keyword_scores.append(keyword_score)
-            
+
             # Normalize keyword scores
             max_kw = max(keyword_scores) if max(keyword_scores) > 0 else 1.0
             bm25_normalized = [score / max_kw for score in keyword_scores]
@@ -381,14 +406,15 @@ class VectorDB:
             for i in range(len(documents))
         ]
 
-        # Apply metadata boosting
-        if category_boosts:
+        # Apply metadata boosting (category + version)
+        if category_boosts or target_version:
             boosted_scores = []
             for i, score in enumerate(combined_scores):
                 boost = self._calculate_metadata_boost(
                     metadatas[i],
                     query_text,
-                    category_boosts,
+                    category_boosts or {},
+                    target_version=target_version,
                 )
                 boosted_scores.append(score * boost)
             combined_scores = boosted_scores
@@ -420,11 +446,27 @@ class VectorDB:
             "scores": [[r["combined_score"] for r in top_results]],  # Include combined scores
         }
 
+    @staticmethod
+    def _get_deprecated_sdk_versions() -> set[str]:
+        """Get deprecated SDK versions from version_manager config."""
+        if not _HAS_VERSION_MANAGER:
+            return set()
+        try:
+            config = _load_version_config()
+            return {
+                v
+                for v, info in config.get("versions", {}).items()
+                if info.get("status") == "deprecated"
+            }
+        except Exception:
+            return set()
+
     def _calculate_metadata_boost(
         self,
         metadata: dict,
         query: str,
         category_boosts: dict[str, float],
+        target_version: Optional[str] = None,
     ) -> float:
         """
         Calculate boost factor based on metadata.
@@ -433,6 +475,7 @@ class VectorDB:
             metadata: Chunk metadata.
             query: Search query.
             category_boosts: Dict mapping category names to boost multipliers.
+            target_version: Target SDK version for version-aware scoring.
 
         Returns:
             Boost multiplier (1.0 = no boost, >1.0 = boost, <1.0 = penalty).
@@ -461,7 +504,49 @@ class VectorDB:
                 boost *= 1.15
                 logger.debug("Applied code source boost")
 
+        # Version-aware scoring (mirrors TS applyVersionScoring)
+        if target_version:
+            chunk_version = metadata.get("sdk_version", "")
+            if chunk_version and chunk_version not in ("", "N/A"):
+                # Parse major.minor for comparison
+                target_mm = self._parse_major_minor(target_version)
+                chunk_mm = self._parse_major_minor(chunk_version)
+
+                if target_mm and chunk_mm:
+                    if chunk_mm == target_mm:
+                        # Exact major.minor match → 1.2x boost
+                        boost *= 1.2
+                        logger.debug(f"Version match boost for {chunk_version}")
+                    elif chunk_version in self._get_deprecated_sdk_versions():
+                        # Deprecated version → 0.8x penalty
+                        boost *= 0.8
+                        logger.debug(f"Deprecated version penalty for {chunk_version}")
+
+                # Dual-chunk awareness: modernized chunks are copies of
+                # 0.9.x originals upgraded to 0.10.0 via regex transforms.
+                # When target is 0.9.x, prefer the real 0.9.x original.
+                # When target is 0.10.x, boost the modernized copy.
+                if metadata.get("modernized"):
+                    if chunk_mm == target_mm:
+                        # Modernized chunk matches target → boost it
+                        boost *= 1.1
+                        logger.debug("Modernized chunk boost applied (matches target)")
+                    else:
+                        # Modernized chunk doesn't match target (e.g., target=0.9,
+                        # chunk was upgraded to 0.10) → skip the version-match
+                        # boost that was already applied above
+                        pass
+
         return boost
+
+    @staticmethod
+    def _parse_major_minor(version: str) -> Optional[tuple[int, int]]:
+        """Parse a version string into (major, minor) tuple."""
+        try:
+            parts = version.lstrip("^~>=<").split(".")
+            return (int(parts[0]), int(parts[1]))
+        except (ValueError, IndexError):
+            return None
 
     def get_stats(self) -> dict:
         """Get collection statistics."""

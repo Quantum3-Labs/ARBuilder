@@ -1,0 +1,58 @@
+{
+  "total_chunks": 5014,
+  "total_tokens": 1820601,
+  "avg_tokens_per_chunk": 363.10351017151976,
+  "by_source": {
+    "documentation": 572,
+    "project": 2955,
+    "github": 1487
+  },
+  "by_category": {
+    "stylus": 3350,
+    "arbitrum_sdk": 749,
+    "orbit_sdk": 882,
+    "arbitrum_docs": 33
+  },
+  "by_language": {
+    "toml": 113,
+    "unknown": 306,
+    "rs": 2253,
+    "json": 105,
+    "js": 76,
+    "ts": 1421,
+    "sol": 168
+  },
+  "by_sdk_version": {
+    "0.10.0": 341,
+    "0.9.0": 2589,
+    "0.8.4": 25,
+    "N/A": 334,
+    "4.0.1": 268,
+    "4.0.4": 842,
+    "4.0.2": 43
+  },
+  "latest_sdk_version": "0.10.0",
+  "main_supported_version": "0.10.0",
+  "minimum_supported_version": "0.8.0",
+  "current_chunks": 3289,
+  "outdated_chunks": 1153,
+  "deprecated_pattern_chunks": 601,
+  "deprecated_version_chunks": 0,
+  "modernized_chunks": 211,
+  "modernized_from_versions": {
+    "0.9.0": 211
+  },
+  "filter_stats": {
+    "file_pattern_excluded": 840,
+    "file_pattern_breakdown": {
+      "lock_file": 3,
+      "dir_vendor": 419,
+      "abi_ts_js": 210,
+      "factory_generated": 208
+    },
+    "hex_content_excluded": 75,
+    "cross_repo_dedup_excluded": 426,
+    "total_excluded": 1341
+  },
+  "processed_at": "2026-02-18T10:06:25.396716"
+}

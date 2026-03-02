@@ -31,6 +31,8 @@ interface Source {
   // Version tracking
   stylusVersion?: string;
   isVersionDeprecated?: boolean;
+  // Branch tracking (for versioned repos with multiple branches)
+  branch?: string;
   // State tracking
   status: SourceStatus;
   lastModified?: string;
@@ -207,6 +209,7 @@ export async function POST(request: NextRequest) {
       sourceType?: SourceType;
       stylusVersion?: string;
       isVersionDeprecated?: boolean;
+      branch?: string;
       status?: SourceStatus;
       chunkCount?: number;
       lastError?: string;
@@ -220,7 +223,9 @@ export async function POST(request: NextRequest) {
     }
 
     const registry = await loadRegistry(env.KV);
-    const sourceId = generateSourceId(body.url);
+    // Include branch in ID so same repo with different branches gets separate entries
+    const idKey = body.branch ? `${body.url}#${body.branch}` : body.url;
+    const sourceId = generateSourceId(idKey);
     const now = new Date().toISOString();
 
     // Check if source exists
@@ -234,6 +239,7 @@ export async function POST(request: NextRequest) {
         subcategory: body.subcategory || existing.subcategory,
         stylusVersion: body.stylusVersion ?? existing.stylusVersion,
         isVersionDeprecated: body.isVersionDeprecated ?? existing.isVersionDeprecated,
+        branch: body.branch ?? existing.branch,
         status: body.status ?? existing.status,
         chunkCount: body.chunkCount ?? existing.chunkCount,
         lastError: body.lastError,
@@ -259,6 +265,7 @@ export async function POST(request: NextRequest) {
       subcategory: body.subcategory || "",
       stylusVersion: body.stylusVersion,
       isVersionDeprecated: body.isVersionDeprecated ?? false,
+      branch: body.branch,
       status: body.status || "pending",
       chunkCount: body.chunkCount || 0,
       errorCount: 0,

@@ -1,0 +1,308 @@
+name: Source Maintenance
+
+on:
+  schedule:
+    # Weekly: Monday 6 AM UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'Task to run'
+        type: choice
+        options:
+          - all
+          - monitor
+          - discover
+          - health
+          - remediate
+          - reverify
+          - sync-sources
+        default: all
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  sdk-monitor:
+    name: SDK Version Monitor
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.inputs.task == 'monitor' ||
+      github.event.inputs.task == 'all' ||
+      github.event_name == 'schedule'
+    outputs:
+      has_update: ${{ steps.check.outputs.has_update }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -e .
+
+      - name: Check SDK versions
+        id: check
+        run: |
+          python scripts/maintain_sources.py monitor --output reports/sdk_monitor.json
+          # Check if there's a new SDK version
+          python -c "
+          import json, sys
+          try:
+              with open('reports/sdk_monitor.json') as f:
+                  data = json.load(f)
+              sdk = data.get('sdk_monitor', {}).get('stylus_sdk', {})
+              if not sdk.get('config_up_to_date', True):
+                  print(f'New stylus-sdk {sdk[\"latest\"]} available')
+                  with open('$GITHUB_OUTPUT', 'a') as f:
+                      f.write('has_update=true\n')
+              else:
+                  print('SDK versions up to date')
+                  with open('$GITHUB_OUTPUT', 'a') as f:
+                      f.write('has_update=false\n')
+          except Exception as e:
+              print(f'Monitor check failed: {e}')
+              with open('$GITHUB_OUTPUT', 'a') as f:
+                  f.write('has_update=false\n')
+          "
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-monitor-report
+          path: reports/sdk_monitor.json
+          retention-days: 30
+
+  health-check:
+    name: Source Health Check
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.inputs.task == 'health' ||
+      github.event.inputs.task == 'all' ||
+      github.event_name == 'schedule'
+    outputs:
+      critical_count: ${{ steps.check.outputs.critical_count }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -e .
+
+      - name: Run health check
+        id: check
+        run: |
+          python scripts/maintain_sources.py health --output reports/health_check.json
+          python -c "
+          import json
+          try:
+              with open('reports/health_check.json') as f:
+                  data = json.load(f)
+              health = data.get('health', {})
+              critical = health.get('critical', 0)
+              print(f'Critical issues: {critical}')
+              with open('$GITHUB_OUTPUT', 'a') as f:
+                  f.write(f'critical_count={critical}\n')
+          except Exception as e:
+              print(f'Health check parse failed: {e}')
+              with open('$GITHUB_OUTPUT', 'a') as f:
+                  f.write('critical_count=0\n')
+          "
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: health-check-report
+          path: reports/health_check.json
+          retention-days: 30
+
+  discover:
+    name: Community Repo Discovery
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.inputs.task == 'discover' ||
+      github.event.inputs.task == 'all'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -e .
+
+      - name: Discover new repos
+        run: python scripts/maintain_sources.py discover --min-stars 3 --output reports/discovery.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: discovery-report
+          path: reports/discovery.json
+          retention-days: 30
+
+  create-issue:
+    name: Create Maintenance Issue
+    runs-on: ubuntu-latest
+    needs: [sdk-monitor, health-check]
+    if: >-
+      always() &&
+      github.event_name == 'schedule' &&
+      (needs.sdk-monitor.outputs.has_update == 'true' || needs.health-check.outputs.critical_count != '0')
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const date = new Date().toISOString().split('T')[0];
+            const hasUpdate = '${{ needs.sdk-monitor.outputs.has_update }}' === 'true';
+            const criticalCount = parseInt('${{ needs.health-check.outputs.critical_count }}') || 0;
+
+            let body = `## Weekly Maintenance Report — ${date}\n\n`;
+            if (hasUpdate) {
+              body += `- **SDK Update Available**: A new stylus-sdk version is available. Review and update config.\n`;
+            }
+            if (criticalCount > 0) {
+              body += `- **${criticalCount} Critical Source(s)**: Some sources are archived or deleted. Review health report.\n`;
+            }
+            body += `\nSee workflow run for detailed reports.`;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[Maintenance] ${date}: ${hasUpdate ? 'SDK update' : ''}${hasUpdate && criticalCount > 0 ? ' + ' : ''}${criticalCount > 0 ? `${criticalCount} critical` : ''}`,
+              body: body,
+              labels: ['maintenance'],
+            });
+
+  reverify:
+    name: Re-verify All Sources
+    runs-on: ubuntu-latest
+    needs: sdk-monitor
+    if: >-
+      (needs.sdk-monitor.outputs.has_update == 'true') ||
+      (github.event.inputs.task == 'reverify')
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install dependencies
+        run: |
+          pip install -e .
+          cargo install cargo-audit || true
+
+      - name: Run full verification
+        run: python scripts/verify_source.py --all --steps 1,2,4 --output reports/reverification.json
+        timeout-minutes: 30
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reverification-report
+          path: reports/reverification.json
+          retention-days: 30
+
+  remediate:
+    name: Auto-Remediate Critical Sources
+    runs-on: ubuntu-latest
+    if: github.event.inputs.task == 'remediate'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -e .
+
+      - name: Run remediation
+        run: python scripts/maintain_sources.py remediate --output reports/remediation.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit config changes if any
+        run: |
+          if git diff --quiet sources.json; then
+            echo "No config changes needed"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add sources.json
+            git commit -m "fix: auto-remove archived/deleted repos from sources.json
+
+          Co-Authored-By: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+            git push
+          fi
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: remediation-report
+          path: reports/remediation.json
+          retention-days: 30
+
+  sync-sources:
+    name: Sync Sources to CF KV
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.inputs.task == 'sync-sources' ||
+      github.event.inputs.task == 'all' ||
+      github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install tsx
+        run: npm install -g tsx
+
+      - name: Sync sources to KV
+        run: npx tsx scripts/sync_sources.ts
+        env:
+          ARBBUILDER_ADMIN_SECRET: ${{ secrets.AUTH_SECRET }}
+          ARBBUILDER_API_URL: https://arbuilder.app
+
+  summary:
+    name: Generate Summary
+    runs-on: ubuntu-latest
+    needs: [sdk-monitor, health-check]
+    if: always()
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## Source Maintenance Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| SDK Monitor | ${{ needs.sdk-monitor.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Health Check | ${{ needs.health-check.result }} |" >> $GITHUB_STEP_SUMMARY

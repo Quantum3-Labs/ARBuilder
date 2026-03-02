@@ -7,20 +7,26 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import requires_api_key
+
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from src.embeddings.reranker import HybridReranker, Reranker
 from src.embeddings.vectordb import VectorDB
-from src.embeddings.reranker import Reranker, BM25Reranker, HybridReranker
 from tests.test_queries import TEST_QUERIES
 
 
 class TestBM25Reranker:
-    """Test BM25-based reranking."""
+    """Test BM25-based reranking (via HybridReranker with use_llm=False)."""
 
     @pytest.fixture
     def reranker(self):
-        return BM25Reranker()
+        r = HybridReranker(use_llm=False)
+        has_ce = r.cross_encoder and getattr(r.cross_encoder, "available", False)
+        if not has_ce:
+            pytest.skip("Cross-encoder unavailable (NVIDIA_API_KEY not set)")
+        return r
 
     def test_basic_reranking(self, reranker):
         """Test that BM25 reranks based on keyword relevance."""
@@ -54,6 +60,8 @@ class TestBM25Reranker:
         assert "Stylus SDK" in results[0]["document"]
 
 
+@requires_api_key
+@pytest.mark.integration
 class TestLLMReranker:
     """Test LLM-based reranking."""
 
@@ -88,12 +96,18 @@ class TestLLMReranker:
         assert avg_relevant > avg_irrelevant, "Relevant docs should score higher"
 
 
+@requires_api_key
+@pytest.mark.integration
 class TestHybridReranker:
     """Test hybrid reranking combining vector + BM25."""
 
     @pytest.fixture
     def reranker(self):
-        return HybridReranker(use_llm=False)
+        r = HybridReranker(use_llm=False)
+        has_ce = r.cross_encoder and getattr(r.cross_encoder, "available", False)
+        if not has_ce:
+            pytest.skip("Cross-encoder unavailable (NVIDIA_API_KEY not set)")
+        return r
 
     def test_rrf_combination(self, reranker):
         """Test RRF combines rankings properly."""
@@ -104,13 +118,10 @@ class TestHybridReranker:
             "Transfer tokens between accounts using ERC20.",
             "Stock prices fluctuated today.",
         ]
-        # Simulated vector distances (lower = more similar)
-        vector_distances = [0.3, 0.9, 0.4, 0.8]
 
         results = reranker.rerank(
             query=query,
             documents=documents,
-            vector_distances=vector_distances,
             top_k=4,
         )
 
@@ -119,6 +130,8 @@ class TestHybridReranker:
         assert all("ERC20" in doc or "Transfer" in doc for doc in top_2)
 
 
+@requires_api_key
+@pytest.mark.integration
 class TestRerankerIntegration:
     """Integration tests with actual vector database."""
 
@@ -134,11 +147,19 @@ class TestRerankerIntegration:
 
     @pytest.fixture
     def bm25_reranker(self):
-        return BM25Reranker()
+        r = HybridReranker(use_llm=False)
+        has_ce = r.cross_encoder and getattr(r.cross_encoder, "available", False)
+        if not has_ce:
+            pytest.skip("Cross-encoder unavailable (NVIDIA_API_KEY not set)")
+        return r
 
     @pytest.fixture
     def hybrid_reranker(self):
-        return HybridReranker(use_llm=False)
+        r = HybridReranker(use_llm=False)
+        has_ce = r.cross_encoder and getattr(r.cross_encoder, "available", False)
+        if not has_ce:
+            pytest.skip("Cross-encoder unavailable (NVIDIA_API_KEY not set)")
+        return r
 
     def test_reranking_improves_precision(self, vectordb, bm25_reranker):
         """Test that reranking improves precision on real queries."""
@@ -182,28 +203,26 @@ class TestRerankerIntegration:
             # Get vector results
             vector_results = vectordb.query(query_text=query, n_results=20)
             docs = vector_results["documents"][0]
-            distances = vector_results["distances"][0]
+            distances = vector_results["distances"][0]  # noqa: F841
 
             # Hybrid rerank
             reranked = hybrid_reranker.rerank(
                 query=query,
                 documents=docs,
-                vector_distances=distances,
                 top_k=10,
             )
 
             # Check keyword presence in top 5
             top_5_docs = [r["document"] for r in reranked[:5]]
-            hits = sum(
-                1 for doc in top_5_docs
-                for kw in expected if kw.lower() in doc.lower()
-            )
+            hits = sum(1 for doc in top_5_docs for kw in expected if kw.lower() in doc.lower())
 
-            results_summary.append({
-                "query": query,
-                "keyword_hits": hits,
-                "max_possible": len(expected) * 5,
-            })
+            results_summary.append(
+                {
+                    "query": query,
+                    "keyword_hits": hits,
+                    "max_possible": len(expected) * 5,
+                }
+            )
 
         # Print summary
         print("\n=== Hybrid Reranking Benchmark ===")

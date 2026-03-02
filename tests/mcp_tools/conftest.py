@@ -2,9 +2,10 @@
 Pytest configuration for MCP tools tests.
 """
 
-import pytest
 import sys
 from pathlib import Path
+
+import pytest
 
 # Add src to path for imports
 project_root = Path(__file__).parent.parent.parent
@@ -21,10 +22,10 @@ def tools():
     """
     try:
         from src.mcp.tools import (
-            GetStylusContextTool,
-            GenerateStylusCodeTool,
             AskStylusTool,
+            GenerateStylusCodeTool,
             GenerateTestsTool,
+            GetStylusContextTool,
         )
 
         # Create shared context tool
@@ -36,7 +37,7 @@ def tools():
             "ask_stylus": AskStylusTool(context_tool=context_tool),
             "generate_tests": GenerateTestsTool(),
         }
-    except ImportError as e:
+    except (ImportError, ValueError) as e:
         print(f"Warning: Could not import tools, using mocks: {e}")
         return _create_mock_tools()
 
@@ -137,6 +138,7 @@ def generate_tests_tool(tools):
 def vectordb():
     """Provide VectorDB instance for context retrieval tests."""
     from src.embeddings.vectordb import VectorDB
+
     return VectorDB(collection_name="arbbuilder")
 
 
@@ -144,12 +146,14 @@ def vectordb():
 def embedding_client():
     """Provide embedding client for tests."""
     from src.embeddings.embedder import EmbeddingClient
+
     return EmbeddingClient()
 
 
 # ============================================================================
 # M3 Tool Fixtures
 # ============================================================================
+
 
 @pytest.fixture(scope="session")
 def m3_tools():
@@ -174,7 +178,7 @@ def m3_tools():
             "generate_oracle": GenerateOracleTool(),
             "orchestrate_dapp": OrchestrateDappTool(),
         }
-    except ImportError as e:
+    except (ImportError, ValueError) as e:
         print(f"Warning: Could not import M3 tools, using mocks: {e}")
         return _create_mock_m3_tools()
 

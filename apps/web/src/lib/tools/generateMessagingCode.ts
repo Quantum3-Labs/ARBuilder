@@ -4,11 +4,13 @@
  * Supports:
  * - L1 -> L2 messaging via retryable tickets
  * - L2 -> L1 messaging via ArbSys
+ * - L2 -> L3 messaging via retryable tickets (Orbit chains)
+ * - L3 -> L2 messaging via ArbSys
  * - Message status tracking
  */
 
 // Message type definitions
-type MessageType = "l1_to_l2" | "l2_to_l1" | "l2_to_l1_claim" | "check_status";
+type MessageType = "l1_to_l2" | "l2_to_l1" | "l2_to_l1_claim" | "l2_to_l3" | "l3_to_l2" | "l3_to_l2_claim" | "check_status";
 
 interface GenerateMessagingCodeArgs {
   messageType: MessageType;
@@ -249,6 +251,234 @@ async function claimL2ToL1Message(l2TxHash: string) {
 
 // Usage: claimL2ToL1Message('0x...l2TxHash');`;
 
+const L2_TO_L3_MESSAGE_TEMPLATE = `import { providers, Wallet, utils, BigNumber, Contract } from 'ethers';
+import {
+  getArbitrumNetwork,
+  ParentTransactionReceipt,
+  ParentToChildMessageStatus,
+} from '@arbitrum/sdk';
+
+// Inbox ABI for createRetryableTicket
+const INBOX_ABI = [
+  'function createRetryableTicket(address to, uint256 l2CallValue, uint256 maxSubmissionCost, address excessFeeRefundAddress, address callValueRefundAddress, uint256 gasLimit, uint256 maxFeePerGas, bytes calldata data) external payable returns (uint256)',
+  'function calculateRetryableSubmissionFee(uint256 dataLength, uint256 baseFee) view returns (uint256)',
+];
+
+// NodeInterface ABI for gas estimation
+const NODE_INTERFACE_ABI = [
+  'function estimateRetryableTicket(address sender, uint256 deposit, address to, uint256 l2CallValue, address excessFeeRefundAddress, address callValueRefundAddress, bytes calldata data) external returns (uint256 gasLimit, uint256 gasPrice, uint256 submissionCost)',
+];
+
+const NODE_INTERFACE_ADDRESS = '0x00000000000000000000000000000000000000C8';
+
+/**
+ * Send a message from L2 to L3 using a retryable ticket.
+ * L2 acts as the parent chain (L1) for the L3 Orbit chain.
+ * The message will execute a function call on L3.
+ */
+async function sendL2ToL3Message(
+  l3ContractAddress: string,
+  calldata: string,
+  l3CallValue: BigNumber = BigNumber.from(0)
+) {
+  const l2Provider = new providers.JsonRpcProvider(process.env.L2_RPC_URL);
+  const l3Provider = new providers.JsonRpcProvider(process.env.L3_RPC_URL);
+  const l2Wallet = new Wallet(process.env.PRIVATE_KEY!, l2Provider);
+
+  // L2 acts as L1 for the L3 chain — get L3 network config
+  const l3Network = await getArbitrumNetwork(l3Provider);
+
+  // Use NodeInterface to estimate gas (call this on L3)
+  const nodeInterface = new Contract(NODE_INTERFACE_ADDRESS, NODE_INTERFACE_ABI, l3Provider);
+
+  // Estimate gas for the retryable ticket
+  const estimates = await nodeInterface.callStatic.estimateRetryableTicket(
+    l2Wallet.address,
+    utils.parseEther('1'), // deposit estimate
+    l3ContractAddress,
+    l3CallValue,
+    l2Wallet.address,
+    l2Wallet.address,
+    calldata
+  );
+
+  const gasLimit = estimates.gasLimit;
+  const maxFeePerGas = await l3Provider.getGasPrice();
+
+  // Calculate submission cost based on calldata size
+  const inbox = new Contract(l3Network.ethBridge.inbox, INBOX_ABI, l2Wallet);
+  const l2BaseFee = await l2Provider.getBlock('latest').then(b => b.baseFeePerGas || BigNumber.from(0));
+  const maxSubmissionCost = await inbox.calculateRetryableSubmissionFee(
+    calldata.length,
+    l2BaseFee
+  );
+
+  console.log('Gas params:', {
+    gasLimit: gasLimit.toString(),
+    maxFeePerGas: maxFeePerGas.toString(),
+    maxSubmissionCost: maxSubmissionCost.toString(),
+  });
+
+  // Calculate total deposit (with some buffer)
+  const deposit = maxSubmissionCost.add(gasLimit.mul(maxFeePerGas)).add(l3CallValue);
+  console.log('Total ETH required:', utils.formatEther(deposit));
+
+  const tx = await inbox.createRetryableTicket(
+    l3ContractAddress,
+    l3CallValue,
+    maxSubmissionCost,
+    l2Wallet.address,  // excessFeeRefundAddress
+    l2Wallet.address,  // callValueRefundAddress
+    gasLimit,
+    maxFeePerGas,
+    calldata,
+    { value: deposit }
+  );
+
+  console.log('L2 tx hash:', tx.hash);
+  const receipt = await tx.wait();
+  console.log('L2 tx confirmed');
+
+  // Parse the receipt to get retryable ticket info
+  const parentReceipt = new ParentTransactionReceipt(receipt);
+  const messages = await parentReceipt.getParentToChildMessages(l3Provider);
+
+  if (messages.length > 0) {
+    const message = messages[0];
+    console.log('Retryable ticket created');
+
+    // Wait for L3 execution
+    const status = await message.waitForStatus();
+    console.log('Message status:', ParentToChildMessageStatus[status.status]);
+  }
+
+  return {
+    l2TxHash: receipt.transactionHash,
+    messages,
+  };
+}
+
+// Example: Send a message to call a function on L3
+// const iface = new utils.Interface(['function setValue(uint256 value)']);
+// const calldata = iface.encodeFunctionData('setValue', [42]);
+// sendL2ToL3Message('0x...L3ContractAddress', calldata);`;
+
+const L3_TO_L2_MESSAGE_TEMPLATE = `import { providers, Wallet, utils, Contract } from 'ethers';
+import { getArbitrumNetwork, ChildToParentMessageWriter } from '@arbitrum/sdk';
+
+// ArbSys precompile address (same on ALL Arbitrum chains, including L3)
+const ARB_SYS_ADDRESS = '0x0000000000000000000000000000000000000064';
+
+const ARB_SYS_ABI = [
+  'function sendTxToL1(address destination, bytes calldata data) external payable returns (uint256)',
+  'event L2ToL1Tx(address caller, address indexed destination, uint256 indexed hash, uint256 indexed position, uint256 arbBlockNum, uint256 ethBlockNum, uint256 timestamp, uint256 callvalue, bytes data)',
+];
+
+/**
+ * Send a message from L3 to L2 using ArbSys.
+ * L3 uses ArbSys to send messages to its parent (L2).
+ * The message can be executed on L2 after the challenge period (~7 days).
+ */
+async function sendL3ToL2Message(
+  l2DestinationAddress: string,
+  calldata: string,
+  value: string = '0'
+) {
+  const l3Provider = new providers.JsonRpcProvider(process.env.L3_RPC_URL);
+  const l3Wallet = new Wallet(process.env.PRIVATE_KEY!, l3Provider);
+
+  const arbSys = new Contract(ARB_SYS_ADDRESS, ARB_SYS_ABI, l3Wallet);
+
+  // Send the L3 -> L2 message via ArbSys
+  const tx = await arbSys.sendTxToL1(
+    l2DestinationAddress,
+    calldata,
+    { value: utils.parseEther(value) }
+  );
+
+  console.log('L3 tx hash:', tx.hash);
+  const receipt = await tx.wait();
+  console.log('L3 tx confirmed');
+
+  // Parse the L2ToL1Tx event (same event name on L3)
+  const event = receipt.events?.find((e: any) => e.event === 'L2ToL1Tx');
+  if (event) {
+    console.log('Message position:', event.args.position.toString());
+    console.log('Message hash:', event.args.hash.toString());
+  }
+
+  console.log('\\nIMPORTANT: Message will be executable on L2 after ~7 day challenge period');
+  console.log('Use the claim script to execute on L2 after the period ends');
+
+  return {
+    l3TxHash: receipt.transactionHash,
+    position: event?.args?.position?.toString(),
+  };
+}
+
+// Example: Send a message to call a function on L2
+// const iface = new utils.Interface(['function receiveMessage(bytes data)']);
+// const calldata = iface.encodeFunctionData('receiveMessage', ['0x1234']);
+// sendL3ToL2Message('0x...L2ContractAddress', calldata);`;
+
+const L3_TO_L2_CLAIM_TEMPLATE = `import { providers, Wallet } from 'ethers';
+import {
+  ChildTransactionReceipt,
+  ChildToParentMessageStatus,
+} from '@arbitrum/sdk';
+
+/**
+ * Claim an L3 -> L2 message on L2 after the challenge period.
+ * Same pattern as L2 -> L1 claiming, but operates on L2/L3 providers.
+ */
+async function claimL3ToL2Message(l3TxHash: string) {
+  const l2Provider = new providers.JsonRpcProvider(process.env.L2_RPC_URL);
+  const l3Provider = new providers.JsonRpcProvider(process.env.L3_RPC_URL);
+  const l2Wallet = new Wallet(process.env.PRIVATE_KEY!, l2Provider);
+
+  // Get the L3 transaction receipt
+  const l3Receipt = await l3Provider.getTransactionReceipt(l3TxHash);
+  if (!l3Receipt) {
+    throw new Error('L3 transaction not found');
+  }
+
+  // Get the L3 -> L2 messages from the receipt
+  const childReceipt = new ChildTransactionReceipt(l3Receipt);
+  const messages = await childReceipt.getChildToParentMessages(l2Wallet);
+
+  if (messages.length === 0) {
+    throw new Error('No L3 -> L2 messages found in transaction');
+  }
+
+  console.log(\`Found \${messages.length} message(s)\`);
+
+  for (const message of messages) {
+    // Check status
+    const status = await message.status(l3Provider);
+    console.log('Message status:', ChildToParentMessageStatus[status]);
+
+    if (status === ChildToParentMessageStatus.CONFIRMED) {
+      // Message is ready to be executed
+      console.log('Executing message on L2...');
+      const executeTx = await message.execute(l3Provider);
+      const executeReceipt = await executeTx.wait();
+      console.log('L2 execution tx:', executeReceipt.transactionHash);
+    } else if (status === ChildToParentMessageStatus.EXECUTED) {
+      console.log('Message already executed');
+    } else if (status === ChildToParentMessageStatus.UNCONFIRMED) {
+      console.log('Message not yet confirmed. Wait for challenge period (~7 days)');
+
+      // Get time until confirmation
+      const waitResult = await message.waitUntilReadyToExecute(l3Provider);
+      if (waitResult) {
+        console.log('Time remaining:', waitResult.toString(), 'seconds');
+      }
+    }
+  }
+}
+
+// Usage: claimL3ToL2Message('0x...l3TxHash');`;
+
 const MESSAGE_STATUS_TEMPLATE = `import { providers } from 'ethers';
 import {
   ParentTransactionReceipt,
@@ -328,6 +558,9 @@ const TEMPLATES: Record<MessageType, string> = {
   l1_to_l2: L1_TO_L2_MESSAGE_TEMPLATE,
   l2_to_l1: L2_TO_L1_MESSAGE_TEMPLATE,
   l2_to_l1_claim: L2_TO_L1_CLAIM_TEMPLATE,
+  l2_to_l3: L2_TO_L3_MESSAGE_TEMPLATE,
+  l3_to_l2: L3_TO_L2_MESSAGE_TEMPLATE,
+  l3_to_l2_claim: L3_TO_L2_CLAIM_TEMPLATE,
   check_status: MESSAGE_STATUS_TEMPLATE,
 };
 
@@ -347,6 +580,16 @@ function getNotes(messageType: MessageType): string[] {
     notes.push("Can only claim after challenge period ends (~7 days)");
     notes.push("Use checkL2ToL1Status to verify message is CONFIRMED");
     notes.push("Anyone can execute the message (not just original sender)");
+  } else if (messageType === "l2_to_l3") {
+    notes.push("L2 -> L3 messages use retryable tickets (same as L1->L2)");
+    notes.push("L2 acts as parent chain for L3 (Orbit chain)");
+    notes.push("Messages typically execute within 10-15 minutes");
+  } else if (messageType === "l3_to_l2") {
+    notes.push("L3 -> L2 messages go through ArbSys precompile (same as L2->L1)");
+    notes.push("Messages require ~7 day challenge period before claiming on L2");
+  } else if (messageType === "l3_to_l2_claim") {
+    notes.push("Can only claim on L2 after challenge period ends (~7 days)");
+    notes.push("Same pattern as L2->L1 claiming");
   } else if (messageType === "check_status") {
     notes.push("ParentToChildMessageStatus.REDEEMED = successful L1->L2");
     notes.push("ChildToParentMessageStatus.CONFIRMED = ready to claim on L1");
@@ -384,6 +627,22 @@ export function generateMessagingCode(
     throw new Error(`Unknown message type: ${messageType}`);
   }
 
+  // Determine required env vars based on message type
+  let envVars: string[];
+  if (messageType === "l1_to_l2" || messageType === "l2_to_l1_claim" || messageType === "check_status") {
+    envVars = ["L1_RPC_URL", "L2_RPC_URL", "PRIVATE_KEY"];
+  } else if (messageType === "l2_to_l1") {
+    envVars = ["L2_RPC_URL", "PRIVATE_KEY"];
+  } else if (messageType === "l2_to_l3") {
+    envVars = ["L2_RPC_URL", "L3_RPC_URL", "PRIVATE_KEY"];
+  } else if (messageType === "l3_to_l2") {
+    envVars = ["L3_RPC_URL", "PRIVATE_KEY"];
+  } else if (messageType === "l3_to_l2_claim") {
+    envVars = ["L2_RPC_URL", "L3_RPC_URL", "PRIVATE_KEY"];
+  } else {
+    envVars = ["L1_RPC_URL", "L2_RPC_URL", "PRIVATE_KEY"];
+  }
+
   return {
     code,
     messageType,
@@ -391,7 +650,7 @@ export function generateMessagingCode(
       ethers: "^5.7.0",
       "@arbitrum/sdk": "^4.0.0",
     },
-    envVars: ["L1_RPC_URL", "L2_RPC_URL", "PRIVATE_KEY"],
+    envVars,
     notes: getNotes(messageType),
     relatedTypes: getRelatedTypes(),
   };

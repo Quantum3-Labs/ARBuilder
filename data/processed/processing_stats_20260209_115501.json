@@ -1,0 +1,39 @@
+{
+  "total_chunks": 13687,
+  "total_tokens": 4954437,
+  "avg_tokens_per_chunk": 361.98122305837654,
+  "by_source": {
+    "documentation": 572,
+    "project": 11526,
+    "github": 1589
+  },
+  "by_category": {
+    "stylus": 11921,
+    "arbitrum_sdk": 721,
+    "orbit_sdk": 1012,
+    "arbitrum_docs": 33
+  },
+  "by_language": {
+    "toml": 251,
+    "unknown": 617,
+    "rs": 6981,
+    "json": 343,
+    "js": 236,
+    "ts": 4365,
+    "sol": 322
+  },
+  "by_sdk_version": {
+    "0.9.0": 11365,
+    "0.8.4": 59,
+    "0.8.0": 102,
+    "N/A": 1589
+  },
+  "latest_sdk_version": "0.10.0",
+  "main_supported_version": "0.9.2",
+  "minimum_supported_version": "0.8.0",
+  "current_chunks": 13115,
+  "outdated_chunks": 0,
+  "deprecated_pattern_chunks": 0,
+  "deprecated_version_chunks": 0,
+  "processed_at": "2026-02-09T03:55:05.112590"
+}

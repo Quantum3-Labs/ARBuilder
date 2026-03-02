@@ -1,7 +1,7 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "arbbuilder",
-	"main": "./.open-next/worker.js",
+	"main": "./worker.ts",
 	"find_additional_modules": true,
 	"compatibility_date": "2025-12-01",
 	"compatibility_flags": [
@@ -25,12 +25,17 @@
 		"enabled": true
 	},
 
+	// Cron trigger for periodic source ingestion (every 6 hours)
+	"triggers": {
+		"crons": ["0 */6 * * *"]
+	},
+
 	// D1 Database for users, API keys, and usage logs
 	"d1_databases": [
 		{
 			"binding": "DB",
 			"database_name": "arbbuilder",
-			"database_id": "1a6bb2b5-98f9-4578-aa23-b570ce297ca7"
+			"database_id": "0ac9b905-424a-46a4-a85a-51c2b74d6cc0"
 		}
 	],
 
@@ -47,54 +52,24 @@
 		"binding": "AI"
 	},
 
+	// Queue for async ingestion (large repos)
+	"queues": {
+		"producers": [{ "binding": "INGEST_QUEUE", "queue": "arbbuilder-ingest" }],
+		"consumers": [{ "queue": "arbbuilder-ingest", "max_batch_size": 1, "max_retries": 3 }]
+	},
+
 	// KV for caching
 	"kv_namespaces": [
 		{
 			"binding": "KV",
-			"id": "58e7ca1020924439be4d058ac29b2dfa"
-		}
-	],
-
-	// Cloudflare Container for Python scraper (re-ingestion)
-	// v12: Added Stylus SDK version detection for documentation sources
-	"containers": [
-		{
-			"class_name": "ScraperContainer",
-			"image": "registry.cloudflare.com/1e0170aaabc90ecf5f466128d1f0466a/arbbuilder-scraper-lite:v12",
-			"max_instances": 3
-		}
-	],
-
-	// Durable Objects bindings (includes container and batch processor)
-	"durable_objects": {
-		"bindings": [
-			{
-				"name": "SCRAPER_CONTAINER",
-				"class_name": "ScraperContainer"
-			},
-			{
-				"name": "BATCH_JOB",
-				"class_name": "BatchJobDO"
-			}
-		]
-	},
-
-	// Migrations for Durable Objects
-	"migrations": [
-		{
-			"tag": "v1",
-			"new_sqlite_classes": ["ScraperContainer"]
-		},
-		{
-			"tag": "v2",
-			"new_sqlite_classes": ["BatchJobDO"]
+			"id": "c4313f5cd3da4910a5eaccac300ef25b"
 		}
 	],
 
 	// Environment variables (public values)
 	"vars": {
 		"NEXTJS_ENV": "production",
-		"NEXT_PUBLIC_TURNSTILE_SITE_KEY": "0x4AAAAAACIQxZ8Nm_BXUfce",
+		"NEXT_PUBLIC_TURNSTILE_SITE_KEY": "0x4AAAAAACfG3f3JlJLMeZSq",
 		"AUTH_TRUST_HOST": "true"
 	},
 
@@ -103,16 +78,16 @@
 	// - RESEND_API_KEY
 	// - TURNSTILE_SECRET_KEY
 	// - OPENROUTER_API_KEY
+	// - GITHUB_TOKEN (optional, improves GitHub API rate limits)
 
 	"env": {
-		// Staging environment (M2 branch testing)
+		// Staging environment
 		// Deploy with: wrangler deploy --env staging
-		// Access at: arbbuilder-staging.swmengappdev.workers.dev
 		"staging": {
 			"name": "arbbuilder-staging",
 			"vars": {
 				"NEXTJS_ENV": "staging",
-				"NEXT_PUBLIC_TURNSTILE_SITE_KEY": "0x4AAAAAACIQxZ8Nm_BXUfce",
+				"NEXT_PUBLIC_TURNSTILE_SITE_KEY": "0x4AAAAAACfG3f3JlJLMeZSq",
 				"AUTH_TRUST_HOST": "true"
 			},
 			// Workers AI for embeddings and reranking
@@ -142,14 +117,14 @@
 				{
 					"binding": "DB",
 					"database_name": "arbbuilder-staging",
-					"database_id": "97cc207f-228d-4525-945b-a2ed5138a2f5"
+					"database_id": "225826fc-775d-46a1-8ebb-704c476ecf16"
 				}
 			],
 			// Staging KV namespace
 			"kv_namespaces": [
 				{
 					"binding": "KV",
-					"id": "8be510adafdd40d4a0addca6ea62c11f"
+					"id": "d44d027160ea49abb9cd6cd2c70d0a19"
 				}
 			]
 		}

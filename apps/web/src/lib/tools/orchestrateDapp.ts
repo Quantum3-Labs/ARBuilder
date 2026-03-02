@@ -140,7 +140,7 @@ const STYLUS_TOML = `[workspace]
 `;
 
 const RUST_TOOLCHAIN_TOML = `[toolchain]
-channel = "1.88.0"
+channel = "1.91.0"
 targets = ["wasm32-unknown-unknown"]
 `;
 
@@ -610,7 +610,7 @@ Target network: ${network}
 
 ## Generated with ARBuilder
 
-https://arbbuilder.whymelabs.com
+https://arbuilder.app
 `,
 
     ".gitignore": `# Dependencies

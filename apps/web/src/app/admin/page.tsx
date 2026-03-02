@@ -14,6 +14,7 @@ interface Source {
   status: "active" | "pending" | "error" | "removed";
   chunkCount: number;
   lastScraped?: string;
+  lastProcessed?: string;
   lastError?: string;
   errorCount: number;
   createdAt: string;
@@ -37,29 +38,17 @@ interface SourcesResponse {
   stats: Stats;
 }
 
-interface BatchJob {
-  id: string;
-  status: "pending" | "running" | "completed" | "failed";
-  sources: Array<{
-    url: string;
-    category: string;
-    subcategory: string;
-  }>;
-  progress: {
-    current: number;
-    total: number;
-    succeeded: number;
-    failed: number;
-  };
-  results: Array<{
-    url: string;
-    status: "success" | "error" | "pending";
-    message?: string;
-    stylusVersion?: string;
-  }>;
-  createdAt: string;
-  updatedAt: string;
-  completedAt?: string;
+interface IngestResult {
+  sourceId: string;
+  url: string;
+  status: "success" | "partial" | "error" | "queued";
+  chunks: number;
+  embedded: number;
+  failed: number;
+  errors: string[];
+  sdkVersion?: string;
+  durationMs: number;
+  message?: string;
 }
 
 export default function AdminPage() {
@@ -93,14 +82,15 @@ export default function AdminPage() {
 
   // Ingestion tracking
   const [ingesting, setIngesting] = useState<Record<string, boolean>>({});
-  const [ingestResults, setIngestResults] = useState<Record<string, { success: boolean; message: string; cliCommand?: string }>>({});
+  const [ingestResults, setIngestResults] = useState<
+    Record<string, { success: boolean; message: string }>
+  >({});
 
-  // Batch operations
-  const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set());
-  const [activeJob, setActiveJob] = useState<BatchJob | null>(null);
-  const [jobHistory, setJobHistory] = useState<BatchJob[]>([]);
-  const [showJobHistory, setShowJobHistory] = useState(false);
-  const [pollingJob, setPollingJob] = useState(false);
+  // Bulk operation state
+  const [selectedSources, setSelectedSources] = useState<Set<string>>(
+    new Set()
+  );
+  const [bulkIngesting, setBulkIngesting] = useState(false);
 
   const fetchSources = useCallback(async () => {
     if (!adminSecret) return;
@@ -211,7 +201,6 @@ export default function AdminPage() {
   };
 
   const handleRefreshSource = async (source: Source) => {
-    // Trigger container-based re-ingestion
     setIngesting((prev) => ({ ...prev, [source.id]: true }));
     setIngestResults((prev) => {
       const newResults = { ...prev };
@@ -220,7 +209,7 @@ export default function AdminPage() {
     });
 
     try {
-      // First mark as pending
+      // Mark as pending
       await fetch("/api/admin/sources", {
         method: "POST",
         headers: {
@@ -235,7 +224,7 @@ export default function AdminPage() {
         }),
       });
 
-      // Trigger container ingestion
+      // Trigger ingestion
       const response = await fetch("/api/admin/ingest", {
         method: "POST",
         headers: {
@@ -249,47 +238,23 @@ export default function AdminPage() {
         }),
       });
 
-      const result = await response.json() as {
-        status?: string;
-        error?: string;
-        message?: string;
-        cliCommand?: string;
-        result?: {
-          chunks: number;
-          uploaded: number;
-          errors: string[];
-        };
-      };
+      const result = (await response.json()) as IngestResult;
 
-      if (response.ok && result.status === "ok") {
-        // Container ingestion succeeded
+      if (result.status === "queued") {
         setIngestResults((prev) => ({
           ...prev,
           [source.id]: {
             success: true,
-            message: `Ingested ${result.result?.chunks || 0} chunks, uploaded ${result.result?.uploaded || 0}`,
+            message: `Queued ${result.chunks} chunks for async processing`,
           },
         }));
-      } else if (result.status === "starting") {
-        // Container is starting up, retry automatically
+      } else if (result.status === "success" || result.status === "partial") {
+        const duration = (result.durationMs / 1000).toFixed(1);
         setIngestResults((prev) => ({
           ...prev,
           [source.id]: {
-            success: false,
-            message: "Container starting... retrying",
-          },
-        }));
-        // Retry after 3 seconds
-        setTimeout(() => handleRefreshSource(source), 3000);
-        return; // Don't set ingesting to false
-      } else if (result.status === "fallback" && result.cliCommand) {
-        // Container not available, show CLI command
-        setIngestResults((prev) => ({
-          ...prev,
-          [source.id]: {
-            success: false,
-            message: "Use CLI",
-            cliCommand: result.cliCommand,
+            success: true,
+            message: `Embedded ${result.embedded} chunks in ${duration}s`,
           },
         }));
       } else {
@@ -297,7 +262,8 @@ export default function AdminPage() {
           ...prev,
           [source.id]: {
             success: false,
-            message: result.error || result.message || "Ingestion failed",
+            message:
+              result.errors?.join("; ") || result.message || "Ingestion failed",
           },
         }));
       }
@@ -316,136 +282,100 @@ export default function AdminPage() {
     }
   };
 
-  // Poll for active batch job status
-  const pollJobStatus = useCallback(async (jobId: string) => {
-    if (pollingJob) return;
-    setPollingJob(true);
+  // Process next pending source (manual cron trigger)
+  const handleProcessNext = async () => {
+    setBulkIngesting(true);
+    setError(null);
 
     try {
-      const response = await fetch(`/api/admin/ingest/batch?jobId=${jobId}`, {
-        headers: { "X-Admin-Secret": adminSecret },
-      });
-
-      if (response.ok) {
-        const data = await response.json() as { job: BatchJob };
-        setActiveJob(data.job);
-
-        // Continue polling if job is still running
-        if (data.job.status === "pending" || data.job.status === "running") {
-          setTimeout(() => {
-            setPollingJob(false);
-            pollJobStatus(jobId);
-          }, 2000);
-        } else {
-          // Job completed - refresh sources and clear after delay
-          fetchSources();
-          setTimeout(() => setActiveJob(null), 5000);
-        }
-      }
-    } catch (err) {
-      console.error("Poll error:", err);
-    } finally {
-      setPollingJob(false);
-    }
-  }, [adminSecret, pollingJob, fetchSources]);
-
-  // Check for active jobs on mount and load job history
-  useEffect(() => {
-    if (!isAuthed || !adminSecret) return;
-
-    const checkActiveJobs = async () => {
-      try {
-        const response = await fetch("/api/admin/ingest/batch", {
-          headers: { "X-Admin-Secret": adminSecret },
-        });
-        if (response.ok) {
-          const data = await response.json() as { jobs: BatchJob[] };
-          // Save all jobs to history (sorted by date, newest first)
-          setJobHistory(data.jobs.sort((a, b) =>
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-          ));
-          // Find any running job
-          const runningJob = data.jobs.find(
-            (j) => j.status === "pending" || j.status === "running"
-          );
-          if (runningJob) {
-            setActiveJob(runningJob);
-            pollJobStatus(runningJob.id);
-          }
-        }
-      } catch {
-        // Ignore errors
-      }
-    };
-
-    checkActiveJobs();
-  }, [isAuthed, adminSecret, pollJobStatus]);
-
-  // Clear/delete a batch job
-  const handleClearJob = async (jobId: string) => {
-    const confirmed = confirm("Clear this job? This will remove it from the job list.");
-    if (!confirmed) return;
-
-    try {
-      const response = await fetch(`/api/admin/ingest/batch?jobId=${jobId}`, {
-        method: "DELETE",
-        headers: { "X-Admin-Secret": adminSecret },
-      });
-
-      if (response.ok) {
-        // Clear from active job if it matches
-        if (activeJob?.id === jobId) {
-          setActiveJob(null);
-        }
-        // Remove from job history
-        setJobHistory((prev) => prev.filter((j) => j.id !== jobId));
-        fetchSources();
-      } else {
-        const errorData = await response.json() as { error: string };
-        setError(`Failed to clear job: ${errorData.error}`);
-      }
-    } catch (err) {
-      setError(`Failed to clear job: ${err}`);
-    }
-  };
-
-  // Batch refresh - starts a background job
-  const handleBatchRefresh = async (sourcesToRefresh: Source[]) => {
-    if (sourcesToRefresh.length === 0) return;
-
-    const confirmed = confirm(
-      `Refresh ${sourcesToRefresh.length} source(s)?\n\nThis will run in the background - you can close this page and the ingestion will continue.`
-    );
-    if (!confirmed) return;
-
-    try {
-      const response = await fetch("/api/admin/ingest/batch", {
+      const response = await fetch("/api/admin/ingest", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-Admin-Secret": adminSecret,
         },
-        body: JSON.stringify({
-          sources: sourcesToRefresh.map((s) => ({
-            url: s.url,
-            category: s.category,
-            subcategory: s.subcategory,
-          })),
-        }),
+        body: JSON.stringify({ action: "process_next" }),
       });
 
-      if (response.ok) {
-        const data = await response.json() as { jobId: string };
-        setSelectedSources(new Set());
-        // Start polling for job status
-        pollJobStatus(data.jobId);
+      const result = (await response.json()) as IngestResult & {
+        message?: string;
+      };
+
+      if (result.message === "No sources to process") {
+        setError("No pending or stale sources to process");
+      } else if (result.status === "queued") {
+        setIngestResults((prev) => ({
+          ...prev,
+          [result.sourceId]: {
+            success: true,
+            message: `Queued ${result.chunks} chunks for async processing`,
+          },
+        }));
+      } else if (result.status === "success" || result.status === "partial") {
+        const duration = (result.durationMs / 1000).toFixed(1);
+        setError(null);
+        // Show result in the source's row
+        setIngestResults((prev) => ({
+          ...prev,
+          [result.sourceId]: {
+            success: true,
+            message: `Embedded ${result.embedded} chunks in ${duration}s`,
+          },
+        }));
       } else {
-        const errorData = await response.json() as { error: string };
-        setError(`Failed to start batch job: ${errorData.error}`);
+        setError(
+          `Ingestion failed: ${result.errors?.join("; ") || "Unknown error"}`
+        );
       }
+
+      fetchSources();
     } catch (err) {
-      setError(`Failed to start batch job: ${err}`);
+      setError(`Process next failed: ${err}`);
+    } finally {
+      setBulkIngesting(false);
     }
+  };
+
+  // Refresh selected sources sequentially
+  const handleRefreshSelected = async () => {
+    const toRefresh = sources.filter((s) => selectedSources.has(s.id));
+    if (toRefresh.length === 0) return;
+
+    if (
+      !confirm(
+        `Refresh ${toRefresh.length} source(s)? Each will be ingested in sequence.`
+      )
+    )
+      return;
+
+    setBulkIngesting(true);
+
+    for (const source of toRefresh) {
+      await handleRefreshSource(source);
+    }
+
+    setBulkIngesting(false);
+    setSelectedSources(new Set());
+  };
+
+  // Refresh all sources sequentially
+  const handleRefreshAll = async () => {
+    if (sources.length === 0) return;
+
+    if (
+      !confirm(
+        `Refresh all ${sources.length} source(s)? This may take a while.`
+      )
+    )
+      return;
+
+    setBulkIngesting(true);
+
+    for (const source of sources) {
+      await handleRefreshSource(source);
+    }
+
+    setBulkIngesting(false);
   };
 
   const handleSelectAll = () => {
@@ -494,9 +424,7 @@ export default function AdminPage() {
                   placeholder="Enter AUTH_SECRET"
                 />
               </div>
-              {error && (
-                <p className="text-red-600 text-sm">{error}</p>
-              )}
+              {error && <p className="text-red-600 text-sm">{error}</p>}
               <button
                 type="submit"
                 className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors"
@@ -552,8 +480,18 @@ export default function AdminPage() {
             onClick={() => setShowAddForm(!showAddForm)}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
             </svg>
             Add Source
           </button>
@@ -609,6 +547,10 @@ export default function AdminPage() {
                     <option value="arbitrum_sdk">Arbitrum SDK</option>
                     <option value="orbit_sdk">Orbit SDK</option>
                     <option value="arbitrum_docs">Arbitrum Docs</option>
+                    <option value="m3_backend">M3: Backend</option>
+                    <option value="m3_frontend">M3: Frontend</option>
+                    <option value="m3_indexer">M3: Indexer</option>
+                    <option value="m3_oracle">M3: Oracle</option>
                   </select>
                 </div>
                 <div>
@@ -661,6 +603,10 @@ export default function AdminPage() {
                 <option value="arbitrum_sdk">Arbitrum SDK</option>
                 <option value="orbit_sdk">Orbit SDK</option>
                 <option value="arbitrum_docs">Arbitrum Docs</option>
+                <option value="m3_backend">M3: Backend</option>
+                <option value="m3_frontend">M3: Frontend</option>
+                <option value="m3_indexer">M3: Indexer</option>
+                <option value="m3_oracle">M3: Oracle</option>
               </select>
             </div>
             <div>
@@ -700,229 +646,28 @@ export default function AdminPage() {
                 Refresh List
               </button>
               <button
-                onClick={() => handleBatchRefresh(sources.filter((s) => selectedSources.has(s.id)))}
-                disabled={selectedSources.size === 0 || !!activeJob}
+                onClick={handleProcessNext}
+                disabled={bulkIngesting}
+                className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {bulkIngesting ? "Processing..." : "Process Next"}
+              </button>
+              <button
+                onClick={handleRefreshSelected}
+                disabled={selectedSources.size === 0 || bulkIngesting}
                 className="px-4 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Refresh Selected ({selectedSources.size})
               </button>
               <button
-                onClick={() => handleBatchRefresh(sources)}
-                disabled={sources.length === 0 || !!activeJob}
+                onClick={handleRefreshAll}
+                disabled={sources.length === 0 || bulkIngesting}
                 className="px-4 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Refresh All ({sources.length})
               </button>
             </div>
           </div>
-
-          {/* Active Job Progress */}
-          {activeJob && (
-            <div className={`mt-4 p-4 rounded-lg ${
-              activeJob.status === "completed" ? "bg-green-50" :
-              activeJob.status === "failed" ? "bg-red-50" : "bg-blue-50"
-            }`}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {(activeJob.status === "pending" || activeJob.status === "running") && (
-                    <svg className="animate-spin h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                  )}
-                  <span className={`font-medium ${
-                    activeJob.status === "completed" ? "text-green-800" :
-                    activeJob.status === "failed" ? "text-red-800" : "text-blue-800"
-                  }`}>
-                    {activeJob.status === "pending" ? "Starting batch job..." :
-                     activeJob.status === "running" ? "Processing sources..." :
-                     activeJob.status === "completed" ? "Batch completed!" :
-                     "Batch failed"}
-                  </span>
-                </div>
-                <span className="text-sm text-gray-600">
-                  {activeJob.progress.current}/{activeJob.progress.total}
-                  {activeJob.progress.failed > 0 && (
-                    <span className="text-red-600 ml-1">
-                      ({activeJob.progress.failed} failed)
-                    </span>
-                  )}
-                </span>
-              </div>
-
-              {/* Progress bar */}
-              <div className="mt-3 h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div
-                  className={`h-full transition-all duration-300 ${
-                    activeJob.status === "completed" ? "bg-green-500" :
-                    activeJob.status === "failed" ? "bg-red-500" : "bg-blue-600"
-                  }`}
-                  style={{ width: `${(activeJob.progress.current / activeJob.progress.total) * 100}%` }}
-                />
-              </div>
-
-              {/* Current source being processed */}
-              {activeJob.status === "running" && activeJob.progress.current > 0 && (
-                <p className="mt-2 text-xs text-gray-500 truncate">
-                  Processing: {activeJob.sources[activeJob.progress.current - 1]?.url}
-                </p>
-              )}
-
-              {/* Results summary when completed */}
-              {activeJob.status === "completed" && (
-                <div className="mt-3 text-sm">
-                  <span className="text-green-700">{activeJob.progress.succeeded} succeeded</span>
-                  {activeJob.progress.failed > 0 && (
-                    <span className="text-red-700 ml-3">{activeJob.progress.failed} failed</span>
-                  )}
-                </div>
-              )}
-
-              {/* Show failed items with error messages */}
-              {activeJob.results.filter(r => r.status === "error").length > 0 && (
-                <div className="mt-4 border-t pt-3">
-                  <details className="cursor-pointer">
-                    <summary className="text-sm font-medium text-red-700 hover:text-red-800">
-                      View {activeJob.results.filter(r => r.status === "error").length} failed items
-                    </summary>
-                    <div className="mt-2 max-h-60 overflow-y-auto space-y-2">
-                      {activeJob.results
-                        .filter(r => r.status === "error")
-                        .map((result, idx) => (
-                          <div key={idx} className="bg-red-100 rounded p-2 text-sm">
-                            <div className="font-medium text-red-800 truncate" title={result.url}>
-                              {truncateUrl(result.url)}
-                            </div>
-                            <div className="text-red-600 text-xs mt-1">
-                              {result.message || "Unknown error"}
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  </details>
-                </div>
-              )}
-
-              {/* Note about background processing */}
-              {(activeJob.status === "pending" || activeJob.status === "running") && (
-                <p className="mt-2 text-xs text-gray-500">
-                  This job runs in the background. You can close this page and come back later.
-                </p>
-              )}
-
-              {/* Clear Job button */}
-              <div className="mt-3 flex justify-end">
-                <button
-                  onClick={() => handleClearJob(activeJob.id)}
-                  className="text-sm text-red-600 hover:text-red-800 hover:underline"
-                >
-                  Clear Job
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Job History Section */}
-          {jobHistory.length > 0 && (
-            <div className="mt-4">
-              <button
-                onClick={() => setShowJobHistory(!showJobHistory)}
-                className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
-              >
-                <svg
-                  className={`w-4 h-4 transition-transform ${showJobHistory ? "rotate-90" : ""}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-                Job History ({jobHistory.length} jobs)
-              </button>
-
-              {showJobHistory && (
-                <div className="mt-3 space-y-3">
-                  {jobHistory.map((job) => (
-                    <div
-                      key={job.id}
-                      className={`p-3 rounded-lg border ${
-                        job.status === "completed"
-                          ? "bg-gray-50 border-gray-200"
-                          : job.status === "failed"
-                          ? "bg-red-50 border-red-200"
-                          : job.status === "running" || job.status === "pending"
-                          ? "bg-blue-50 border-blue-200"
-                          : "bg-gray-50 border-gray-200"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <span
-                            className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-                              job.status === "completed"
-                                ? "bg-green-100 text-green-800"
-                                : job.status === "failed"
-                                ? "bg-red-100 text-red-800"
-                                : job.status === "running"
-                                ? "bg-blue-100 text-blue-800"
-                                : "bg-yellow-100 text-yellow-800"
-                            }`}
-                          >
-                            {job.status}
-                          </span>
-                          <span className="text-sm text-gray-600">
-                            {job.progress.succeeded}/{job.progress.total} succeeded
-                            {job.progress.failed > 0 && (
-                              <span className="text-red-600 ml-1">
-                                ({job.progress.failed} failed)
-                              </span>
-                            )}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <span className="text-xs text-gray-400">
-                            {new Date(job.createdAt).toLocaleString()}
-                          </span>
-                          <button
-                            onClick={() => handleClearJob(job.id)}
-                            className="text-xs text-red-500 hover:text-red-700"
-                          >
-                            Clear
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Show failed items for this job */}
-                      {job.results.filter((r) => r.status === "error").length > 0 && (
-                        <details className="mt-2">
-                          <summary className="text-xs text-red-600 hover:text-red-800 cursor-pointer">
-                            View {job.results.filter((r) => r.status === "error").length} failed
-                          </summary>
-                          <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
-                            {job.results
-                              .filter((r) => r.status === "error")
-                              .map((result, idx) => (
-                                <div
-                                  key={idx}
-                                  className="bg-red-100 rounded px-2 py-1 text-xs"
-                                >
-                                  <div className="font-medium text-red-800 truncate" title={result.url}>
-                                    {truncateUrl(result.url)}
-                                  </div>
-                                  <div className="text-red-600">
-                                    {result.message || "Unknown error"}
-                                  </div>
-                                </div>
-                              ))}
-                          </div>
-                        </details>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
         {/* Error */}
@@ -948,7 +693,10 @@ export default function AdminPage() {
                     <th className="px-4 py-3 text-left">
                       <input
                         type="checkbox"
-                        checked={selectedSources.size === sources.length && sources.length > 0}
+                        checked={
+                          selectedSources.size === sources.length &&
+                          sources.length > 0
+                        }
                         onChange={handleSelectAll}
                         className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
                       />
@@ -978,7 +726,10 @@ export default function AdminPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {sources.map((source) => (
-                    <tr key={source.id} className={`hover:bg-gray-50 ${selectedSources.has(source.id) ? "bg-blue-50" : ""}`}>
+                    <tr
+                      key={source.id}
+                      className={`hover:bg-gray-50 ${selectedSources.has(source.id) ? "bg-blue-50" : ""}`}
+                    >
                       <td className="px-4 py-3">
                         <input
                           type="checkbox"
@@ -997,13 +748,17 @@ export default function AdminPage() {
                         >
                           {truncateUrl(source.url)}
                         </a>
-                        <span className="text-xs text-gray-400">{source.id}</span>
+                        <span className="text-xs text-gray-400">
+                          {source.id}
+                        </span>
                       </td>
                       <td className="px-4 py-3">
                         <TypeBadge type={source.sourceType} />
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-sm text-gray-900">{source.category}</span>
+                        <span className="text-sm text-gray-900">
+                          {source.category}
+                        </span>
                         {source.subcategory && (
                           <span className="text-xs text-gray-500 block">
                             {source.subcategory}
@@ -1039,35 +794,24 @@ export default function AdminPage() {
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
                           {ingestResults[source.id] && (
-                            ingestResults[source.id].cliCommand ? (
-                              <button
-                                onClick={() => {
-                                  navigator.clipboard.writeText(ingestResults[source.id].cliCommand!);
-                                  alert("CLI command copied to clipboard!\n\n" + ingestResults[source.id].cliCommand);
-                                }}
-                                className="text-xs text-blue-600 hover:text-blue-800 underline"
-                                title="Click to copy CLI command"
-                              >
-                                Copy CLI
-                              </button>
-                            ) : (
-                              <span
-                                className={`text-xs ${
-                                  ingestResults[source.id].success
-                                    ? "text-green-600"
-                                    : "text-red-600"
-                                }`}
-                                title={ingestResults[source.id].message}
-                              >
-                                {ingestResults[source.id].success ? "Done" : "Failed"}
-                              </span>
-                            )
+                            <span
+                              className={`text-xs ${
+                                ingestResults[source.id].success
+                                  ? "text-green-600"
+                                  : "text-red-600"
+                              }`}
+                              title={ingestResults[source.id].message}
+                            >
+                              {ingestResults[source.id].success
+                                ? "Done"
+                                : "Failed"}
+                            </span>
                           )}
                           <button
                             onClick={() => handleRefreshSource(source)}
-                            disabled={ingesting[source.id]}
+                            disabled={ingesting[source.id] || bulkIngesting}
                             className={`text-sm ${
-                              ingesting[source.id]
+                              ingesting[source.id] || bulkIngesting
                                 ? "text-gray-400 cursor-not-allowed"
                                 : "text-blue-600 hover:text-blue-800"
                             }`}
@@ -1101,9 +845,9 @@ export default function AdminPage() {
                           </button>
                           <button
                             onClick={() => handleDeleteSource(source)}
-                            disabled={ingesting[source.id]}
+                            disabled={ingesting[source.id] || bulkIngesting}
                             className={`text-sm ${
-                              ingesting[source.id]
+                              ingesting[source.id] || bulkIngesting
                                 ? "text-gray-400 cursor-not-allowed"
                                 : "text-red-600 hover:text-red-800"
                             }`}
@@ -1176,7 +920,11 @@ function TypeBadge({ type }: { type: "documentation" | "github" }) {
   if (type === "github") {
     return (
       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-        <svg className="w-3 h-3 mr-1" viewBox="0 0 24 24" fill="currentColor">
+        <svg
+          className="w-3 h-3 mr-1"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+        >
           <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
         </svg>
         GitHub
@@ -1186,8 +934,18 @@ function TypeBadge({ type }: { type: "documentation" | "github" }) {
 
   return (
     <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-      <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      <svg
+        className="w-3 h-3 mr-1"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+        />
       </svg>
       Docs
     </span>
@@ -1214,9 +972,10 @@ function StatusBadge({ status }: { status: string }) {
 function truncateUrl(url: string): string {
   try {
     const parsed = new URL(url);
-    const path = parsed.pathname.length > 30
-      ? parsed.pathname.slice(0, 30) + "..."
-      : parsed.pathname;
+    const path =
+      parsed.pathname.length > 30
+        ? parsed.pathname.slice(0, 30) + "..."
+        : parsed.pathname;
     return parsed.host + path;
   } catch {
     return url.slice(0, 50) + "...";

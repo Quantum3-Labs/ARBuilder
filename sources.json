@@ -1,0 +1,698 @@
+{
+  "version": 1,
+  "description": "Single source of truth for all ARBuilder RAG data sources. Both Python (config.py) and TypeScript (sync_sources.ts) read from this file.",
+  "sdkConfig": {
+    "mainVersion": "0.10.0",
+    "minVersion": "0.8.0",
+    "deprecatedBelow": "0.8.0"
+  },
+  "sources": [
+    {
+      "url": "https://docs.arbitrum.io/stylus/stylus-overview",
+      "type": "documentation",
+      "milestone": "m1",
+      "category": "stylus",
+      "subcategory": "official",
+      "sdkVersion": "0.10.0"
+    },
+    {
+      "url": "https://docs.arbitrum.io/stylus/quickstart",
+      "type": "documentation",
+      "milestone": "m1",
+      "category": "stylus",
+      "subcategory": "official",
+      "sdkVersion": "0.10.0"
+    },
+    {
+      "url": "https://docs.arbitrum.io/stylus/cli-tools-overview",
+      "type": "documentation",
+      "milestone": "m1",
+      "category": "stylus",
+      "subcategory": "official",
+      "sdkVersion": "0.10.0"
+    },
+    {
+      "url": "https://docs.arbitrum.io/stylus/reference/rust-sdk-guide",
+      "type": "documentation",
+      "milestone": "m1",
+      "category": "stylus",
+      "subcategory": "official",
+      "sdkVersion": "0.10.0"
+    },
+    {
+      "url": "https://docs.arbitrum.io/stylus/gentle-introduction",
+      "type": "documentation",
+      "milestone": "m1",
+      "category": "stylus",
+      "subcategory": "official",
+      "sdkVersion": "0.10.0"
+    },
+    {
+      "url": "https://docs.arbitrum.io/stylus/reference/overview",
+      "type": "documentation",
+      "milestone": "m1",
+      "category": "stylus",
+      "subcategory": "official",
+      "sdkVersion": "0.10.0"
+    },
+    {
+      "url": "https://docs.arbitrum.io/stylus/concepts/gas-metering",
+      "type": "documentation",
+      "milestone": "m1",
+      "category": "stylus",
+      "subcategory": "official",
+      "sdkVersion": "0.10.0"
+    },
+    {
+      "url": "https://blog.arbitrum.io/how-thirdweb-uses-arbitrum-stylus-to-power-the-next-wave-of-onchain-apps/",
+      "type": "documentation",
+      "milestone": "m1",
+      "category": "stylus",
+      "subcategory": "articles"
+    },
+    {
+      "url": "https://github.com/ARBuilder-Forks/stylus-hello-world",
+      "type": "github",
+      "milestone": "m1",
+      "category": "stylus",
+      "subcategory": "official_examples",
+      "versions": [
+        { "sdkVersion": "0.10.0", "branch": "main" },
+        { "sdkVersion": "0.9.0", "branch": "v0.9.0" }
+      ],
+      "forkedFrom": "OffchainLabs/stylus-hello-world",
+      "verified": "2026-02-16"
+    },
+    {
+      "url": "https://github.com/ARBuilder-Forks/stylus-quickstart-vending-machine",
+      "type": "github",
+      "milestone": "m1",
+      "category": "stylus",
+      "subcategory": "official_examples",
+      "versions": [
+        { "sdkVersion": "0.10.0", "branch": "main" },
+        { "sdkVersion": "0.9.0", "branch": "v0.9.0" }
+      ],
+      "forkedFrom": "OffchainLabs/stylus-quickstart-vending-machine",
+      "verified": "2026-02-16"
+    },
+    {
+      "url": "https://github.com/ARBuilder-Forks/stylus-workshop-gol",
+      "type": "github",
+      "milestone": "m1",
+      "category": "stylus",
+      "subcategory": "official_examples",
+      "versions": [
+        { "sdkVersion": "0.9.0", "branch": "main" }
+      ],
+      "forkedFrom": "ArbitrumFoundation/stylus-workshop-gol",
+      "verified": "2026-02-16",
+      "note": "OZ alloy-primitives conflict blocks 0.10.0 migration"
+    },
+    {
+      "url": "https://github.com/ARBuilder-Forks/rust-contracts-stylus",
+      "type": "github",
+      "milestone": "m1",
+      "category": "stylus",
+      "subcategory": "verified_production",
+      "versions": [
+        { "sdkVersion": "0.9.0", "branch": "main" }
+      ],
+      "forkedFrom": "OpenZeppelin/rust-contracts-stylus",
+      "verified": "2026-02-16",
+      "note": "c-kzg + alloy version conflict blocks 0.10.0"
+    },
+    {
+      "url": "https://github.com/ARBuilder-Forks/stylus-test-helpers",
+      "type": "github",
+      "milestone": "m1",
+      "category": "stylus",
+      "subcategory": "verified_production",
+      "versions": [
+        { "sdkVersion": "0.9.0", "branch": "main" }
+      ],
+      "forkedFrom": "OpenZeppelin/stylus-test-helpers",
+      "verified": "2026-02-16",
+      "note": "c-kzg native library conflict blocks 0.10.0"
+    },
+    {
+      "url": "https://github.com/ARBuilder-Forks/stylusport",
+      "type": "github",
+      "milestone": "m1",
+      "category": "stylus",
+      "subcategory": "verified_production",
+      "versions": [
+        { "sdkVersion": "0.9.0", "branch": "main" }
+      ],
+      "forkedFrom": "oak-security/stylusport",
+      "verified": "2026-02-16",
+      "note": "c-kzg native library conflict blocks 0.10.0"
+    },
+    {
+      "url": "https://github.com/ARBuilder-Forks/stylus-provider",
+      "type": "github",
+      "milestone": "m1",
+      "category": "stylus",
+      "subcategory": "verified_production",
+      "versions": [
+        { "sdkVersion": "0.8.4", "branch": "main" }
+      ],
+      "forkedFrom": "gnosisguild/stylus-provider",
+      "verified": "2026-02-16",
+      "note": "c-kzg native library conflict blocks 0.10.0"
+    },
+    {
+      "url": "https://github.com/ARBuilder-Forks/ethbuc2025-gyges",
+      "type": "github",
+      "milestone": "m1",
+      "category": "stylus",
+      "subcategory": "community_projects",
+      "versions": [
+        { "sdkVersion": "0.10.0", "branch": "main" },
+        { "sdkVersion": "0.9.0", "branch": "v0.9.0" }
+      ],
+      "forkedFrom": "philogicae/ethbuc2025-gyges",
+      "verified": "2026-02-16"
+    },
+    {
+      "url": "https://github.com/ARBuilder-Forks/erc6909-with-arbitrum-stylus",
+      "type": "github",
+      "milestone": "m1",
+      "category": "stylus",
+      "subcategory": "community_projects",
+      "versions": [
+        { "sdkVersion": "0.10.0", "branch": "main" },
+        { "sdkVersion": "0.9.0", "branch": "v0.9.0" }
+      ],
+      "forkedFrom": "Oluwatobilobaoke/erc6909-with-arbitrum-stylus",
+      "verified": "2026-02-16"
+    },
+    {
+      "url": "https://github.com/ARBuilder-Forks/fortune-generator",
+      "type": "github",
+      "milestone": "m1",
+      "category": "stylus",
+      "subcategory": "community_projects",
+      "versions": [
+        { "sdkVersion": "0.10.0", "branch": "main" },
+        { "sdkVersion": "0.9.0", "branch": "v0.9.0" }
+      ],
+      "forkedFrom": "hummusonrails/fortune-generator",
+      "verified": "2026-02-16"
+    },
+    {
+      "url": "https://github.com/ARBuilder-Forks/scaffold-stylus",
+      "type": "github",
+      "milestone": "m1",
+      "category": "stylus",
+      "subcategory": "scaffold_projects",
+      "versions": [
+        { "sdkVersion": "0.9.0", "branch": "main" }
+      ],
+      "forkedFrom": "Arb-Stylus/scaffold-stylus",
+      "verified": "2026-02-16",
+      "note": "OZ v0.3.0 incompatible with SDK 0.10.0"
+    },
+    {
+      "url": "https://github.com/ARBuilder-Forks/cross-protocol-defi-tracker",
+      "type": "github",
+      "milestone": "m1",
+      "category": "stylus",
+      "subcategory": "scaffold_projects",
+      "versions": [
+        { "sdkVersion": "0.9.0", "branch": "main" }
+      ],
+      "forkedFrom": "iyansr/cross-protocol-defi-tracker",
+      "verified": "2026-02-16",
+      "note": "OZ alloy-primitives conflict blocks 0.10.0"
+    },
+    {
+      "url": "https://github.com/ARBuilder-Forks/WalletNaming-scaffold-stylus",
+      "type": "github",
+      "milestone": "m1",
+      "category": "stylus",
+      "subcategory": "scaffold_projects",
+      "versions": [
+        { "sdkVersion": "0.10.0", "branch": "main" },
+        { "sdkVersion": "0.9.0", "branch": "v0.9.0" }
+      ],
+      "forkedFrom": "Einarmig/WalletNaming-scaffold-stylus",
+      "verified": "2026-02-16"
+    },
+    {
+      "url": "https://docs.arbitrum.io/build-decentralized-apps/token-bridging/overview",
+      "type": "documentation",
+      "milestone": "m2",
+      "category": "arbitrum_sdk",
+      "subcategory": "official"
+    },
+    {
+      "url": "https://docs.arbitrum.io/build-decentralized-apps/token-bridging/token-bridge-erc20",
+      "type": "documentation",
+      "milestone": "m2",
+      "category": "arbitrum_sdk",
+      "subcategory": "official"
+    },
+    {
+      "url": "https://docs.arbitrum.io/build-decentralized-apps/cross-chain-messaging",
+      "type": "documentation",
+      "milestone": "m2",
+      "category": "arbitrum_sdk",
+      "subcategory": "official"
+    },
+    {
+      "url": "https://docs.arbitrum.io/sdk",
+      "type": "documentation",
+      "milestone": "m2",
+      "category": "arbitrum_sdk",
+      "subcategory": "official"
+    },
+    {
+      "url": "https://docs.arbitrum.io/build-decentralized-apps/precompiles/reference",
+      "type": "documentation",
+      "milestone": "m2",
+      "category": "arbitrum_sdk",
+      "subcategory": "official"
+    },
+    {
+      "url": "https://docs.arbitrum.io/build-decentralized-apps/precompiles/overview",
+      "type": "documentation",
+      "milestone": "m2",
+      "category": "arbitrum_sdk",
+      "subcategory": "official"
+    },
+    {
+      "url": "https://github.com/OffchainLabs/arbitrum-sdk",
+      "type": "github",
+      "milestone": "m2",
+      "category": "arbitrum_sdk",
+      "subcategory": "official_repos",
+      "verified": "2026-02-10"
+    },
+    {
+      "url": "https://github.com/OffchainLabs/arbitrum-tutorials",
+      "type": "github",
+      "milestone": "m2",
+      "category": "arbitrum_sdk",
+      "subcategory": "official_repos",
+      "sdkVersion": "4.0.1",
+      "verified": "2026-02-10"
+    },
+    {
+      "url": "https://github.com/kevinb1003/arbitrum-api",
+      "type": "github",
+      "milestone": "m2",
+      "category": "arbitrum_sdk",
+      "subcategory": "community_examples",
+      "sdkVersion": "4.0.4",
+      "verified": "2026-02-10",
+      "note": "Tests need env vars (DB, API keys) — SDK version verified, active repo"
+    },
+    {
+      "url": "https://github.com/gelatodigital/how-tos-18-arbitrum-orbit-bridging",
+      "type": "github",
+      "milestone": "m2",
+      "category": "arbitrum_sdk",
+      "subcategory": "community_examples",
+      "sdkVersion": "4.0.2",
+      "verified": "2026-02-10",
+      "note": "Orbit bridging examples — no tests, active repo"
+    },
+    {
+      "url": "https://github.com/gelatodigital/clink-bridging-cross-messaging",
+      "type": "github",
+      "milestone": "m2",
+      "category": "arbitrum_sdk",
+      "subcategory": "community_examples",
+      "sdkVersion": "4.0.2",
+      "verified": "2026-02-10",
+      "note": "Cross-chain messaging patterns — no tests, abandoned but unique value"
+    },
+    {
+      "url": "https://docs.superposition.so/",
+      "type": "documentation",
+      "milestone": "m2",
+      "category": "orbit_sdk",
+      "subcategory": "docs"
+    },
+    {
+      "url": "https://github.com/OffchainLabs/arbitrum-orbit-sdk",
+      "type": "github",
+      "milestone": "m2",
+      "category": "orbit_sdk",
+      "subcategory": "sdk_repo",
+      "sdkVersion": "4.0.4",
+      "verified": "2026-02-10"
+    },
+    {
+      "url": "https://docs.arbitrum.io/welcome/get-started",
+      "type": "documentation",
+      "milestone": "m1",
+      "category": "arbitrum_general",
+      "subcategory": "general"
+    },
+    {
+      "url": "https://docs.arbitrum.io/for-devs/quickstart-solidity-hardhat",
+      "type": "documentation",
+      "milestone": "m1",
+      "category": "arbitrum_general",
+      "subcategory": "general"
+    },
+    {
+      "url": "https://docs.nestjs.com/first-steps",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "backend",
+      "subcategory": "nestjs"
+    },
+    {
+      "url": "https://docs.nestjs.com/modules",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "backend",
+      "subcategory": "nestjs"
+    },
+    {
+      "url": "https://docs.nestjs.com/providers",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "backend",
+      "subcategory": "nestjs"
+    },
+    {
+      "url": "https://docs.nestjs.com/controllers",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "backend",
+      "subcategory": "nestjs"
+    },
+    {
+      "url": "https://docs.nestjs.com/techniques/configuration",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "backend",
+      "subcategory": "nestjs"
+    },
+    {
+      "url": "https://expressjs.com/en/starter/basic-routing.html",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "backend",
+      "subcategory": "express"
+    },
+    {
+      "url": "https://expressjs.com/en/guide/routing.html",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "backend",
+      "subcategory": "express"
+    },
+    {
+      "url": "https://expressjs.com/en/guide/error-handling.html",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "backend",
+      "subcategory": "express"
+    },
+    {
+      "url": "https://wagmi.sh/react/getting-started",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "frontend",
+      "subcategory": "wagmi"
+    },
+    {
+      "url": "https://wagmi.sh/react/guides/connect-wallet",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "frontend",
+      "subcategory": "wagmi"
+    },
+    {
+      "url": "https://wagmi.sh/react/guides/read-from-contract",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "frontend",
+      "subcategory": "wagmi"
+    },
+    {
+      "url": "https://wagmi.sh/react/guides/write-to-contract",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "frontend",
+      "subcategory": "wagmi"
+    },
+    {
+      "url": "https://wagmi.sh/react/guides/send-transaction",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "frontend",
+      "subcategory": "wagmi"
+    },
+    {
+      "url": "https://viem.sh/docs/getting-started",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "frontend",
+      "subcategory": "viem"
+    },
+    {
+      "url": "https://viem.sh/docs/contract/readContract",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "frontend",
+      "subcategory": "viem"
+    },
+    {
+      "url": "https://viem.sh/docs/contract/writeContract",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "frontend",
+      "subcategory": "viem"
+    },
+    {
+      "url": "https://viem.sh/docs/actions/public/waitForTransactionReceipt",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "frontend",
+      "subcategory": "viem"
+    },
+    {
+      "url": "https://www.rainbowkit.com/docs/introduction",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "frontend",
+      "subcategory": "rainbowkit"
+    },
+    {
+      "url": "https://www.rainbowkit.com/docs/installation",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "frontend",
+      "subcategory": "rainbowkit"
+    },
+    {
+      "url": "https://www.rainbowkit.com/docs/connect-button",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "frontend",
+      "subcategory": "rainbowkit"
+    },
+    {
+      "url": "https://www.rainbowkit.com/docs/custom-chains",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "frontend",
+      "subcategory": "rainbowkit"
+    },
+    {
+      "url": "https://daisyui.com/docs/install/",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "frontend",
+      "subcategory": "daisyui"
+    },
+    {
+      "url": "https://daisyui.com/components/button/",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "frontend",
+      "subcategory": "daisyui"
+    },
+    {
+      "url": "https://daisyui.com/components/card/",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "frontend",
+      "subcategory": "daisyui"
+    },
+    {
+      "url": "https://daisyui.com/components/modal/",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "frontend",
+      "subcategory": "daisyui"
+    },
+    {
+      "url": "https://daisyui.com/components/input/",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "frontend",
+      "subcategory": "daisyui"
+    },
+    {
+      "url": "https://thegraph.com/docs/en/developing/creating-a-subgraph/",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "indexer",
+      "subcategory": "the_graph"
+    },
+    {
+      "url": "https://thegraph.com/docs/en/developing/assemblyscript-api/",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "indexer",
+      "subcategory": "the_graph"
+    },
+    {
+      "url": "https://thegraph.com/docs/en/developing/graph-ts/api/",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "indexer",
+      "subcategory": "the_graph"
+    },
+    {
+      "url": "https://thegraph.com/docs/en/cookbook/arweave/",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "indexer",
+      "subcategory": "the_graph"
+    },
+    {
+      "url": "https://thegraph.com/docs/en/developing/unit-testing-framework/",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "indexer",
+      "subcategory": "the_graph"
+    },
+    {
+      "url": "https://docs.chain.link/data-feeds/price-feeds",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "oracle",
+      "subcategory": "chainlink"
+    },
+    {
+      "url": "https://docs.chain.link/vrf/v2-5/subscription/get-a-random-number",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "oracle",
+      "subcategory": "chainlink"
+    },
+    {
+      "url": "https://docs.chain.link/chainlink-automation/overview/getting-started",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "oracle",
+      "subcategory": "chainlink"
+    },
+    {
+      "url": "https://docs.chain.link/chainlink-functions/getting-started",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "oracle",
+      "subcategory": "chainlink"
+    },
+    {
+      "url": "https://docs.chain.link/data-feeds/using-data-feeds",
+      "type": "documentation",
+      "milestone": "m3",
+      "category": "oracle",
+      "subcategory": "chainlink"
+    },
+    {
+      "url": "https://github.com/wevm/wagmi",
+      "type": "github",
+      "milestone": "m3",
+      "category": "frontend",
+      "subcategory": "wagmi"
+    },
+    {
+      "url": "https://github.com/wevm/viem",
+      "type": "github",
+      "milestone": "m3",
+      "category": "frontend",
+      "subcategory": "viem"
+    },
+    {
+      "url": "https://github.com/rainbow-me/rainbowkit",
+      "type": "github",
+      "milestone": "m3",
+      "category": "frontend",
+      "subcategory": "rainbowkit"
+    },
+    {
+      "url": "https://github.com/saadeghi/daisyui",
+      "type": "github",
+      "milestone": "m3",
+      "category": "frontend",
+      "subcategory": "daisyui"
+    },
+    {
+      "url": "https://github.com/scaffold-eth/scaffold-eth-2",
+      "type": "github",
+      "milestone": "m3",
+      "category": "frontend",
+      "subcategory": "scaffold_eth"
+    },
+    {
+      "url": "https://github.com/graphprotocol/graph-tooling",
+      "type": "github",
+      "milestone": "m3",
+      "category": "indexer",
+      "subcategory": "graph_tooling"
+    },
+    {
+      "url": "https://github.com/messari/subgraphs",
+      "type": "github",
+      "milestone": "m3",
+      "category": "indexer",
+      "subcategory": "subgraphs"
+    },
+    {
+      "url": "https://github.com/OffchainLabs/arbitrum-subgraphs",
+      "type": "github",
+      "milestone": "m3",
+      "category": "indexer",
+      "subcategory": "arbitrum_subgraphs"
+    },
+    {
+      "url": "https://github.com/smartcontractkit/smart-contract-examples",
+      "type": "github",
+      "milestone": "m3",
+      "category": "oracle",
+      "subcategory": "chainlink_examples"
+    },
+    {
+      "url": "https://github.com/smartcontractkit/chainlink",
+      "type": "github",
+      "milestone": "m3",
+      "category": "oracle",
+      "subcategory": "chainlink"
+    },
+    {
+      "url": "https://github.com/nestjs/nest",
+      "type": "github",
+      "milestone": "m3",
+      "category": "backend",
+      "subcategory": "nestjs"
+    },
+    {
+      "url": "https://github.com/OffchainLabs/arbitrum-token-bridge",
+      "type": "github",
+      "milestone": "m3",
+      "category": "backend",
+      "subcategory": "arbitrum_bridge_ui"
+    }
+  ]
+}

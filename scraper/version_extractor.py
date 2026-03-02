@@ -22,6 +22,14 @@ DEPRECATED_PATTERNS = [
     (r'stylus-sdk\s*=\s*"0\.[0-5]\.', "stylus-sdk < 0.6 is deprecated"),
     (r'mini-alloc\s*=\s*"', "mini-alloc is deprecated, use stylus-sdk/mini-alloc feature"),
     (r"use stylus_sdk::storage::StorageVec;", "StorageVec import path may have changed"),
+    # SDK 0.9.x → 0.10.0 deprecated patterns
+    (r"msg::sender\(\)", "msg::sender() removed in 0.10.0 → self.vm().msg_sender()"),
+    (r"msg::value\(\)", "msg::value() removed in 0.10.0 → self.vm().msg_value()"),
+    (r"evm::log\(", "evm::log() removed in 0.10.0 → self.vm().log()"),
+    (r"use stylus_sdk::msg", "stylus_sdk::msg removed in 0.10.0 → use self.vm() methods"),
+    (r"use stylus_sdk::evm", "stylus_sdk::evm removed in 0.10.0 → use self.vm().log()"),
+    (r"\.getter\(", ".getter() → .get() in 0.10.0"),
+    (r"print_abi\(\)", "print_abi() → print_from_args() in 0.10.0"),
 ]
 
 # Current known good patterns
@@ -94,11 +102,11 @@ def extract_sdk_version_from_cargo(cargo_path: Path) -> Optional[str]:
 
         if isinstance(sdk_dep, str):
             # Simple version string: stylus-sdk = "0.9.0"
-            return sdk_dep.strip('"\'')
+            return sdk_dep.strip("\"'")
         elif isinstance(sdk_dep, dict):
             # Complex dependency: stylus-sdk = { version = "0.9.0", features = [...] }
             version = sdk_dep.get("version", "")
-            return version.strip('"\'') if version else None
+            return version.strip("\"'") if version else None
 
         return None
     except Exception as e:
@@ -179,6 +187,7 @@ def compare_versions(version1: str, version2: str) -> int:
          0 if version1 == version2
          1 if version1 > version2
     """
+
     def parse_version(v: str) -> tuple[int, ...]:
         # Remove any prefix like ^ or ~ and parse
         v = v.lstrip("^~>=<")
@@ -238,12 +247,12 @@ if __name__ == "__main__":
         print(f"Latest SDK: {latest}")
 
         # Test deprecated pattern detection
-        test_code = '''
+        test_code = """
         #[external]
         fn old_style() {}
 
         stylus-sdk = "0.5.0"
-        '''
+        """
         warnings = detect_deprecated_patterns(test_code)
         print(f"Deprecation warnings: {warnings}")
 

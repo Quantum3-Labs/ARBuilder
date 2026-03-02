@@ -275,6 +275,169 @@ const EXPRESS_DEV_DEPS = {
   "nodemon": "^3.0.0",
 };
 
+interface AbiFunc {
+  name: string;
+  args: { type: string; name: string }[];
+}
+
+function injectNestJSAbiMethods(
+  files: Record<string, string>,
+  readFuncs: AbiFunc[],
+  writeFuncs: AbiFunc[]
+): void {
+  // Generate service methods
+  const methods: string[] = [];
+  for (const func of readFuncs) {
+    const pascal = func.name[0].toUpperCase() + func.name.slice(1);
+    methods.push(
+      `  async read${pascal}(): Promise<unknown> {\n` +
+      `    return await this.contract.read.${func.name}();\n` +
+      `  }`
+    );
+  }
+  for (const func of writeFuncs) {
+    const pascal = func.name[0].toUpperCase() + func.name.slice(1);
+    const argNames = func.args.map((_, i) => `arg${i}`);
+    const params = argNames.map((a) => `${a}: unknown`).join(", ");
+    const argsList = argNames.join(", ");
+    methods.push(
+      `  async write${pascal}(${params}): Promise<\`0x\${string}\`> {\n` +
+      `    return await this.contract.write.${func.name}([${argsList}]);\n` +
+      `  }`
+    );
+  }
+
+  const serviceKey = "src/contract/contract.service.ts";
+  if (files[serviceKey]) {
+    let content = files[serviceKey];
+    // Uncomment ABI import
+    content = content.replace(
+      "// import { abi } from './abi';",
+      "import { CONTRACT_ABI } from './abi';"
+    );
+    // Uncomment contract initialization
+    content = content.replace(
+      `    if (contractAddress) {
+      // Initialize contract instance
+      // this.contract = getContract({
+      //   address: contractAddress as \`0x\${string}\`,
+      //   abi,
+      //   client: this.web3Service.getPublicClient(),
+      // });
+    }`,
+      `    if (contractAddress) {
+      this.contract = getContract({
+        address: contractAddress as \`0x\${string}\`,
+        abi: CONTRACT_ABI,
+        client: this.web3Service.getPublicClient(),
+      });
+    }`
+    );
+    // Replace generic method with ABI-aware methods
+    content = content.replace(
+      `  // Add your contract methods here
+  async getBalance(address: string): Promise<bigint> {
+    const client = this.web3Service.getPublicClient();
+    return client.getBalance({ address: address as \`0x\${string}\` });
+  }`,
+      `  // ABI-generated methods\n` + methods.join("\n\n")
+    );
+    files[serviceKey] = content;
+  }
+
+  // Generate matching controller endpoints
+  const controllerKey = "src/contract/contract.controller.ts";
+  if (files[controllerKey]) {
+    const endpoints: string[] = [];
+    for (const func of readFuncs) {
+      const pascal = func.name[0].toUpperCase() + func.name.slice(1);
+      endpoints.push(
+        `  @Get('${func.name}')\n` +
+        `  async get${pascal}() {\n` +
+        `    const result = await this.contractService.read${pascal}();\n` +
+        `    return { ${func.name}: result?.toString() };\n` +
+        `  }`
+      );
+    }
+    for (const func of writeFuncs) {
+      const pascal = func.name[0].toUpperCase() + func.name.slice(1);
+      const argNames = func.args.map((_, i) => `arg${i}`);
+      const bodyArgs = argNames.map((a) => `body.${a}`).join(", ");
+      endpoints.push(
+        `  @Post('${func.name}')\n` +
+        `  async post${pascal}(@Body() body: Record<string, unknown>) {\n` +
+        `    const hash = await this.contractService.write${pascal}(${bodyArgs});\n` +
+        `    return { hash };\n` +
+        `  }`
+      );
+    }
+
+    files[controllerKey] = `import { Controller, Get, Post, Body } from '@nestjs/common';
+import { ContractService } from './contract.service';
+
+@Controller('contract')
+export class ContractController {
+  constructor(private contractService: ContractService) {}
+
+${endpoints.join("\n\n")}
+}
+`;
+  }
+}
+
+function injectExpressAbiRoutes(
+  files: Record<string, string>,
+  readFuncs: AbiFunc[],
+  writeFuncs: AbiFunc[]
+): void {
+  const routes: string[] = [];
+  for (const func of readFuncs) {
+    routes.push(
+      `router.get('/${func.name}', async (req, res) => {\n` +
+      `  try {\n` +
+      `    const result = await publicClient.readContract({\n` +
+      `      address: process.env.CONTRACT_ADDRESS as \`0x\${string}\`,\n` +
+      `      abi: CONTRACT_ABI,\n` +
+      `      functionName: '${func.name}',\n` +
+      `    });\n` +
+      `    res.json({ ${func.name}: result?.toString() });\n` +
+      `  } catch (error) {\n` +
+      `    res.status(500).json({ error: 'Failed to read ${func.name}' });\n` +
+      `  }\n` +
+      `});`
+    );
+  }
+  for (const func of writeFuncs) {
+    routes.push(
+      `router.post('/${func.name}', async (req, res) => {\n` +
+      `  try {\n` +
+      `    // Note: write operations require a wallet client\n` +
+      `    res.json({ function: '${func.name}', args: req.body });\n` +
+      `  } catch (error) {\n` +
+      `    res.status(500).json({ error: 'Failed to call ${func.name}' });\n` +
+      `  }\n` +
+      `});`
+    );
+  }
+
+  const routeKey = "src/routes/contract.ts";
+  files[routeKey] = `import { Router } from 'express';
+import { publicClient } from '../index';
+import { CONTRACT_ABI } from '../config/abi';
+
+const router = Router();
+
+${routes.join("\n\n")}
+
+export default router;
+`;
+
+  // Also add the ABI file in the Express location
+  if (files["src/contract/abi.ts"]) {
+    files["src/config/abi.ts"] = files["src/contract/abi.ts"];
+  }
+}
+
 export function generateBackend(args: GenerateBackendArgs): GenerateBackendResult {
   const { framework = "nestjs", contractAbi } = args;
 
@@ -285,11 +448,38 @@ export function generateBackend(args: GenerateBackendArgs): GenerateBackendResul
 
   const files: Record<string, string> = { ...baseFiles };
 
-  // Add ABI file if provided
+  // Add ABI file and generate ABI-aware endpoints if provided
   if (contractAbi) {
     try {
       const abi = JSON.parse(contractAbi);
-      files["src/contract/abi.ts"] = `export const abi = ${JSON.stringify(abi, null, 2)} as const;\n`;
+      files["src/contract/abi.ts"] = `export const CONTRACT_ABI = ${JSON.stringify(abi, null, 2)} as const;\n`;
+
+      // Parse ABI functions into read/write categories
+      const readFuncs: { name: string; args: { type: string; name: string }[] }[] = [];
+      const writeFuncs: { name: string; args: { type: string; name: string }[] }[] = [];
+      for (const item of abi) {
+        if (item.type !== "function") continue;
+        const entry = {
+          name: item.name,
+          args: (item.inputs || []).map((inp: { type: string; name: string }) => ({
+            type: inp.type,
+            name: inp.name,
+          })),
+        };
+        if (item.stateMutability === "view" || item.stateMutability === "pure") {
+          readFuncs.push(entry);
+        } else {
+          writeFuncs.push(entry);
+        }
+      }
+
+      if (readFuncs.length > 0 || writeFuncs.length > 0) {
+        if (isNestJS) {
+          injectNestJSAbiMethods(files, readFuncs, writeFuncs);
+        } else {
+          injectExpressAbiRoutes(files, readFuncs, writeFuncs);
+        }
+      }
     } catch {
       // Invalid ABI, skip
     }

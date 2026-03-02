@@ -1,10 +1,6 @@
 name: Deploy to Staging
 
 on:
-  push:
-    branches:
-      - feature/m2-arbitrum-sdk
-      - feature/m3-full-dapp-builder
   workflow_dispatch:
     inputs:
       refresh_rag:
@@ -48,7 +44,7 @@ jobs:
         run: |
           echo "## Staging Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**URL:** https://arbbuilder-staging.swmengappdev.workers.dev" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** https://arbbuilder-staging.arbuilder-app.workers.dev" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
 
@@ -96,7 +92,7 @@ jobs:
         env:
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
         run: |
-          curl -X POST "https://arbbuilder-staging.swmengappdev.workers.dev/api/admin/migrate" \
+          curl -X POST "https://arbbuilder-staging.arbuilder-app.workers.dev/api/admin/migrate" \
             -H "X-Admin-Secret: $AUTH_SECRET" \
             -H "Content-Type: application/json" \
             -d '{"action": "clear"}'
@@ -104,7 +100,7 @@ jobs:
       - name: Migrate to Staging Vectorize
         env:
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
-          MIGRATE_URL: https://arbbuilder-staging.swmengappdev.workers.dev
+          MIGRATE_URL: https://arbbuilder-staging.arbuilder-app.workers.dev
         run: npx tsx scripts/diff-migrate.ts --full
 
       - name: Summary

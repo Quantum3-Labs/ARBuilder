@@ -155,7 +155,7 @@ export async function sendOTPEmail(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "ARBuilder <noreply@whymelabs.com>",
+        from: "ARBuilder <noreply@arbuilder.app>",
         to: [email],
         subject: `Your ARBuilder verification code: ${code}`,
         html: `

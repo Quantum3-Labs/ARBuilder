@@ -18,263 +18,432 @@ ARBuilder's knowledge base must only contain **verified, working code** that com
 - Prefer `stylus-sdk >= 0.10.0` (main version)
 - Must be actively maintained (commits within 6 months)
 - Must be deployable and functional
+- Verified with `scripts/verify_source.py --steps 1,2,4,5`
 
 **Exclusion criteria:**
 - Meta-lists (e.g., awesome-stylus) - contain mixed quality/versions
 - Unverified community submissions
-- Deprecated SDK versions
+- Deprecated SDK versions (< 0.8.0)
 - Non-Arbitrum code (e.g., general Rust libs, UI frameworks)
+- Challenge submissions with identical template code (zero unique value)
+- Scaffold forks that don't compile
 
 ### 3. Version Requirements
 
 | Component | Main Version | Minimum Version |
 |-----------|--------------|-----------------|
 | stylus-sdk | 0.10.0 | 0.8.0 |
+| @arbitrum/sdk | 4.0.4 | 4.0.0 |
 | alloy-primitives | 1.0.1 | 0.8.0 |
 | alloy-sol-types | 1.0.1 | 0.8.0 |
 | Rust | 1.88.0 | 1.81 |
 
 **Note:** Anything below stylus-sdk 0.8.0 is deprecated (uses `#[external]` instead of `#[public]`).
 
-## Current Verified Sources
+## Verification Coverage
+
+The verification pipeline (`scripts/verify_source.py --all`) covers all GitHub repos in `sources.json`:
+
+- **M1 Stylus** (13 repos) + **M2 SDK** (5 repos) + **Orbit** (1 repo)
+- **M3 dApp Builder** (12 repos): wagmi, viem, nestjs, chainlink, etc.
+
+**Verification includes:**
+- SDK version check (stylus-sdk >= 0.8.0 or @arbitrum/sdk >= 4.0.0)
+- Compile check + linting (cargo clippy for Rust, npm lint for TypeScript — informational)
+- Tests, GitHub health, and dependency audit
+- Package manager auto-detection (pnpm/yarn/npm from lockfile)
+
+**Continuous verification:** The `maintenance.yml` workflow automatically re-verifies all repos when a new SDK version is detected, and creates a GitHub issue if any repos fail.
+
+### AI Security + Code Quality Review
+
+Step 5 of the verification pipeline runs an LLM-based code review (via OpenRouter) on each repo's source files:
+
+- **Security score** (0–100): Checks for key management issues, input validation, access control, overflow risks
+- **Quality score** (0–100): Code structure, error handling, documentation
+- **Teaching value** (high/medium/low): Whether the code demonstrates clean patterns worth teaching the AI
+- **Recommendation**: "include", "include_with_caveats", or "exclude"
+
+**Last review (2026-02-21):** 30/31 repos reviewed. Mean security score: 86/100. All repos scored ≥75 and received "include" or "include_with_caveats". 2 repos rated "high" teaching value (rust-contracts-stylus, stylusport). Common flagged issues: hardcoded example keys, missing input validation, use of `unwrap()`/`panic!()` — typical for tutorial code and non-blocking.
+
+## Current Verified Sources (19 repos, verified 2026-02-16)
+
+> **Fork Strategy:** All 13 Stylus repos are sourced from the [ARBuilder-Forks](https://github.com/ARBuilder-Forks) GitHub org. This ensures resilience against upstream deletions. Each entry's `forked_from` field tracks the original repo.
 
 ### M1: Stylus Development
 
-**Official Sources:**
-| Source | Type | SDK Version | Status | Notes |
-|--------|------|-------------|--------|-------|
-| docs.arbitrum.io/stylus/* | Docs | N/A | Verified | Official docs |
-| OffchainLabs/stylus-hello-world | Code | 0.9.0 | Verified | Official example |
-| OffchainLabs/stylus-quickstart-vending-machine | Code | 0.8.4 | Verified | Official example |
-| ArbitrumFoundation/stylus-workshop-gol | Code | 0.9.0 | Verified | Workshop material |
+**Official Examples:**
+| Source (ARBuilder-Forks) | Forked From | SDK Version | Notes |
+|--------------------------|-------------|-------------|-------|
+| ARBuilder-Forks/stylus-hello-world | OffchainLabs/stylus-hello-world | 0.10.0 | Migrated to SDK 0.10.0 |
+| ARBuilder-Forks/stylus-quickstart-vending-machine | OffchainLabs/stylus-quickstart-vending-machine | 0.10.0 | Migrated to SDK 0.10.0 |
+| ARBuilder-Forks/stylus-workshop-gol | ArbitrumFoundation/stylus-workshop-gol | 0.9.0 | Reverted — OZ alloy conflict |
 
 **Production Libraries:**
-| Source | Type | SDK Version | Status | Notes |
-|--------|------|-------------|--------|-------|
-| OpenZeppelin/rust-contracts-stylus | Code | 0.9.0 | Verified | Production library |
-| OpenZeppelin/stylus-test-helpers | Code | 0.9.0 | Verified | Motsu testing framework |
-| stylus-developers-guild/reentrancy-transient-storage | Code | 0.9.0 | Verified | Security patterns |
-| oak-security/stylusport | Code | 0.9.0 | Verified | Solana-to-Stylus porting |
-| gnosisguild/stylus-provider | Code | 0.8.4 | Verified | Infrastructure tooling |
+| Source (ARBuilder-Forks) | Forked From | SDK Version | Notes |
+|--------------------------|-------------|-------------|-------|
+| ARBuilder-Forks/rust-contracts-stylus | OpenZeppelin/rust-contracts-stylus | 0.9.0 | Reverted — c-kzg + alloy conflict |
+| ARBuilder-Forks/stylus-test-helpers | OpenZeppelin/stylus-test-helpers | 0.9.0 | Reverted — c-kzg native lib conflict |
+| ARBuilder-Forks/stylusport | oak-security/stylusport | 0.9.0 | Reverted — c-kzg native lib conflict |
+| ARBuilder-Forks/stylus-provider | gnosisguild/stylus-provider | 0.8.4 | Reverted — c-kzg native lib conflict |
 
-**Community Projects (Verified 2025-01-25):**
-| Source | Type | SDK Version | Status | Notes |
-|--------|------|-------------|--------|-------|
-| philogicae/ethbuc2025-gyges | Code | 0.8.4 | Verified | Hackathon project |
-| Oluwatobilobaoke/erc6909-with-arbitrum-stylus | Code | 0.9.0 | Verified | ERC6909 implementation |
-| hummusonrails/fortune-generator | Code | 0.8.0 | Verified | Randomness example |
-| IndexMaker/vaultworks | Code | 0.9.0 | Verified | DeFi vault contracts |
-| Inteli-Club5/EdCation | Code | 0.8.0 | Verified | Education platform |
+**Community Projects:**
+| Source (ARBuilder-Forks) | Forked From | SDK Version | Notes |
+|--------------------------|-------------|-------------|-------|
+| ARBuilder-Forks/ethbuc2025-gyges | philogicae/ethbuc2025-gyges | 0.10.0 | Migrated to SDK 0.10.0 |
+| ARBuilder-Forks/erc6909-with-arbitrum-stylus | Oluwatobilobaoke/erc6909-with-arbitrum-stylus | 0.10.0 | Migrated to SDK 0.10.0 |
+| ARBuilder-Forks/fortune-generator | hummusonrails/fortune-generator | 0.10.0 | Migrated to SDK 0.10.0 |
 
-**Scaffold-Stylus Projects (All SDK 0.9.0):**
-- Arb-Stylus/scaffold-stylus (main template)
-- iyansr/cross-protocol-defi-tracker
-- Einarmig/WalletNaming-scaffold-stylus
-- mavix21/poap-scaffold-stylus
-- dchagast/scaffold-stylus-staking
-- cidkagenow/EmersonApp-scaffold-stylus
-- autodidacttrade/DeFi-Project-ERC20-scaffold-stylus
-- ByteToHex/VRF-scaffold-stylus
-
-**Challenge Submissions (All SDK 0.9.0):**
-- Huygon764/challenge-001, Fnz11/challenge-001
-- ndrewlex/challenge-001, athallarizky/challenge-001, dimasd-angga/challenge-001
-- ammar-rasyidi/challenge-001, rizkianakbar/challenge-001
-- math-marcellino/challenge-002, lucky-ivanius/challenge-001, lucky-ivanius/challenge-002
+**Scaffold-Stylus Projects:**
+| Source (ARBuilder-Forks) | Forked From | SDK Version | Notes |
+|--------------------------|-------------|-------------|-------|
+| ARBuilder-Forks/scaffold-stylus | Arb-Stylus/scaffold-stylus | 0.9.0 | Reverted — OZ v0.3.0 incompatible |
+| ARBuilder-Forks/cross-protocol-defi-tracker | iyansr/cross-protocol-defi-tracker | 0.9.0 | Reverted — OZ alloy conflict |
+| ARBuilder-Forks/WalletNaming-scaffold-stylus | Einarmig/WalletNaming-scaffold-stylus | 0.10.0 | Migrated to SDK 0.10.0 |
 
 ### M2: Arbitrum SDK
 
-| Source | Type | Status | Notes |
-|--------|------|--------|-------|
-| docs.arbitrum.io/sdk | Docs | Verified | Official docs |
-| docs.arbitrum.io/build-decentralized-apps/* | Docs | Verified | Bridging/messaging docs |
-| OffchainLabs/arbitrum-sdk | Code | Verified | Official SDK |
-| OffchainLabs/arbitrum-tutorials | Code | Verified | Working examples |
+**Official Repos:**
+| Source | SDK Version | Status | Notes |
+|--------|-------------|--------|-------|
+| OffchainLabs/arbitrum-sdk | N/A | Verified | Official SDK library |
+| OffchainLabs/arbitrum-tutorials | 4.0.1 | Verified | Working bridging/messaging examples |
 
-## Removed Sources (and why)
+**Community Examples:**
+| Source | SDK Version | Status | Notes |
+|--------|-------------|--------|-------|
+| kevinb1003/arbitrum-api | 4.0.4 | Verified | REST API wrapping EthBridger/Erc20Bridger (32 stars) |
+| gelatodigital/how-tos-18-arbitrum-orbit-bridging | 4.0.2 | Verified | Orbit chain bridging scripts |
+| gelatodigital/clink-bridging-cross-messaging | 4.0.2 | Verified | Cross-chain messaging (abandoned but unique) |
+
+### Orbit SDK
+
+| Source | SDK Version | Status | Notes |
+|--------|-------------|--------|-------|
+| OffchainLabs/arbitrum-orbit-sdk | 4.0.4 | Verified | Official Orbit SDK |
+
+## Removed Sources (2026-02-10 Cleanup)
+
+### Challenge Submissions (10 repos removed)
+All 98% identical template code with zero unique value. Added 4700+ duplicate chunks that polluted retrieval results.
+- Huygon764, Fnz11, ndrewlex, athallarizky, dimasd-angga, ammar-rasyidi, rizkianakbar, math-marcellino, lucky-ivanius (x2), dante4rt (404)
+
+### Broken Scaffold Forks (5 repos removed)
+All fail to compile due to OZ 0.3.0 incompatibility or linker errors:
+- mavix21/poap-scaffold-stylus (openzeppelin-stylus 0.3.0 incompatible)
+- dchagast/scaffold-stylus-staking (linker errors on arm64)
+- cidkagenow/EmersonApp-scaffold-stylus (non-exhaustive patterns)
+- autodidacttrade/DeFi-Project-ERC20 (linker errors)
+- ByteToHex/VRF-scaffold-stylus (linker errors)
+
+### Broken Community Projects (2 repos removed)
+- IndexMaker/vaultworks (archived, no stylus-sdk detected)
+- Inteli-Club5/EdCation (compile fails, StorageAddress::new wrong args)
+
+### Broken Production Repos (1 repo removed)
+- stylus-developers-guild/reentrancy-transient-storage (compile fails, trait bound error)
 
 ### Deprecated SDK Versions (< 0.8.0)
-- `OffchainLabs/stylus-chess` - SDK v0.4.2 (deprecated)
-- `OffchainLabs/stylus-by-example` - SDK v0.6.0 (deprecated)
-- `fluidity-money/9lives.so` - SDK v0.7.0 (deprecated)
-- `fluidity-money/long.so` - SDK v0.7.0 (deprecated)
-- `hammertoe/ArbitrumOnchainAgent` - SDK v0.7.0 (deprecated)
-- `cygaar/inkmate` - SDK v0.4.3 (deprecated)
-- `malik672/open-stylus` - SDK v0.4.2 (deprecated)
-- `code-423n4/2024-10-superposition` - SDK v0.6.0 (deprecated)
+- OffchainLabs/stylus-chess (v0.4.2), OffchainLabs/stylus-by-example (v0.6.0)
+- fluidity-money/9lives.so (v0.7.0), fluidity-money/long.so (v0.7.0)
+- hammertoe/ArbitrumOnchainAgent (v0.7.0), cygaar/inkmate (v0.4.3)
+- malik672/open-stylus (v0.4.2), code-423n4/2024-10-superposition (v0.6.0)
 
-### Deleted Repos
-- `dante4rt/challenge-001` - Repository deleted by owner (404)
+### Previously Excluded (Now M3 Sources)
+The following repos were originally excluded as "irrelevant" but are now included as M3 dApp Builder sources:
+- nestjs/nest, saadeghi/daisyui, rainbow-me/rainbowkit
+- smartcontractkit/chainlink, messari/subgraphs
+- wevm/wagmi, wevm/viem, scaffold-eth/scaffold-eth-2
+- graphprotocol/graph-tooling, smartcontractkit/smart-contract-examples
+- OffchainLabs/arbitrum-token-bridge
 
-### Meta-lists
-- `OffchainLabs/awesome-stylus` - Contains mixed versions, outdated projects
+### M3: Full dApp Builder
 
-### Previously Unverified (Now Verified and Included)
-- Challenge submissions - VERIFIED 2025-01-25 (all SDK 0.9.0, now included)
-- Scaffold-stylus forks - VERIFIED 2025-01-25 (all SDK 0.9.0, now included)
+**Documentation Sources (36 URLs):**
+| Category | Subcategory | Count | Source |
+|----------|-------------|-------|--------|
+| m3_backend | nestjs | 5 | docs.nestjs.com |
+| m3_backend | express | 3 | expressjs.com |
+| m3_frontend | wagmi | 5 | wagmi.sh |
+| m3_frontend | viem | 4 | viem.sh |
+| m3_frontend | rainbowkit | 4 | rainbowkit.com |
+| m3_frontend | daisyui | 5 | daisyui.com |
+| m3_indexer | the_graph | 5 | thegraph.com |
+| m3_oracle | chainlink | 5 | docs.chain.link |
 
-### Still Excluded (Failed Verification)
-- yahgwai/rkfall-nft - SDK v0.4.1 (deprecated)
-- gvladika/stylus-erc721 - SDK v0.4.1 (deprecated)
-- scarfish-dapps/integrum-swap - SDK v0.5.2 (deprecated)
-- OffchainLabs/stylus-tutorials - SDK v0.5.0 (deprecated)
-- LimeChain/stylus-toolkit - SDK v0.5.0 (deprecated)
+**GitHub Repos (12 repos):**
+| Source | Category | Notes |
+|--------|----------|-------|
+| wevm/wagmi | m3_frontend | React hooks for Ethereum |
+| wevm/viem | m3_frontend | TypeScript Interface for Ethereum |
+| rainbow-me/rainbowkit | m3_frontend | Wallet connection UI |
+| saadeghi/daisyui | m3_frontend | Tailwind CSS component library |
+| scaffold-eth/scaffold-eth-2 | m3_frontend | Full-stack Ethereum starter |
+| graphprotocol/graph-tooling | m3_indexer | The Graph CLI and codegen |
+| messari/subgraphs | m3_indexer | Production subgraph examples |
+| smartcontractkit/smart-contract-examples | m3_oracle | Chainlink integration examples |
+| smartcontractkit/chainlink | m3_oracle | Chainlink oracle framework |
+| nestjs/nest | m3_backend | NestJS framework |
+| OffchainLabs/arbitrum-token-bridge | m3_backend | Bridge UI patterns |
 
-### Irrelevant Code
-- `nestjs/nest` - Node.js framework, not Arbitrum
-- `saadeghi/daisyui` - CSS framework
-- `rainbow-me/rainbowkit` - Wallet UI kit
-- `smartcontractkit/chainlink` - Chainlink, not Arbitrum-specific
-- `messari/subgraphs` - Analytics, not SDK examples
+**M3 Inclusion Criteria:**
+- Framework library repos are assessed for **teaching value**, not SDK version compliance
+- Documentation must be from stable/current versions
+- Large repos (wagmi, nestjs, chainlink) are ingested via CF Queue async pipeline
+- Content is filtered through the standard 3-layer system (SKIP_DIRS, hex filter, dedup)
+
+## Data Quality Filters (3-Layer System)
+
+The preprocessing pipeline applies a 3-layer filtering system to remove junk data before it reaches the vector database. Without these filters, ~62% of chunks would be low-quality vendored code, auto-generated files, or bytecode.
+
+### Layer 1: Scraper (`scraper/github_scraper.py`)
+
+Skips junk files at clone time, before reading content from disk.
+
+| Filter | What it catches | Example |
+|--------|----------------|---------|
+| `SKIP_DIRS` | Vendored crates, build artifacts | `vendor/`, `third_party/`, `artifacts/` |
+| `SKIP_FILE_NAMES` | Lock files | `package-lock.json`, `Cargo.lock` |
+| `SKIP_FILE_SUBSTRINGS` | TypeChain factories | `*__factory.ts`, `*__factory.js` |
+| `SKIP_TS_JS_IN_DIRS` | TS/JS in ABI dirs | `abi/*.ts` (keeps `.rs`, `.json`) |
+| `SKIP_DIR_PREFIXES` | ABI variant dirs | `abi-bold/`, `abi-nitro/` |
+
+### Layer 2: Processor (`src/preprocessing/processor.py`)
+
+Defense-in-depth for files already in `github_repos_*.json`, plus content-based filters.
+
+| Filter | What it catches |
+|--------|----------------|
+| `_should_skip_file()` | Same patterns as Layer 1 (catches pre-existing raw data) |
+| `_is_hex_heavy()` | Bytecode mocks, ABI hex dumps (>40% hex chars) |
+| `_cross_repo_dedup()` | Exact-content duplicates across different repos (keeps highest-priority source) |
+
+**Cross-repo dedup priority** (lower number = kept):
+1. `official_examples` / `official_repos`
+2. `verified_production` / `forked_0_10_0`
+3. `community_projects` / `community_examples`
+4. `scaffold_projects`
+
+### Layer 3: Stats & Reporting
+
+Filter results are tracked in `processing_stats_*.json` under `filter_stats` and printed to console after processing.
+
+## Embedding Model
+
+Both the local Python pipeline and Cloudflare hosted service use **BGE-M3** (1024 dimensions) for embedding consistency:
+
+| Environment | Model ID | Provider |
+|-------------|----------|----------|
+| Local (Python) | `baai/bge-m3` | OpenRouter |
+| CF Workers (hosted) | `@cf/baai/bge-m3` | Cloudflare Workers AI |
+
+BGE-M3 supports multi-lingual text and dense/sparse/multi-vector retrieval. Using the same model ensures compatible embeddings — corpus vectors from Python work with query vectors from the CF worker. Pre-built embeddings are published via GitHub Releases for zero-setup local dev.
+
+## Multi-Version Data Strategy
+
+### Overview
+
+The pipeline supports both SDK 0.9.x and 0.10.0 code through two complementary approaches:
+
+1. **Branch-per-version**: Each SDK version is a separate entry in `sources.json` with its own `branch` field, ingested as a distinct source
+2. **Forked repos**: Community repos are forked and fully migrated to SDK 0.10.0
+
+### Fork Strategy
+
+All 13 Stylus repos in the config are sourced from the [ARBuilder-Forks](https://github.com/ARBuilder-Forks) GitHub org. This ensures resilience against upstream deletions. 6 forks are fully migrated to SDK 0.10.0; 7 retain original code (blocked by upstream dependency conflicts) and rely on the dual-chunk strategy for 0.10.0 coverage.
+
+```bash
+# Fork and migrate all repos
+python scripts/fork_and_migrate.py --all
+
+# Dry run first to review changes
+python scripts/fork_and_migrate.py --all --dry-run
+```
+
+The script:
+1. Forks the repo to `ARBuilder-Forks/{repo-name}` via `gh`
+2. Applies `apply_version_transforms()` to all `.rs` files
+3. Updates Cargo.toml with 0.10.0 dependencies
+4. Adds required files (Stylus.toml, rust-toolchain.toml, src/main.rs)
+5. Runs compilation verification (`cargo check`)
+6. Auto-fixes failures using `_fix_code()` patterns (up to 2 attempts)
+7. Commits and pushes
+
+**Results (2026-02-16):** 6 of 13 repos compile with SDK 0.10.0:
+
+| Fork | Original | Status |
+|------|----------|--------|
+| ARBuilder-Forks/stylus-hello-world | OffchainLabs/stylus-hello-world | Compiling |
+| ARBuilder-Forks/stylus-quickstart-vending-machine | OffchainLabs/stylus-quickstart-vending-machine | Compiling |
+| ARBuilder-Forks/erc6909-with-arbitrum-stylus | Oluwatobilobaoke/erc6909-with-arbitrum-stylus | Compiling |
+| ARBuilder-Forks/fortune-generator | hummusonrails/fortune-generator | Compiling |
+| ARBuilder-Forks/ethbuc2025-gyges | philogicae/ethbuc2025-gyges | Compiling |
+| ARBuilder-Forks/WalletNaming-scaffold-stylus | Einarmig/WalletNaming-scaffold-stylus | Compiling |
+| ARBuilder-Forks/rust-contracts-stylus | OpenZeppelin/rust-contracts-stylus | Blocked: c-kzg + alloy version conflict |
+| ARBuilder-Forks/stylus-test-helpers | OpenZeppelin/stylus-test-helpers | Blocked: c-kzg native library conflict |
+| ARBuilder-Forks/stylusport | oak-security/stylusport | Blocked: c-kzg native library conflict |
+| ARBuilder-Forks/stylus-provider | gnosisguild/stylus-provider | Blocked: c-kzg native library conflict |
+| ARBuilder-Forks/stylus-workshop-gol | ArbitrumFoundation/stylus-workshop-gol | Blocked: OZ alloy-primitives mismatch |
+| ARBuilder-Forks/cross-protocol-defi-tracker | iyansr/cross-protocol-defi-tracker | Blocked: OZ alloy-primitives mismatch |
+| ARBuilder-Forks/scaffold-stylus | Arb-Stylus/scaffold-stylus | Blocked: OZ v0.3.0 incompatible with SDK 0.10.0 |
+
+The 7 blocked repos all depend on OpenZeppelin's rust-contracts-stylus or its test helpers (motsu), which pin `alloy-primitives = "=0.8.20"` — incompatible with stylus-sdk 0.10.0's requirement for alloy-primitives 1.0.1. These will unblock when OZ releases a compatible version.
+
+All Stylus repos in `sources.json` now point to ARBuilder-Forks URLs. Each entry includes a `forkedFrom` field tracking the original repo:
+```json
+{
+  "url": "https://github.com/ARBuilder-Forks/stylus-hello-world",
+  "type": "github",
+  "category": "stylus",
+  "subcategory": "forked_0_10_0",
+  "sdkVersion": "0.10.0",
+  "forkedFrom": "OffchainLabs/stylus-hello-world"
+}
+```
+
+Repos with multiple SDK versions use the `versions` array with separate branches:
+```json
+{
+  "url": "https://github.com/ARBuilder-Forks/stylus-hello-world",
+  "versions": [
+    { "sdkVersion": "0.10.0", "branch": "main" },
+    { "sdkVersion": "0.9.2", "branch": "sdk-0.9.2" }
+  ]
+}
+```
+
+Each version is ingested as a separate source with a branch-aware source ID (`url#branch`), ensuring both versions coexist in the vector database without conflicts.
+
+### Transform Rules (0.9.x → 0.10.0)
+
+| Old Pattern (0.9.x) | New Pattern (0.10.0) |
+|---------------------|---------------------|
+| `msg::sender()` | `self.vm().msg_sender()` |
+| `msg::value()` | `self.vm().msg_value()` |
+| `evm::log(...)` | `self.vm().log(...)` |
+| `use stylus_sdk::evm` | (removed) |
+| `use stylus_sdk::msg` | (removed) |
+| `.getter(...)` | `.get(...)` |
+| `sol! { interface ... }` | `sol_interface! { interface ... }` |
+| `StorageMap<K, V>` | `mapping(k => v)` |
+| `StorageVec<X>` | `x[]` |
+| `StorageAddress` | `address` |
+| `StorageU256` | `uint256` |
+| `print_abi()` | `print_from_args()` |
+
+These transforms are defined centrally in `VERSION_TRANSFORMS` in `src/utils/version_manager.py` and consumed by:
+- `src/templates/stylus_templates.py` (template adaptation)
+- `src/mcp/tools/generate_stylus_code.py` (`_fix_code()`)
+- `src/mcp/tools/ask_stylus.py` (`_fix_code_in_response()`)
+- `scripts/fork_and_migrate.py` (repo migration)
+
+### Version-Aware Generation
+
+All code generation tools accept `target_version`:
+- `generate_stylus_code(target_version="0.9.0")` → produces 0.9.x code with msg::sender(), .getter(), etc.
+- `ask_stylus(target_version="0.9.0")` → fixes code blocks in responses to use 0.9.x patterns
+- Templates are adapted via `adapt_template()` to strip 0.10-only files and reverse transforms
+
+### Version-Aware Retrieval
+
+The RAG pipeline applies version-aware scoring during retrieval:
+
+- Chunks matching `target_version` major.minor get a **1.2x boost**
+- Chunks from deprecated SDK versions (< 0.8.0) get a **0.8x penalty**
+- Modernized chunks matching target get **1.1x boost**; non-matching modernized chunks don't get version boost (lets real 0.9.x chunks win when targeting 0.9.x)
+- `target_version` flows from MCP schema → `generate_stylus_code` → `get_stylus_context` → `vectordb.hybrid_search`
 
 ## Maintenance Runbook
 
+### Automated Tools
+
+| Script | Purpose | Usage |
+|--------|---------|-------|
+| `scripts/verify_source.py` | Verify repos compile, lint, and pass tests | `python scripts/verify_source.py --all --steps 1,2,4` |
+| `scripts/maintain_sources.py monitor` | Check crates.io/npm for new SDK releases | Flags all outdated repos |
+| `scripts/maintain_sources.py discover` | Search GitHub for new community repos | Returns candidates to verify |
+| `scripts/maintain_sources.py health` | Check GitHub health of all config repos | Finds archived/deleted repos |
+| `scripts/maintain_sources.py remediate` | Auto-remove critical repos from config | Removes archived/deleted, flags abandoned |
+| `scripts/audit_data.py` | Detect orphans and config drift | Compare disk vs config |
+
+### Auto-Remediation Policy
+
+The `remediate` command performs automatic cleanup of the source registry:
+
+- **Critical (archived/deleted/404)**: Automatically removed from `sources.json`
+- **Abandoned (>365 days without update)**: Flagged for manual review but NOT auto-removed
+- **Stale (90-365 days)**: Informational only, no action taken
+
+In CI (`maintenance.yml`), remediation is **manual trigger only** — changes to `sources.json` always need human review. When triggered, it auto-commits the cleaned config.
+
 ### Scenario 1: Adding New Sources
 
-When you find a new repo or doc page to add:
-
-**For a code repository:**
-
 ```bash
-# 1. Verify the repo first
-git clone <repo-url> /tmp/verify-repo
-cd /tmp/verify-repo
-cat Cargo.toml | grep stylus-sdk   # Must be >= 0.8.0
-cargo stylus check                  # Optional: verify it compiles
+# 1. Verify the repo
+python scripts/verify_source.py https://github.com/org/repo --steps 1,2,4
 
-# 2. Add to scraper/config.py under the right section
-#    - DOCS dict → for documentation pages
-#    - PROJECT_EXAMPLES dict → for code repos
-#    Each repo entry needs: url, sdk_version, verified (date)
+# 2. Add to sources.json (single source of truth)
+#    Each repo entry needs: url, type, category, subcategory, milestone
+
+# 3. Sync to CF KV registry
+ARBBUILDER_ADMIN_SECRET=xxx npx tsx scripts/sync_sources.ts
+
+# 4. Run the pipeline (local)
+python -m scraper.run --skip-web
+python -m src.preprocessing.processor
+python -m src.embeddings.vectordb --reset
 ```
-
-Example entry in `PROJECT_EXAMPLES`:
-```python
-{"url": "https://github.com/org/repo", "sdk_version": "0.9.0", "verified": "2026-02-09"},
-```
-
-**For a documentation page:**
-
-Add the URL to the appropriate category in the `DOCS` dict in `scraper/config.py`.
-
-**Then run the pipeline:**
-
-```bash
-# Local pipeline
-python -m scraper.run --skip-web         # Clone new repos (add --force-reclone if updating)
-python -m src.preprocessing.processor    # Re-process all chunks
-python -m src.embeddings.vectordb --reset  # Reset local ChromaDB and re-ingest
-
-# Remote (production Cloudflare)
-python scripts/sync_remote_db.py --dry-run    # Preview changes
-python scripts/sync_remote_db.py --reingest   # Trigger batch re-ingestion of all sources
-```
-
-**Finally:** Update the source tables in this doc and commit.
-
----
 
 ### Scenario 2: Removing Unmaintained Sources
 
-When a repo is archived, deleted, or no longer compiles:
-
 ```bash
-# 1. Run audit to see current state
-python scripts/audit_data.py
+# Option A: Auto-remediate (removes archived/deleted from sources.json)
+python scripts/maintain_sources.py remediate
 
-# 2. Remove the entry from scraper/config.py
-#    - Delete from DOCS or PROJECT_EXAMPLES
+# Option B: Manual
+# 1. Run health check to identify issues
+python scripts/maintain_sources.py health
 
-# 3. Prune orphan repo directories from disk
+# 2. Remove from sources.json
+# 3. Sync to CF KV registry
+ARBBUILDER_ADMIN_SECRET=xxx npx tsx scripts/sync_sources.ts
+
+# 4. Prune orphan repos from disk
 python scripts/audit_data.py --prune --confirm
-
-# 4. Re-run the local pipeline
-python -m src.preprocessing.processor
-python -m src.embeddings.vectordb --reset
-
-# 5. Sync remote — removes stale sources from production
-python scripts/sync_remote_db.py --dry-run       # Preview: shows stale sources to delete
-python scripts/sync_remote_db.py --delete-stale   # Delete stale from KV registry
-python scripts/sync_remote_db.py --reingest       # Re-ingest clean sources
 ```
 
-If there are many stale vectors in Vectorize that won't clear (CPU timeout), recreate the index:
+### Scenario 3: New SDK Version Released
 
 ```bash
-cd apps/web
-npx wrangler vectorize delete arbbuilder
-npx wrangler vectorize create arbbuilder --dimensions 1024 --metric cosine
-cd ../..
-python scripts/sync_remote_db.py --reingest   # Re-populate fresh index
+# 1. Check what's outdated
+python scripts/maintain_sources.py monitor
+
+# 2. Update sdkConfig in sources.json
+# 3. Re-verify all repos with new SDK
+python scripts/verify_source.py --all --steps 1,2,4
+
+# 4. Sync to CF KV and re-run pipeline
+ARBBUILDER_ADMIN_SECRET=xxx npx tsx scripts/sync_sources.ts
 ```
-
-**Finally:** Move the removed source to the "Removed Sources" section in this doc with the reason.
-
----
-
-### Scenario 3: New Stylus SDK Version Released (e.g., 0.10.0)
-
-When a new `stylus-sdk` version is published on crates.io:
-
-```bash
-# 1. Update shared/stylus-versions.json
-#    - Add the new version entry with breaking changes, migration notes
-#    - Update main_version if this is the new recommended version
-#    - Update deprecated_below if older versions are no longer supported
-
-# 2. Update scraper/config.py version constants
-#    - MAIN_STYLUS_SDK_VERSION = "0.10.0"  (if it's the new recommended)
-#    - MIN_STYLUS_SDK_VERSION = "0.9.0"    (if raising the minimum)
-
-# 3. Verify existing repos compile with the new SDK
-#    For each repo in PROJECT_EXAMPLES:
-git clone <repo-url> /tmp/verify
-cd /tmp/verify
-# Update Cargo.toml to new SDK version
-cargo stylus check
-
-# 4. Update sdk_version in config entries for repos that upgraded
-#    Remove repos that no longer compile and won't be updated
-
-# 5. Re-run the full pipeline
-python -m scraper.run                        # Re-scrape all (repos + web)
-python -m src.preprocessing.processor        # Re-process with new version metadata
-python -m src.embeddings.vectordb --reset    # Reset and re-ingest locally
-
-# 6. Sync remote
-python scripts/sync_remote_db.py --dry-run
-python scripts/sync_remote_db.py --reingest
-```
-
-**Also update:**
-- Version table in this doc (section 3)
-- `CLAUDE.md` Stylus dependencies section
-- Any MCP tool prompts that reference specific SDK versions
-
----
 
 ### Quick Reference: Key Files
 
 | File | Purpose |
 |------|---------|
-| `scraper/config.py` | Source of truth for all data sources |
-| `shared/stylus-versions.json` | SDK version metadata and compatibility |
+| `sources.json` | Single source of truth for all data sources |
+| `scraper/config.py` | Thin wrapper — backward-compat helpers for Python consumers |
+| `scripts/sync_sources.ts` | Sync sources.json to CF KV registry |
+| `shared/stylus-versions.json` | SDK version metadata, patterns, and compatibility |
+| `src/utils/version_manager.py` | Version transforms, cargo deps, pattern lookup |
+| `scripts/verify_source.py` | 6-step repo verification pipeline |
+| `scripts/fork_and_migrate.py` | Fork repos to ARBuilder-Forks + migrate to SDK 0.10.0 |
+| `scripts/maintain_sources.py` | SDK monitoring, repo discovery, health checks, remediation |
 | `scripts/audit_data.py` | Detect orphans and config drift |
-| `scripts/sync_remote_db.py` | Sync remote Cloudflare DB with local config |
-| `docs/DATA_CURATION_POLICY.md` | This doc — curation rules and source registry |
 
 ### Quick Reference: Environment Variables
 
 | Variable | Purpose |
 |----------|---------|
+| `GITHUB_TOKEN` | GitHub API auth (for discovery + health checks) |
 | `ARBBUILDER_ADMIN_SECRET` | Admin API auth for remote sync |
-| `ARBBUILDER_API_URL` | Remote API URL (default: https://arbbuilder.whymelabs.com) |
-
----
-
-## TODO
-
-- [ ] Create SDK bridging examples (none exist as standalone projects)
-- [ ] Set up CI to verify sources on SDK releases
-- [ ] Re-evaluate removed community projects after manual verification
-- [ ] Automate SDK release monitoring (crates.io watch)
+| `ARBBUILDER_API_URL` | Remote API URL (default: https://arbuilder.app) |

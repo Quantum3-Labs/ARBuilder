@@ -9,7 +9,7 @@ Templates:
 - Custom Events Subgraph: Generic event indexing
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 
@@ -59,6 +59,7 @@ dataSources:
         - Token
         - Account
         - Transfer
+        - Approval
       abis:
         - name: ERC20
           file: ./abis/ERC20.json

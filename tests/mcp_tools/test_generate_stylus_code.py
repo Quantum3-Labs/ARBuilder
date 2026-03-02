@@ -4,10 +4,11 @@ Test cases for generate_stylus_code MCP tool.
 Tests code generation quality, syntax validity, and pattern correctness.
 """
 
-import pytest
 import re
-from typing import Optional
 
+import pytest
+
+from tests.conftest import requires_api_key
 
 # Test case definitions
 GENERATE_CODE_TEST_CASES = [
@@ -66,7 +67,6 @@ GENERATE_CODE_TEST_CASES = [
         "priority": "P0",
         "category": "basic_generation",
     },
-
     # ===== ERC20 Implementation (P0) =====
     {
         "id": "gen_erc20_001",
@@ -80,7 +80,7 @@ GENERATE_CODE_TEST_CASES = [
                 r"fn\s+transfer",
                 r"fn\s+balance_of|balanceOf",
                 r"fn\s+total_supply|totalSupply",
-                r"StorageMap",
+                r"StorageMap|mapping\(",
             ],
             "must_have_keywords": ["address", "u256", "mapping"],
             "syntax_valid": True,
@@ -92,7 +92,9 @@ GENERATE_CODE_TEST_CASES = [
         "id": "gen_erc20_002",
         "name": "ERC20: with approve and transferFrom",
         "input": {
-            "prompt": "Create an ERC20 token with approve and transferFrom functions for allowances",
+            "prompt": (
+                "Create an ERC20 token with approve and transferFrom functions for allowances"
+            ),
             "contract_type": "erc20",
         },
         "expected": {
@@ -106,7 +108,6 @@ GENERATE_CODE_TEST_CASES = [
         "priority": "P0",
         "category": "erc20",
     },
-
     # ===== Storage Patterns (P0) =====
     {
         "id": "gen_storage_001",
@@ -116,7 +117,7 @@ GENERATE_CODE_TEST_CASES = [
         },
         "expected": {
             "must_have_patterns": [
-                r"StorageVec",
+                r"StorageVec|address\[\]|\w+\[\]",
                 r"sol_storage!",
             ],
             "must_have_keywords": ["push", "get", "len"],
@@ -140,13 +141,16 @@ GENERATE_CODE_TEST_CASES = [
         "priority": "P0",
         "category": "storage",
     },
-
     # ===== Error Handling (P0) =====
     {
         "id": "gen_error_001",
         "name": "Error: custom errors",
         "input": {
-            "prompt": "Create a contract with custom error types for insufficient balance and unauthorized access",
+            "prompt": (
+                "Create a contract with custom error"
+                " types for insufficient balance"
+                " and unauthorized access"
+            ),
         },
         "expected": {
             "should_have_patterns": [
@@ -162,7 +166,9 @@ GENERATE_CODE_TEST_CASES = [
         "id": "gen_error_002",
         "name": "Error: require-like checks",
         "input": {
-            "prompt": "Create a function that checks if caller has sufficient balance and reverts if not",
+            "prompt": (
+                "Create a function that checks if caller has sufficient balance and reverts if not"
+            ),
         },
         "expected": {
             "should_have_patterns": [
@@ -174,7 +180,6 @@ GENERATE_CODE_TEST_CASES = [
         "priority": "P0",
         "category": "error_handling",
     },
-
     # ===== ERC721 Implementation (P1) =====
     {
         "id": "gen_erc721_001",
@@ -195,7 +200,6 @@ GENERATE_CODE_TEST_CASES = [
         "priority": "P1",
         "category": "erc721",
     },
-
     # ===== Events/Logging (P1) =====
     {
         "id": "gen_events_001",
@@ -213,13 +217,16 @@ GENERATE_CODE_TEST_CASES = [
         "priority": "P1",
         "category": "events",
     },
-
     # ===== Access Control (P1) =====
     {
         "id": "gen_access_001",
         "name": "Access: owner only",
         "input": {
-            "prompt": "Create a contract with an owner and a function that can only be called by the owner",
+            "prompt": (
+                "Create a contract with an owner"
+                " and a function that can only be"
+                " called by the owner"
+            ),
         },
         "expected": {
             "must_have_patterns": [
@@ -252,7 +259,6 @@ GENERATE_CODE_TEST_CASES = [
         "priority": "P1",
         "category": "access_control",
     },
-
     # ===== With Context Query (P1) =====
     {
         "id": "gen_context_001",
@@ -269,7 +275,6 @@ GENERATE_CODE_TEST_CASES = [
         "priority": "P1",
         "category": "context_usage",
     },
-
     # ===== Temperature Control =====
     {
         "id": "gen_temp_001",
@@ -285,7 +290,6 @@ GENERATE_CODE_TEST_CASES = [
         "priority": "P1",
         "category": "temperature",
     },
-
     # ===== Edge Cases =====
     {
         "id": "gen_edge_001",
@@ -317,7 +321,11 @@ GENERATE_CODE_TEST_CASES = [
         "id": "gen_edge_003",
         "name": "Edge: very complex request",
         "input": {
-            "prompt": "Create a full DEX with AMM, liquidity pools, swapping, LP tokens, and fee distribution",
+            "prompt": (
+                "Create a full DEX with AMM,"
+                " liquidity pools, swapping,"
+                " LP tokens, and fee distribution"
+            ),
         },
         "expected": {
             "syntax_valid": True,
@@ -329,6 +337,8 @@ GENERATE_CODE_TEST_CASES = [
 ]
 
 
+@requires_api_key
+@pytest.mark.integration
 class TestGenerateStylusCode:
     """Test suite for generate_stylus_code tool."""
 
@@ -336,6 +346,7 @@ class TestGenerateStylusCode:
     def tool(self):
         """Initialize the tool for testing."""
         from src.mcp.tools import GenerateStylusCodeTool
+
         return GenerateStylusCodeTool()
 
     @pytest.mark.parametrize(
@@ -384,15 +395,11 @@ class TestGenerateStylusCode:
         # Check must-have patterns (all must match)
         if "must_have_patterns" in expected:
             for pattern in expected["must_have_patterns"]:
-                assert re.search(pattern, code, re.IGNORECASE), \
-                    f"Missing pattern: {pattern}"
+                assert re.search(pattern, code, re.IGNORECASE), f"Missing pattern: {pattern}"
 
         # Check should-have patterns (at least one must match)
         if "should_have_patterns" in expected:
-            found = any(
-                re.search(p, code, re.IGNORECASE)
-                for p in expected["should_have_patterns"]
-            )
+            found = any(re.search(p, code, re.IGNORECASE) for p in expected["should_have_patterns"])
             assert found, f"None of patterns found: {expected['should_have_patterns']}"
 
         # Check must-have keywords
@@ -426,7 +433,7 @@ class TestGenerateStylusCode:
         # Check for common Stylus patterns
         has_struct = "struct" in code.lower()
         has_fn = "fn " in code
-        has_impl = "impl" in code.lower()
+        has_impl = "impl" in code.lower()  # noqa: F841
 
         # Should have at least struct and fn
         return has_struct or has_fn
@@ -443,7 +450,10 @@ def analyze_code_quality(code: str) -> dict:
         "has_documentation": bool(re.search(r"///|/\*\*", code)),
         "has_events": bool(re.search(r"evm::log|emit|Event", code)),
         "function_count": len(re.findall(r"fn\s+\w+", code)),
-        "uses_storage_types": bool(re.search(
-            r"StorageVec|StorageMap|StorageU256|StorageAddress", code
-        )),
+        "uses_storage_types": bool(
+            re.search(
+                r"StorageVec|StorageMap|StorageU256|StorageAddress|mapping\(|uint256|address\b.*\b\w+\s*;",
+                code,
+            )
+        ),
     }

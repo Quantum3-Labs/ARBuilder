@@ -1,29 +1,32 @@
 """
 generate_tests MCP Tool.
 
-Generates test cases for Stylus smart contracts.
+Generates test cases for Stylus smart contracts using LLM.
 """
 
+import logging
 import re
 from typing import Optional
 
 from .base import BaseTool
 
+logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are an expert at writing tests for Stylus smart contracts. You write comprehensive, well-structured tests that cover:
+SYSTEM_PROMPT_RUST = """\
+You are a Stylus testing expert for SDK 0.10.0.
+Generate comprehensive tests for the provided contract.
+Framework: Rust native #[test] with stylus-test
 
-1. Happy path scenarios (normal operation)
-2. Error cases (invalid inputs, unauthorized access)
-3. Edge cases (zero values, max values, boundary conditions)
-4. State transitions (before/after comparisons)
-
-For Rust native tests:
-- Use #[cfg(test)] module
+For Rust native tests (stylus-sdk 0.10.0):
+- Use #[cfg(test)] module with `use super::*;` and `use stylus_sdk::testing::*;`
+- SETUP: `let vm = TestVM::default(); let mut contract = MyContract::from(&vm);`
+  Do NOT use MyContract::default() — it does not exist in SDK 0.10.0.
+- Use vm.set_sender(addr) to set msg.sender for tests
+- Use vm.set_value(amount) to set msg.value for payable tests
+- Use vm.set_block_timestamp(ts) to set block.timestamp
 - Use #[test] attribute for test functions
-- Use assert!, assert_eq!, assert_ne! macros
-- Mock contract state appropriately
+- Use assert!, assert_eq!, assert_ne! macros with descriptive messages
 - Test each public function
-- Include descriptive test names
 
 Test naming convention: test_<function>_<scenario>
 Example: test_transfer_insufficient_balance
@@ -33,23 +36,52 @@ Best practices:
 - Descriptive error messages in assertions
 - Test both success and failure paths
 - Consider reentrancy and other security tests
-"""
 
-FOUNDRY_TEMPLATE = """// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+STORAGE ACCESS: ALWAYS use .get() to read: `self.field.get()` NOT `self.field`. \
+Use .set() to write. For mappings: `self.map.get(key)` and \
+`self.map.setter(key).set(val)`.
 
-import "forge-std/Test.sol";
+EVENT CHECKING: Use `vm.get_emitted_logs()` to get emitted events. \
+Do NOT use `vm.logs()` — it does not exist. \
+The return type is `Vec<(Vec<B256>, Vec<u8>)>` where each tuple is (topics, data). \
+Do NOT use a `Log` type or `.data` field — these don't exist in stylus-test. \
+Example: `let logs = vm.get_emitted_logs(); assert_eq!(logs.len(), 1);`
 
-contract {contract_name}Test is Test {{
-    // Contract instance
-    // Add setup and tests here
-}}
-"""
+ZERO CONSTANTS: Use `U256::ZERO`, `Address::ZERO` (uppercase). \
+Do NOT use `U256::zero()` or `Address::zero()` — they don't exist.
+
+Cargo.toml needs:
+[dev-dependencies]
+stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
+
+IMPORTANT — TEST COMPILATION:
+- Run tests with `--target` flag (tests run on host, not WASM): \
+`cargo test --target=x86_64-unknown-linux-gnu` (Linux) or \
+`cargo test --target=aarch64-apple-darwin` (macOS Apple Silicon)
+- Do NOT run `cargo test` without `--target` — it compiles for \
+wasm32-unknown-unknown which cannot run unit tests
+- If you get alloy-consensus or alloy-* version conflicts, add \
+`[patch.crates-io]` or pin alloy versions in workspace Cargo.toml
+
+Return ONLY the test code inside a ```rust code block. No explanations."""
+
+SYSTEM_PROMPT_FOUNDRY = """\
+You are a Stylus testing expert.
+Generate comprehensive Foundry/Solidity tests for the provided Stylus contract.
+Framework: Foundry Solidity tests
+
+- Create a Solidity interface matching the contract ABI (use camelCase function names)
+- Use forge-std Test contract
+- Mock contract deployment
+- Test all public functions with happy path, error cases, and edge cases
+- Use assert functions from forge-std
+
+Return ONLY the test code inside a ```solidity code block. No explanations."""
 
 
 class GenerateTestsTool(BaseTool):
     """
-    Generates test cases for Stylus smart contracts.
+    Generates test cases for Stylus smart contracts using LLM.
 
     Supports Rust native tests and Foundry tests.
     """
@@ -67,51 +99,93 @@ class GenerateTestsTool(BaseTool):
 
         Args:
             contract_code: The contract code to generate tests for.
-            test_framework: Test framework (rust_native, foundry, hardhat).
+            test_framework: Test framework (rust_native, foundry).
             test_types: Types of tests (unit, integration, fuzz).
             coverage_focus: Specific functions to focus on.
 
         Returns:
-            Dict with tests, test_summary, coverage_estimate, setup_instructions.
+            Dict with tests, test_summary, coverage_estimate,
+            setup_instructions.
         """
-        # Validate input
         if not contract_code or not contract_code.strip():
             return {"error": "Contract code is required and cannot be empty"}
 
         contract_code = contract_code.strip()
         test_types = test_types or ["unit"]
 
-        # Validate contract has basic structure
         if not self._is_valid_contract(contract_code):
             return {
-                "error": "Invalid contract code. Please provide valid Stylus/Rust code with struct and impl blocks.",
+                "error": (
+                    "Invalid contract code. Please provide valid"
+                    " Stylus/Rust code with struct and impl blocks."
+                ),
                 "warnings": ["Could not parse contract structure"],
             }
 
         try:
-            # Extract contract info
+            # Build LLM prompt
+            system_prompt = (
+                SYSTEM_PROMPT_FOUNDRY
+                if test_framework == "foundry"
+                else SYSTEM_PROMPT_RUST
+            )
+
+            focus_hint = ""
+            if coverage_focus:
+                focus_hint = (
+                    "\n\nFocus test coverage on these functions: "
+                    + ", ".join(coverage_focus)
+                )
+
+            type_hint = ""
+            if "fuzz" in test_types:
+                type_hint += (
+                    "\n\nInclude fuzz/property-based tests using proptest."
+                )
+            if "integration" in test_types:
+                type_hint += (
+                    "\n\nInclude integration tests that test"
+                    " multi-function workflows."
+                )
+
+            user_prompt = (
+                f"Generate tests for this contract:"
+                f"\n\n```rust\n{contract_code}\n```"
+                f"{focus_hint}{type_hint}"
+            )
+
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ]
+
+            response = self._call_llm(
+                messages=messages,
+                temperature=0.2,
+                max_tokens=8192,
+            )
+
+            # Extract test code from code block
+            lang = "solidity" if test_framework == "foundry" else "rust"
+            pattern = rf"```(?:{lang})\n([\s\S]*?)```"
+            test_match = re.search(pattern, response)
+            tests = test_match.group(1).strip() if test_match else response
+
+            # Analyze contract for coverage stats
             contract_info = self._analyze_contract(contract_code)
 
-            # Filter functions if coverage_focus specified
-            if coverage_focus:
-                contract_info["functions"] = [
-                    f for f in contract_info["functions"]
-                    if any(focus.lower() in f["name"].lower() for focus in coverage_focus)
-                ]
+            # Setup instructions
+            setup = (
+                self._get_foundry_setup()
+                if test_framework == "foundry"
+                else self._get_rust_setup()
+            )
 
-            # Generate tests based on framework
-            if test_framework == "foundry":
-                tests = self._generate_foundry_tests(contract_info)
-                setup = self._get_foundry_setup()
-            else:
-                tests = self._generate_rust_tests(contract_info, test_types)
-                setup = self._get_rust_setup()
-
-            # Generate summary
+            # Analyze generated tests
             test_summary = self._generate_summary(tests, test_types)
-
-            # Generate coverage estimate
-            coverage_estimate = self._estimate_coverage(contract_info, tests)
+            coverage_estimate = self._estimate_coverage(
+                contract_info, tests
+            )
 
             return {
                 "tests": tests,
@@ -121,44 +195,45 @@ class GenerateTestsTool(BaseTool):
             }
 
         except Exception as e:
+            logger.exception("Test generation failed")
             return {"error": f"Test generation failed: {str(e)}"}
 
     def _is_valid_contract(self, code: str) -> bool:
         """Check if code has basic contract structure."""
-        # Very basic validation
         has_struct = "struct" in code.lower()
         has_fn = "fn " in code
         return has_struct or has_fn
 
     def _analyze_contract(self, code: str) -> dict:
         """Analyze contract to extract structure."""
-        info = {
+        info: dict = {
             "name": "Contract",
             "functions": [],
             "storage_fields": [],
         }
 
-        # Extract struct name
         struct_match = re.search(r"pub\s+struct\s+(\w+)", code)
         if struct_match:
             info["name"] = struct_match.group(1)
 
-        # Extract public functions
-        fn_pattern = r"pub\s+fn\s+(\w+)\s*\(([^)]*)\)(?:\s*->\s*([^{]+))?"
+        fn_pattern = (
+            r"pub\s+fn\s+(\w+)\s*\(([^)]*)\)"
+            r"(?:\s*->\s*([^{]+))?"
+        )
         for match in re.finditer(fn_pattern, code):
             fn_name = match.group(1)
             params = match.group(2).strip()
-            return_type = match.group(3).strip() if match.group(3) else "void"
+            return_type = (
+                match.group(3).strip() if match.group(3) else "void"
+            )
 
-            # Parse parameters
             param_list = []
-            if params and params != "&self" and params != "&mut self":
+            if params and params not in ("&self", "&mut self"):
                 for p in params.split(","):
                     p = p.strip()
                     if p and p not in ["&self", "&mut self"]:
                         param_list.append(p)
 
-            # Determine if mutating
             is_mut = "&mut self" in params
 
             info["functions"].append({
@@ -168,14 +243,14 @@ class GenerateTestsTool(BaseTool):
                 "is_mut": is_mut,
             })
 
-        # Extract storage fields from sol_storage! macro
         storage_pattern = r"sol_storage!\s*\{[\s\S]*?\}"
         storage_match = re.search(storage_pattern, code)
         if storage_match:
             storage_block = storage_match.group(0)
-            # Simple field extraction
             field_pattern = r"(\w+)\s+(\w+);"
-            for field_match in re.finditer(field_pattern, storage_block):
+            for field_match in re.finditer(
+                field_pattern, storage_block
+            ):
                 info["storage_fields"].append({
                     "type": field_match.group(1),
                     "name": field_match.group(2),
@@ -183,196 +258,18 @@ class GenerateTestsTool(BaseTool):
 
         return info
 
-    def _generate_rust_tests(self, contract_info: dict, test_types: list[str]) -> str:
-        """Generate Rust native tests."""
-        parts = []
-
-        # Test module header
-        parts.append("#[cfg(test)]")
-        parts.append("mod tests {")
-        parts.append("    use super::*;")
-        parts.append("")
-
-        # Helper function to create contract instance
-        parts.append("    fn setup() -> {} {{".format(contract_info["name"]))
-        parts.append("        // Initialize contract for testing")
-        parts.append("        {}::default()".format(contract_info["name"]))
-        parts.append("    }")
-        parts.append("")
-
-        # Generate tests for each function
-        for fn in contract_info["functions"]:
-            fn_tests = self._generate_function_tests(fn, contract_info["name"], test_types)
-            parts.extend(fn_tests)
-
-        parts.append("}")
-
-        return "\n".join(parts)
-
-    def _generate_function_tests(
-        self,
-        fn: dict,
-        contract_name: str,
-        test_types: list[str],
-    ) -> list[str]:
-        """Generate tests for a single function."""
-        tests = []
-        fn_name = fn["name"]
-
-        # Skip internal functions
-        if fn_name.startswith("_"):
-            return tests
-
-        # Unit tests
-        if "unit" in test_types:
-            # Happy path test
-            tests.append(f"    #[test]")
-            tests.append(f"    fn test_{fn_name}_success() {{")
-            tests.append(f"        let {'mut ' if fn['is_mut'] else ''}contract = setup();")
-            tests.append(f"        // TODO: Setup test preconditions")
-            tests.append(f"        ")
-
-            if fn["params"]:
-                params_str = ", ".join([f"/* {p} */" for p in fn["params"]])
-                tests.append(f"        // Call: contract.{fn_name}({params_str});")
-            else:
-                tests.append(f"        // Call: contract.{fn_name}();")
-
-            tests.append(f"        ")
-            tests.append(f"        // TODO: Assert expected outcomes")
-            tests.append(f"        // assert_eq!(result, expected);")
-            tests.append(f"    }}")
-            tests.append("")
-
-            # Error case test if function might fail
-            if fn["is_mut"] or "Result" in fn["return_type"] or fn["params"]:
-                tests.append(f"    #[test]")
-                tests.append(f"    fn test_{fn_name}_error_case() {{")
-                tests.append(f"        let {'mut ' if fn['is_mut'] else ''}contract = setup();")
-                tests.append(f"        // TODO: Setup conditions that should cause failure")
-                tests.append(f"        ")
-                tests.append(f"        // TODO: Assert error is returned or state unchanged")
-                tests.append(f"    }}")
-                tests.append("")
-
-        # Edge case tests
-        if "unit" in test_types and fn["params"]:
-            tests.append(f"    #[test]")
-            tests.append(f"    fn test_{fn_name}_edge_cases() {{")
-            tests.append(f"        let {'mut ' if fn['is_mut'] else ''}contract = setup();")
-            tests.append(f"        ")
-            tests.append(f"        // Test with zero values")
-            tests.append(f"        // Test with max values")
-            tests.append(f"        // Test with boundary conditions")
-            tests.append(f"    }}")
-            tests.append("")
-
-        # Fuzz tests
-        if "fuzz" in test_types:
-            tests.append(f"    // Fuzz test for {fn_name}")
-            tests.append(f"    // #[test]")
-            tests.append(f"    // fn test_{fn_name}_fuzz() {{")
-            tests.append(f"    //     use proptest::prelude::*;")
-            tests.append(f"    //     proptest!(|(input: /* type */)| {{")
-            tests.append(f"    //         // Test property invariants")
-            tests.append(f"    //     }});")
-            tests.append(f"    // }}")
-            tests.append("")
-
-        return tests
-
-    def _generate_foundry_tests(self, contract_info: dict) -> str:
-        """Generate Foundry/Solidity tests."""
-        contract_name = contract_info["name"]
-
-        parts = [
-            "// SPDX-License-Identifier: MIT",
-            "pragma solidity ^0.8.0;",
-            "",
-            'import "forge-std/Test.sol";',
-            "",
-            f"interface I{contract_name} {{",
-        ]
-
-        # Add interface functions
-        for fn in contract_info["functions"]:
-            # Convert to Solidity signature
-            sol_params = self._rust_to_sol_params(fn["params"])
-            sol_return = self._rust_to_sol_type(fn["return_type"])
-            view_modifier = " view" if not fn["is_mut"] else ""
-
-            parts.append(f"    function {fn['name']}({sol_params}) external{view_modifier} returns ({sol_return});")
-
-        parts.append("}")
-        parts.append("")
-        parts.append(f"contract {contract_name}Test is Test {{")
-        parts.append(f"    I{contract_name} public contractInstance;")
-        parts.append("")
-        parts.append("    function setUp() public {")
-        parts.append("        // Deploy or get contract address")
-        parts.append("        // contractInstance = I{}(address);".format(contract_name))
-        parts.append("    }")
-        parts.append("")
-
-        # Generate test functions
-        for fn in contract_info["functions"]:
-            parts.append(f"    function test_{fn['name']}_Success() public {{")
-            parts.append("        // Arrange")
-            parts.append("        // Act")
-            parts.append("        // Assert")
-            parts.append("    }")
-            parts.append("")
-
-        parts.append("}")
-
-        return "\n".join(parts)
-
-    def _rust_to_sol_params(self, params: list[str]) -> str:
-        """Convert Rust params to Solidity."""
-        if not params:
-            return ""
-
-        sol_params = []
-        for p in params:
-            # Simple conversion
-            if "Address" in p or "address" in p:
-                sol_params.append("address")
-            elif "U256" in p or "uint256" in p:
-                sol_params.append("uint256")
-            elif "bool" in p:
-                sol_params.append("bool")
-            else:
-                sol_params.append("bytes memory")
-
-        return ", ".join(sol_params)
-
-    def _rust_to_sol_type(self, rust_type: str) -> str:
-        """Convert Rust return type to Solidity."""
-        if "bool" in rust_type.lower():
-            return "bool"
-        elif "U256" in rust_type or "uint" in rust_type.lower():
-            return "uint256"
-        elif "Address" in rust_type:
-            return "address"
-        elif "String" in rust_type:
-            return "string memory"
-        elif "void" in rust_type or not rust_type:
-            return ""
-        else:
-            return "bytes memory"
-
     def _generate_summary(self, tests: str, test_types: list[str]) -> dict:
         """Generate test summary."""
-        test_count = tests.count("#[test]")
-        if "#[test]" not in tests:
-            # Foundry tests
-            test_count = tests.count("function test_")
+        rust_count = len(re.findall(r"#\[test\]", tests))
+        foundry_count = len(re.findall(r"function test_", tests))
+        test_count = rust_count or foundry_count
+        fuzz_count = tests.count("proptest") if "fuzz" in test_types else 0
 
         return {
             "total_tests": test_count,
-            "unit_tests": test_count if "unit" in test_types else 0,
-            "integration_tests": 0,  # Not generated yet
-            "fuzz_tests": tests.count("proptest") if "fuzz" in test_types else 0,
+            "unit_tests": test_count - fuzz_count,
+            "integration_tests": 0,
+            "fuzz_tests": fuzz_count,
         }
 
     def _estimate_coverage(self, contract_info: dict, tests: str) -> dict:
@@ -381,20 +278,25 @@ class GenerateTestsTool(BaseTool):
 
         covered = []
         not_covered = []
+        tests_lower = tests.lower()
 
         for fn_name in all_functions:
-            if f"test_{fn_name}" in tests:
+            if fn_name.lower() in tests_lower:
                 covered.append(fn_name)
             else:
                 not_covered.append(fn_name)
 
         edge_cases = []
-        if "_edge_cases" in tests or "_error" in tests:
+        if "zero" in tests_lower or "0" in tests:
+            edge_cases.append("Zero values")
+        if "overflow" in tests_lower:
+            edge_cases.append("Overflow handling")
+        if "underflow" in tests_lower:
+            edge_cases.append("Underflow handling")
+        if "error" in tests_lower or "Err" in tests:
             edge_cases.append("Error conditions")
-        if "zero" in tests.lower():
-            edge_cases.append("Zero value handling")
-        if "max" in tests.lower():
-            edge_cases.append("Maximum value handling")
+        if "empty" in tests_lower:
+            edge_cases.append("Empty inputs")
 
         return {
             "functions_covered": covered,
@@ -404,28 +306,36 @@ class GenerateTestsTool(BaseTool):
 
     def _get_rust_setup(self) -> str:
         """Get Rust test setup instructions."""
-        return """# Running Rust Tests
+        return """# Running Rust Tests (stylus-sdk 0.10.0)
 
 1. Ensure your Cargo.toml has test dependencies:
 ```toml
 [dev-dependencies]
-# Add any test dependencies
+stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
 ```
 
-2. Run tests:
+2. Run tests (use --target to run on host, not WASM):
 ```bash
-cargo test
+cargo test --target=x86_64-unknown-linux-gnu
+```
+Or on macOS:
+```bash
+cargo test --target=aarch64-apple-darwin
 ```
 
 3. Run with output:
 ```bash
-cargo test -- --nocapture
+cargo test --target=x86_64-unknown-linux-gnu -- --nocapture
 ```
 
 4. Run specific test:
 ```bash
-cargo test test_function_name
+cargo test --target=x86_64-unknown-linux-gnu test_function_name
 ```
+
+Note: The --target flag is needed because Stylus contracts compile to
+wasm32-unknown-unknown by default (via rust-toolchain.toml), but tests
+must run on the host platform. TestVM simulates the Stylus environment.
 """
 
     def _get_foundry_setup(self) -> str:
@@ -438,22 +348,24 @@ curl -L https://foundry.paradigm.xyz | bash
 foundryup
 ```
 
-2. Initialize project (if needed):
+2. Export ABI:
 ```bash
-forge init
+cargo stylus export-abi > abi.json
 ```
 
-3. Run tests:
+3. Create test file in `test/` directory
+
+4. Run tests:
 ```bash
-forge test
+forge test --fork-url <RPC_URL>
 ```
 
-4. Run with verbosity:
+5. Run with verbosity:
 ```bash
 forge test -vvv
 ```
 
-5. Run specific test:
+6. Run specific test:
 ```bash
 forge test --match-test test_function_name
 ```

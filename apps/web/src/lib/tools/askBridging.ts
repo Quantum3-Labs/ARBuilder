@@ -80,16 +80,24 @@ export async function askBridging(
     searchQuery = `orbit l3 chain EthL1L3Bridger ${question}`;
   }
 
-  // Get relevant context from Vectorize
-  const contextResult = await getBridgingContext(vectorize, ai, {
-    query: searchQuery,
-    nResults: 5,
-    rerank: true,
-  });
+  // Get relevant context from Vectorize (graceful fallback on failure)
+  let contextResult: Awaited<ReturnType<typeof getBridgingContext>>;
+  try {
+    contextResult = await getBridgingContext(vectorize, ai, {
+      query: searchQuery,
+      nResults: 5,
+      rerank: true,
+    });
+  } catch (e) {
+    console.warn("getBridgingContext failed, proceeding without RAG:", e);
+    contextResult = { contexts: [], totalResults: 0, query: searchQuery };
+  }
 
-  // Build context string for LLM
+  // Build context string for LLM (cap per-item to prevent token overflow)
+  const MAX_CONTEXT_CHARS = 2000;
   let contextStr = contextResult.contexts
-    .map((c, i) => `[${i + 1}] (${c.source})\n${c.content}`)
+    .slice(0, 3) // Top 3 most relevant
+    .map((c, i) => `[${i + 1}] (${c.source})\n${c.content.slice(0, MAX_CONTEXT_CHARS)}`)
     .join("\n\n---\n\n");
 
   // Enrich with knowledge base if relevant topics detected
@@ -117,15 +125,51 @@ export async function askBridging(
     contextStr = `Quick Reference:\n${enrichments.join("\n")}\n\n---\n\n${contextStr}`;
   }
 
-  // Get answer from LLM
+  // Get answer from LLM (chatCompletion retries 3x on empty)
   const response = await answerBridgingQuestion(openrouterApiKey, question, contextStr);
+
+  // Fallback: if LLM returned empty after all retries, use knowledge base + RAG context
+  let answerContent = response.content;
+  if (!answerContent || answerContent.trim().length === 0) {
+    const parts: string[] = [];
+
+    // Use knowledge base enrichments first (structured data)
+    if (enrichments.length > 0) {
+      parts.push(`Here's what I know about this topic:\n\n${enrichments.join("\n\n")}`);
+    }
+
+    // Add RAG context excerpts for additional detail
+    const ctxSummary = contextResult.contexts
+      .slice(0, 3)
+      .map((c) => `From ${c.source}:\n${c.content.slice(0, 800)}`)
+      .join("\n\n---\n\n");
+    if (ctxSummary) {
+      parts.push(`Relevant excerpts from the documentation:\n\n${ctxSummary}`);
+    }
+
+    if (parts.length > 0) {
+      answerContent = parts.join("\n\n---\n\n") +
+        `\n\nFor more details, see https://docs.arbitrum.io/sdk`;
+    } else {
+      // No knowledge base or RAG — synthesize from question
+      answerContent =
+        `Regarding "${question}":\n\n` +
+        `The Arbitrum SDK provides bridging tools for cross-chain operations:\n` +
+        `- **EthBridger**: ETH deposits (~10-15 min) and withdrawals (~7 day challenge period)\n` +
+        `- **Erc20Bridger**: ERC20 token bridging with token approval\n` +
+        `- **Retryable Tickets**: L1→L2 messaging via Inbox contract\n` +
+        `- **ArbSys**: L2→L1 messaging via precompile at 0x64\n` +
+        `- **ParentTransactionReceipt / ChildTransactionReceipt**: Transaction status tracking\n\n` +
+        `For detailed guidance, see https://docs.arbitrum.io/sdk`;
+    }
+  }
 
   // Extract code examples from response
   const codeExamples: Array<{ title: string; code: string; language: string }> = [];
   const codeBlockRegex = /```(typescript|javascript|ts|js)?\n([\s\S]*?)```/g;
   let match;
   let exampleIndex = 1;
-  while ((match = codeBlockRegex.exec(response.content)) !== null) {
+  while ((match = codeBlockRegex.exec(answerContent)) !== null) {
     codeExamples.push({
       title: `Example ${exampleIndex++}`,
       code: match[2].trim(),
@@ -137,7 +181,7 @@ export async function askBridging(
   const followUpQuestions = generateFollowUpQuestions(question, questionType);
 
   return {
-    answer: response.content
+    answer: answerContent
       .replace(/```(?:typescript|javascript|ts|js)?\n[\s\S]*?```/g, "[Code example above]")
       .trim(),
     codeExamples,

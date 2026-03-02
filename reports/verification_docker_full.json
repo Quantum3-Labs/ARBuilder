@@ -1,0 +1,1086 @@
+[
+  {
+    "repo_url": "https://github.com/OffchainLabs/stylus-hello-world",
+    "repo_name": "OffchainLabs_stylus-hello-world",
+    "repo_type": "stylus",
+    "sdk_version": "0.9.0",
+    "verified_at": "2026-02-11T18:57:57.201466",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "0.9.0",
+        "meets_minimum": true,
+        "is_main_version": true,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0",
+        "rust_version": "1.87.0",
+        "patterns_found": {
+          "entrypoint": true,
+          "sol_storage": true,
+          "no_main": true,
+          "public_attr": true,
+          "extern_alloc": true
+        },
+        "pattern_warnings": [],
+        "deprecated_patterns": [],
+        "rs_files_scanned": 3
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "docker": true,
+        "native_passed": true,
+        "wasm_passed": true,
+        "wasm_file": "stylus_hello_world.wasm",
+        "wasm_size_bytes": 19400,
+        "wasm_size_kb": 18.9,
+        "brotli_size_bytes": 5975,
+        "brotli_size_kb": 5.8,
+        "under_24kb_limit": true
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": true,
+        "test_count": 1,
+        "test_output": "004795)\n\nrunning 1 test\ntest test::test_counter ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running unittests src/main.rs (target/debug/deps/stylus_hello_world-a6e9d53320e80349)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n   Doc-tests stylus_hello_world\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+        "docker": true,
+        "last_commit": "2025-06-02T13:54:20Z",
+        "archived": false,
+        "open_issues": 3,
+        "stars": 52,
+        "forks": 36,
+        "health_score": "abandoned"
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "official_examples",
+    "config_sdk_version": "0.9.0"
+  },
+  {
+    "repo_url": "https://github.com/OffchainLabs/stylus-quickstart-vending-machine",
+    "repo_name": "OffchainLabs_stylus-quickstart-vending-machine",
+    "repo_type": "stylus",
+    "sdk_version": "0.8.4",
+    "verified_at": "2026-02-11T19:02:44.076235",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "0.8.4",
+        "meets_minimum": true,
+        "is_main_version": false,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0",
+        "rust_version": "1.83.0",
+        "patterns_found": {
+          "entrypoint": true,
+          "sol_storage": true,
+          "no_main": true,
+          "public_attr": true,
+          "extern_alloc": true
+        },
+        "pattern_warnings": [],
+        "deprecated_patterns": [],
+        "rs_files_scanned": 3
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "docker": true,
+        "native_passed": true,
+        "wasm_passed": true,
+        "wasm_file": "stylus_cupcake_example.wasm",
+        "wasm_size_bytes": 19480,
+        "wasm_size_kb": 19.0,
+        "brotli_size_bytes": 6672,
+        "brotli_size_kb": 6.5,
+        "under_24kb_limit": true
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": true,
+        "test_count": 2,
+        "test_output": " ... ok\ntest test::test_give_cupcake_to ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running unittests src/main.rs (target/debug/deps/stylus_cupcake_example-57cfbf267cad26b5)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n   Doc-tests stylus_cupcake_example\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+        "docker": true,
+        "last_commit": "2025-05-01T13:05:22Z",
+        "archived": false,
+        "open_issues": 1,
+        "stars": 2,
+        "forks": 4,
+        "health_score": "abandoned"
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "official_examples",
+    "config_sdk_version": "0.8.4"
+  },
+  {
+    "repo_url": "https://github.com/ArbitrumFoundation/stylus-workshop-gol",
+    "repo_name": "ArbitrumFoundation_stylus-workshop-gol",
+    "repo_type": "stylus",
+    "sdk_version": "=0.9.0",
+    "verified_at": "2026-02-11T19:06:44.334566",
+    "overall_status": "failed",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "=0.9.0",
+        "meets_minimum": true,
+        "is_main_version": true,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0",
+        "rust_version": "1.93.0",
+        "patterns_found": {
+          "entrypoint": true,
+          "sol_storage": false,
+          "no_main": true,
+          "public_attr": true,
+          "extern_alloc": true
+        },
+        "pattern_warnings": [],
+        "deprecated_patterns": [],
+        "rs_files_scanned": 6
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "docker": true,
+        "native_passed": true,
+        "wasm_passed": true,
+        "wasm_file": "game_of_life_contract.wasm",
+        "wasm_size_bytes": 92006,
+        "wasm_size_kb": 89.8,
+        "brotli_size_bytes": 27789,
+        "brotli_size_kb": 27.1,
+        "under_24kb_limit": false
+      },
+      {
+        "step": "tests_and_health",
+        "passed": false,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "raits define an item `default`, perhaps you need to implement one of them:\n            candidate #1: `Default`\n            candidate #2: `DefaultStorage`\n    = note: this error originates in the attribute macro `motsu::test` (in Nightly builds, run with -Z macro-backtrace for more info)\n\nFor more information about this error, try `rustc --explain E0599`.\nerror: could not compile `game_of_life_contract` (lib test) due to 1 previous error\nwarning: build failed, waiting for other jobs to finish...\n",
+        "docker": true,
+        "last_commit": "2026-02-09T09:25:11Z",
+        "archived": false,
+        "open_issues": 1,
+        "stars": 13,
+        "forks": 6,
+        "health_score": "active"
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "official_examples",
+    "config_sdk_version": "0.9.0"
+  },
+  {
+    "repo_url": "https://github.com/OpenZeppelin/rust-contracts-stylus",
+    "repo_name": "OpenZeppelin_rust-contracts-stylus",
+    "repo_type": "stylus",
+    "sdk_version": "=0.9.0",
+    "verified_at": "2026-02-11T19:14:43.222884",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "=0.9.0",
+        "meets_minimum": true,
+        "is_main_version": true,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0",
+        "rust_version": "nightly-2025-08-01",
+        "patterns_found": {
+          "entrypoint": true,
+          "sol_storage": true,
+          "no_main": true,
+          "public_attr": true,
+          "extern_alloc": true
+        },
+        "pattern_warnings": [],
+        "deprecated_patterns": [],
+        "rs_files_scanned": 343
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "docker": true,
+        "native_passed": true,
+        "wasm_passed": true,
+        "wasm_file": "erc4626_example.wasm",
+        "wasm_size_bytes": 123989,
+        "wasm_size_kb": 121.1,
+        "brotli_size_bytes": 35287,
+        "brotli_size_kb": 34.5,
+        "under_24kb_limit": false
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "Timed out in Docker",
+        "tests_timed_out": true,
+        "last_commit": "2025-12-15T02:07:05Z",
+        "archived": false,
+        "open_issues": 86,
+        "stars": 146,
+        "forks": 77,
+        "health_score": "active"
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "verified_production",
+    "config_sdk_version": "0.9.0"
+  },
+  {
+    "repo_url": "https://github.com/OpenZeppelin/stylus-test-helpers",
+    "repo_name": "OpenZeppelin_stylus-test-helpers",
+    "repo_type": "stylus",
+    "sdk_version": "=0.9.0",
+    "verified_at": "2026-02-11T19:19:04.417809",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "=0.9.0",
+        "meets_minimum": true,
+        "is_main_version": true,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0",
+        "rust_version": "1.87.0",
+        "patterns_found": {
+          "entrypoint": false,
+          "sol_storage": false,
+          "no_main": false,
+          "public_attr": true,
+          "extern_alloc": true
+        },
+        "pattern_warnings": [
+          "Required pattern missing: #[entrypoint]"
+        ],
+        "deprecated_patterns": [],
+        "rs_files_scanned": 12
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "docker": true,
+        "native_passed": true,
+        "wasm_passed": false,
+        "wasm_stderr_tail": "49cf8c6b5b557f/getrandom-0.2.15/src/lib.rs:398:9\n    |\n398 |         imp::getrandom_inner(dest)?;\n    |         ^^^ use of unresolved module or unlinked crate `imp`\n    |\n    = help: if you wanted to use a crate named `imp`, use `cargo add imp` to add it to your `Cargo.toml`\n\n   Compiling base16ct v0.2.0\nFor more information about this error, try `rustc --explain E0433`.\nerror: could not compile `getrandom` (lib) due to 2 previous errors\nwarning: build failed, waiting for other jobs to finish..."
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": true,
+        "test_count": 47,
+        "test_output": " 16) ... ok\ntest crates/motsu/src/lib.rs - (line 37) ... ok\ntest crates/motsu/src/lib.rs - (line 83) ... ok\ntest crates/motsu/src/lib.rs - (line 113) ... ok\ntest crates/motsu/src/lib.rs - (line 61) ... ok\n\ntest result: ok. 7 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 7.49s\n\n   Doc-tests motsu_proc\n\nrunning 1 test\ntest crates/motsu-proc/src/lib.rs - test (line 28) ... ignored\n\ntest result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+        "docker": true,
+        "last_commit": "2025-11-21T09:49:42Z",
+        "archived": false,
+        "open_issues": 30,
+        "stars": 16,
+        "forks": 12,
+        "health_score": "active"
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "verified_production",
+    "config_sdk_version": "0.9.0"
+  },
+  {
+    "repo_url": "https://github.com/oak-security/stylusport",
+    "repo_name": "oak-security_stylusport",
+    "repo_type": "stylus",
+    "sdk_version": "0.9.0",
+    "verified_at": "2026-02-11T19:23:34.818508",
+    "overall_status": "failed",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "0.9.0",
+        "meets_minimum": true,
+        "is_main_version": true,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0",
+        "rust_version": "stable",
+        "patterns_found": {
+          "entrypoint": true,
+          "sol_storage": false,
+          "no_main": true,
+          "public_attr": true,
+          "extern_alloc": true
+        },
+        "pattern_warnings": [],
+        "deprecated_patterns": [],
+        "rs_files_scanned": 429
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "docker": true,
+        "native_passed": true,
+        "wasm_passed": false,
+        "wasm_stderr_tail": "sociated function defined here\n   --> /usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/solana-zk-sdk-2.3.7/src/zk_elgamal_proof_program/proof_data/batched_grouped_ciphertext_validity/handles_2.rs:114:12\n    |\n114 |     pub fn new(\n    |            ^^^\n\nFor more information about this error, try `rustc --explain E0308`.\nerror: could not compile `spl-token-confidential-transfer-proof-generation` (lib) due to 5 previous errors\nwarning: build failed, waiting for other jobs to finish..."
+      },
+      {
+        "step": "tests_and_health",
+        "passed": false,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "e: all struct fields are already assigned\n\nFor more information about this error, try `rustc --explain E0560`.\nwarning: `pdas-to-mappings-solana-anchor` (lib test) generated 1 warning\nerror: could not compile `pdas-to-mappings-solana-anchor` (lib test) due to 1 previous error; 1 warning emitted\nwarning: build failed, waiting for other jobs to finish...\nwarning: `program-structure-solana-anchor` (lib test) generated 1 warning\nwarning: `access-control-solana-anchor` (lib test) generated 1 warning\n",
+        "docker": true,
+        "last_commit": "2025-12-15T18:09:42Z",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 4,
+        "forks": 0,
+        "health_score": "active"
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "verified_production",
+    "config_sdk_version": "0.9.0"
+  },
+  {
+    "repo_url": "https://github.com/gnosisguild/stylus-provider",
+    "repo_name": "gnosisguild_stylus-provider",
+    "repo_type": "stylus",
+    "sdk_version": "0.8.4",
+    "verified_at": "2026-02-11T19:27:16.844697",
+    "overall_status": "failed",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "0.8.4",
+        "meets_minimum": true,
+        "is_main_version": false,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0",
+        "rust_version": "1.83.0",
+        "patterns_found": {
+          "entrypoint": true,
+          "sol_storage": false,
+          "no_main": true,
+          "public_attr": true,
+          "extern_alloc": true
+        },
+        "pattern_warnings": [],
+        "deprecated_patterns": [],
+        "rs_files_scanned": 5
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "docker": true,
+        "native_passed": true,
+        "wasm_passed": true,
+        "wasm_file": "stylus_provider.wasm",
+        "wasm_size_bytes": 277784,
+        "wasm_size_kb": 271.3,
+        "brotli_size_bytes": 81808,
+        "brotli_size_kb": 79.9,
+        "under_24kb_limit": false
+      },
+      {
+        "step": "tests_and_health",
+        "passed": false,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "0.8.4\n   Compiling stylus-sdk v0.8.4\n   Compiling stylus-provider v0.1.11 (/workspace)\nerror[E0432]: unresolved import `stylus_sdk::testing`\n  --> src/processor.rs:62:25\n   |\n62 |         use stylus_sdk::testing::*;\n   |                         ^^^^^^^ could not find `testing` in `stylus_sdk`\n\nFor more information about this error, try `rustc --explain E0432`.\nerror: could not compile `stylus-provider` (lib test) due to 1 previous error\nwarning: build failed, waiting for other jobs to finish...\n",
+        "docker": true,
+        "last_commit": "2025-04-17T18:15:13Z",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 1,
+        "forks": 0,
+        "health_score": "abandoned"
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "verified_production",
+    "config_sdk_version": "0.8.4"
+  },
+  {
+    "repo_url": "https://github.com/philogicae/ethbuc2025-gyges",
+    "repo_name": "philogicae_ethbuc2025-gyges",
+    "repo_type": "stylus",
+    "sdk_version": "0.8.4",
+    "verified_at": "2026-02-11T19:31:31.248381",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "0.8.4",
+        "meets_minimum": true,
+        "is_main_version": false,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0",
+        "rust_version": "1.93.0",
+        "patterns_found": {
+          "entrypoint": true,
+          "sol_storage": true,
+          "no_main": true,
+          "public_attr": true,
+          "extern_alloc": true
+        },
+        "pattern_warnings": [],
+        "deprecated_patterns": [],
+        "rs_files_scanned": 2
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "docker": true,
+        "native_passed": true,
+        "wasm_passed": true,
+        "wasm_file": "gyges.wasm",
+        "wasm_size_bytes": 106,
+        "wasm_size_kb": 0.1,
+        "brotli_size_bytes": 94,
+        "brotli_size_kb": 0.1,
+        "under_24kb_limit": true
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": true,
+        "test_count": 0,
+        "test_output": "unittests src/lib.rs (target/debug/deps/gyges-c3cba2d0451ddcf5)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running unittests src/main.rs (target/debug/deps/gyges-3e46bee0c16c2cc8)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n   Doc-tests gyges\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+        "docker": true,
+        "last_commit": "2025-04-21T15:53:32Z",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 2,
+        "forks": 0,
+        "health_score": "abandoned"
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "community_projects",
+    "config_sdk_version": "0.8.4"
+  },
+  {
+    "repo_url": "https://github.com/Oluwatobilobaoke/erc6909-with-arbitrum-stylus",
+    "repo_name": "Oluwatobilobaoke_erc6909-with-arbitrum-stylus",
+    "repo_type": "stylus",
+    "sdk_version": "0.9.0",
+    "verified_at": "2026-02-11T19:35:45.759667",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "0.9.0",
+        "meets_minimum": true,
+        "is_main_version": true,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0",
+        "rust_version": "1.87.0",
+        "patterns_found": {
+          "entrypoint": true,
+          "sol_storage": true,
+          "no_main": true,
+          "public_attr": true,
+          "extern_alloc": true
+        },
+        "pattern_warnings": [],
+        "deprecated_patterns": [],
+        "rs_files_scanned": 2
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "docker": true,
+        "native_passed": true,
+        "wasm_passed": true,
+        "wasm_file": "stylus_hello_world.wasm",
+        "wasm_size_bytes": 72621,
+        "wasm_size_kb": 70.9,
+        "brotli_size_bytes": 21177,
+        "brotli_size_kb": 20.7,
+        "under_24kb_limit": true
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": true,
+        "test_count": 0,
+        "test_output": "/stylus_hello_world-3ddf4ca5e8004795)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running unittests src/main.rs (target/debug/deps/stylus_hello_world-a6e9d53320e80349)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n   Doc-tests stylus_hello_world\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+        "docker": true,
+        "last_commit": "2025-08-30T10:16:31Z",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 0,
+        "forks": 0,
+        "health_score": "stale"
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "community_projects",
+    "config_sdk_version": "0.9.0"
+  },
+  {
+    "repo_url": "https://github.com/hummusonrails/fortune-generator",
+    "repo_name": "hummusonrails_fortune-generator",
+    "repo_type": "stylus",
+    "sdk_version": "0.8.0",
+    "verified_at": "2026-02-11T19:40:48.355530",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "0.8.0",
+        "meets_minimum": true,
+        "is_main_version": false,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0",
+        "rust_version": "1.93.0",
+        "patterns_found": {
+          "entrypoint": true,
+          "sol_storage": false,
+          "no_main": true,
+          "public_attr": true,
+          "extern_alloc": true
+        },
+        "pattern_warnings": [],
+        "deprecated_patterns": [],
+        "rs_files_scanned": 3
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "docker": true,
+        "native_passed": true,
+        "wasm_passed": true,
+        "wasm_file": "stylus_mint_fortune.wasm",
+        "wasm_size_bytes": 39150,
+        "wasm_size_kb": 38.2,
+        "brotli_size_bytes": 11275,
+        "brotli_size_kb": 11.0,
+        "under_24kb_limit": true
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": true,
+        "test_count": 0,
+        "test_output": "us_mint_fortune-99dd21d80b52644f)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running unittests src/main.rs (target/debug/deps/stylus_fortune_cookie-7a694bec1c0beef9)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n   Doc-tests stylus_mint_fortune\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+        "docker": true,
+        "last_commit": "2025-02-18T06:09:42Z",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 0,
+        "forks": 0,
+        "health_score": "abandoned"
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "community_projects",
+    "config_sdk_version": "0.8.0"
+  },
+  {
+    "repo_url": "https://github.com/Arb-Stylus/scaffold-stylus",
+    "repo_name": "Arb-Stylus_scaffold-stylus",
+    "repo_type": "stylus",
+    "sdk_version": "0.9.0",
+    "verified_at": "2026-02-11T19:45:01.248741",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "0.9.0",
+        "meets_minimum": true,
+        "is_main_version": true,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0",
+        "rust_version": "1.93.0",
+        "patterns_found": {
+          "entrypoint": true,
+          "sol_storage": true,
+          "no_main": true,
+          "public_attr": true,
+          "extern_alloc": true
+        },
+        "pattern_warnings": [],
+        "deprecated_patterns": [],
+        "rs_files_scanned": 2
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "docker": true,
+        "native_passed": false,
+        "native_stderr_tail": "rc/index.crates.io-1949cf8c6b5b557f/stylus-sdk-0.9.0/src/host/mod.rs:38:20\n   |\n38 |         pub struct VM(pub WasmVM);\n   |                    -- `VM` defined here\n   |\nhelp: `VM` is a tuple struct, use the appropriate syntax\n   |\n69 -             VM { host: alloc::boxed::Box::new(stylus_sdk::host::WasmVM {}) };\n69 +             VM(/* WasmVM */);\n   |\n\nFor more information about this error, try `rustc --explain E0560`.\nerror: could not compile `openzeppelin-stylus` (lib) due to 1 previous error",
+        "wasm_passed": true,
+        "wasm_file": "your_contract.wasm",
+        "wasm_size_bytes": 69660,
+        "wasm_size_kb": 68.0,
+        "brotli_size_bytes": 21159,
+        "brotli_size_kb": 20.7,
+        "under_24kb_limit": true
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": true,
+        "test_count": 1,
+        "test_output": "e1fbb08252)\n\nrunning 1 test\ntest test::test_your_contract ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running unittests src/main.rs (target/debug/deps/your_contract-71f216098089bb28)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n   Doc-tests your_contract\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+        "docker": true,
+        "last_commit": "2025-11-14T03:41:18Z",
+        "archived": false,
+        "open_issues": 1,
+        "stars": 38,
+        "forks": 31,
+        "health_score": "active"
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "scaffold_projects",
+    "config_sdk_version": "0.9.0"
+  },
+  {
+    "repo_url": "https://github.com/iyansr/cross-protocol-defi-tracker",
+    "repo_name": "iyansr_cross-protocol-defi-tracker",
+    "repo_type": "stylus",
+    "sdk_version": "0.9.0",
+    "verified_at": "2026-02-11T19:49:26.150842",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "0.9.0",
+        "meets_minimum": true,
+        "is_main_version": true,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0",
+        "rust_version": "1.93.0",
+        "patterns_found": {
+          "entrypoint": true,
+          "sol_storage": true,
+          "no_main": true,
+          "public_attr": true,
+          "extern_alloc": true
+        },
+        "pattern_warnings": [],
+        "deprecated_patterns": [],
+        "rs_files_scanned": 4
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "docker": true,
+        "native_passed": true,
+        "wasm_passed": true,
+        "wasm_file": "your_contract.wasm",
+        "wasm_size_bytes": 69436,
+        "wasm_size_kb": 67.8,
+        "brotli_size_bytes": 21039,
+        "brotli_size_kb": 20.5,
+        "under_24kb_limit": true
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": true,
+        "test_count": 1,
+        "test_output": "62cf5964ba)\n\nrunning 1 test\ntest test::test_your_contract ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running unittests src/main.rs (target/debug/deps/your_contract-0c554f0b876820fa)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n   Doc-tests your_contract\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+        "docker": true,
+        "last_commit": "2025-08-30T10:07:53Z",
+        "archived": false,
+        "open_issues": 1,
+        "stars": 0,
+        "forks": 0,
+        "health_score": "stale"
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "scaffold_projects",
+    "config_sdk_version": "0.9.0"
+  },
+  {
+    "repo_url": "https://github.com/Einarmig/WalletNaming-scaffold-stylus",
+    "repo_name": "Einarmig_WalletNaming-scaffold-stylus",
+    "repo_type": "stylus",
+    "sdk_version": "0.9.0",
+    "verified_at": "2026-02-11T19:52:29.834558",
+    "overall_status": "failed",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "0.9.0",
+        "meets_minimum": true,
+        "is_main_version": true,
+        "minimum_required": "0.8.0",
+        "main_version": "0.9.0",
+        "rust_version": "1.93.0",
+        "patterns_found": {
+          "entrypoint": true,
+          "sol_storage": true,
+          "no_main": true,
+          "public_attr": true,
+          "extern_alloc": true
+        },
+        "pattern_warnings": [],
+        "deprecated_patterns": [],
+        "rs_files_scanned": 2
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "docker": true,
+        "native_passed": true,
+        "wasm_passed": true,
+        "wasm_file": "wallet_naming.wasm",
+        "wasm_size_bytes": 106,
+        "wasm_size_kb": 0.1,
+        "brotli_size_bytes": 94,
+        "brotli_size_kb": 0.1,
+        "under_24kb_limit": true
+      },
+      {
+        "step": "tests_and_health",
+        "passed": false,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "de, Debug)]\n    |                                                 ^^^^^^ could not find `__private` in `scale`\n    |\n    = note: this error originates in the derive macro `Encode` (in Nightly builds, run with -Z macro-backtrace for more info)\n\n   Compiling base64 v0.21.7\n   Compiling tokio-util v0.7.17\nFor more information about this error, try `rustc --explain E0433`.\nerror: could not compile `scale-info` (lib) due to 2 previous errors\nwarning: build failed, waiting for other jobs to finish...\n",
+        "docker": true,
+        "last_commit": "2025-11-04T23:37:56Z",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 0,
+        "forks": 0,
+        "health_score": "stale"
+      }
+    ],
+    "config_category": "stylus",
+    "config_subcategory": "scaffold_projects",
+    "config_sdk_version": "0.9.0"
+  },
+  {
+    "repo_url": "https://github.com/OffchainLabs/arbitrum-sdk",
+    "repo_name": "OffchainLabs_arbitrum-sdk",
+    "repo_type": "sdk",
+    "sdk_version": null,
+    "verified_at": "2026-02-11T19:53:27.364911",
+    "overall_status": "failed",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": false,
+        "skipped": false,
+        "error": "@arbitrum/sdk not found in package.json"
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "docker": true,
+        "package_manager": "yarn"
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": false,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "last_commit": "2026-01-09T18:52:38Z",
+        "archived": false,
+        "open_issues": 41,
+        "stars": 274,
+        "forks": 212,
+        "health_score": "active"
+      }
+    ],
+    "config_category": "arbitrum_sdk",
+    "config_subcategory": "official_repos",
+    "config_sdk_version": "N/A"
+  },
+  {
+    "repo_url": "https://github.com/OffchainLabs/arbitrum-tutorials",
+    "repo_name": "OffchainLabs_arbitrum-tutorials",
+    "repo_type": "sdk",
+    "sdk_version": "4.0.1",
+    "verified_at": "2026-02-11T19:53:54.426034",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "4.0.1",
+        "meets_minimum": true,
+        "minimum_required": "4.0.0"
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": true,
+        "docker": true,
+        "package_manager": "yarn",
+        "note": "No build script, install succeeded"
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": false,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "last_commit": "2026-01-29T09:50:03Z",
+        "archived": false,
+        "open_issues": 8,
+        "stars": 502,
+        "forks": 308,
+        "health_score": "active"
+      }
+    ],
+    "config_category": "arbitrum_sdk",
+    "config_subcategory": "official_repos",
+    "config_sdk_version": "4.0.1"
+  },
+  {
+    "repo_url": "https://github.com/kevinb1003/arbitrum-api",
+    "repo_name": "kevinb1003_arbitrum-api",
+    "repo_type": "sdk",
+    "sdk_version": "4.0.4",
+    "verified_at": "2026-02-11T19:55:20.988270",
+    "overall_status": "failed",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "4.0.4",
+        "meets_minimum": true,
+        "minimum_required": "4.0.0"
+      },
+      {
+        "step": "compile",
+        "passed": false,
+        "skipped": false,
+        "docker": true,
+        "package_manager": "npm",
+        "stderr_tail": "[docker] No rust-toolchain file, using default: rustc 1.81.0 (eeb90cda1 2024-09-04)\n\n> arbitrum-sdk-api@1.0.0 build\n> tsc\n\nsrc/lib/prisma/client.ts(2,30): error TS2307: Cannot find module './generated/client' or its corresponding type declarations.\nsrc/lib/prisma/seed.ts(1,38): error TS2307: Cannot find module './generated/client' or its corresponding type declarations."
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": true,
+        "tests_pass": true,
+        "test_count": 0,
+        "test_output": "\u001b[32m\u2713\u001b[39m src/test/services/arbitrum/bridge/index.test.ts \u001b[2m(\u001b[22m\u001b[2m7 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 6\u001b[2mms\u001b[22m\u001b[39m\n \u001b[32m\u2713\u001b[39m src/test/handlers/bridge.test.ts \u001b[2m(\u001b[22m\u001b[2m8 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 30\u001b[2mms\u001b[22m\u001b[39m\n\n\u001b[2m Test Files \u001b[22m \u001b[1m\u001b[32m7 passed\u001b[39m\u001b[22m\u001b[90m (7)\u001b[39m\n\u001b[2m      Tests \u001b[22m \u001b[1m\u001b[32m37 passed\u001b[39m\u001b[22m\u001b[90m (37)\u001b[39m\n\u001b[2m   Start at \u001b[22m 19:55:19\n\u001b[2m   Duration \u001b[22m 553ms\u001b[2m (transform 555ms, setup 0ms, import 1.95s, tests 164ms, environment 1ms)\u001b[22m\n\n",
+        "docker": true,
+        "last_commit": "2026-01-15T00:36:54Z",
+        "archived": false,
+        "open_issues": 5,
+        "stars": 32,
+        "forks": 0,
+        "health_score": "active"
+      }
+    ],
+    "config_category": "arbitrum_sdk",
+    "config_subcategory": "community_examples",
+    "config_sdk_version": "4.0.4"
+  },
+  {
+    "repo_url": "https://github.com/gelatodigital/how-tos-18-arbitrum-orbit-bridging",
+    "repo_name": "gelatodigital_how-tos-18-arbitrum-orbit-bridging",
+    "repo_type": "sdk",
+    "sdk_version": "4.0.2",
+    "verified_at": "2026-02-11T19:55:27.599516",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "4.0.2",
+        "meets_minimum": true,
+        "minimum_required": "4.0.0"
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "docker": true,
+        "package_manager": "npm"
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": false,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "last_commit": "2025-12-29T09:43:07Z",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 2,
+        "forks": 2,
+        "health_score": "active"
+      }
+    ],
+    "config_category": "arbitrum_sdk",
+    "config_subcategory": "community_examples",
+    "config_sdk_version": "4.0.2"
+  },
+  {
+    "repo_url": "https://github.com/gelatodigital/clink-bridging-cross-messaging",
+    "repo_name": "gelatodigital_clink-bridging-cross-messaging",
+    "repo_type": "sdk",
+    "sdk_version": "4.0.2",
+    "verified_at": "2026-02-11T19:55:30.801472",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "4.0.2",
+        "meets_minimum": true,
+        "minimum_required": "4.0.0"
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "docker": true,
+        "package_manager": "npm"
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": false,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "last_commit": "2025-03-04T19:04:31Z",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 0,
+        "forks": 0,
+        "health_score": "abandoned"
+      }
+    ],
+    "config_category": "arbitrum_sdk",
+    "config_subcategory": "community_examples",
+    "config_sdk_version": "4.0.2"
+  },
+  {
+    "repo_url": "https://github.com/OffchainLabs/arbitrum-orbit-sdk",
+    "repo_name": "OffchainLabs_arbitrum-orbit-sdk",
+    "repo_type": "sdk",
+    "sdk_version": "4.0.4",
+    "verified_at": "2026-02-11T19:56:25.533414",
+    "overall_status": "verified",
+    "steps": [
+      {
+        "step": "sdk_version",
+        "passed": true,
+        "skipped": false,
+        "sdk_version": "4.0.4",
+        "meets_minimum": true,
+        "minimum_required": "4.0.0"
+      },
+      {
+        "step": "compile",
+        "passed": true,
+        "skipped": false,
+        "docker": true,
+        "package_manager": "yarn"
+      },
+      {
+        "step": "tests_and_health",
+        "passed": true,
+        "skipped": false,
+        "has_tests": false,
+        "tests_pass": false,
+        "test_count": 0,
+        "test_output": "",
+        "last_commit": "",
+        "archived": false,
+        "open_issues": 0,
+        "stars": 0,
+        "forks": 0,
+        "health_score": "unknown"
+      }
+    ],
+    "config_category": "orbit_sdk",
+    "config_subcategory": "sdk_repo",
+    "config_sdk_version": "4.0.4"
+  }
+]

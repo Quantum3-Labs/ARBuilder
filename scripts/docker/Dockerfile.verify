@@ -1,0 +1,30 @@
+# ARBuilder Verification Environment
+# Builds Stylus (Rust/WASM) and TypeScript repos in an isolated container.
+#
+# Build:  docker build -t arbbuilder-verify -f scripts/docker/Dockerfile.verify .
+# Usage:  docker run --rm -v /path/to/repo:/workspace arbbuilder-verify cargo build --release
+
+FROM rust:1.81-slim AS base
+
+# System deps for building Stylus contracts + Node for TS repos
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libssl-dev git ca-certificates curl build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install wasm32 target for the default toolchain
+RUN rustup target add wasm32-unknown-unknown
+
+# Install Node.js 20 + yarn for TypeScript repos
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g yarn \
+    && rm -rf /var/lib/apt/lists/*
+
+# Entrypoint handles per-repo toolchain installation
+COPY scripts/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+WORKDIR /workspace
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["cargo", "build", "--release"]
