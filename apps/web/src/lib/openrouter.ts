@@ -41,7 +41,7 @@ export const MODELS = {
   CODE_GEN: "openai/gpt-oss-120b",
   QA: "openai/gpt-oss-120b",
   FAST: "openai/gpt-oss-120b",
-  FALLBACK: "qwen/qwen3.5-flash",
+  FALLBACK: "qwen/qwen3.5-flash-02-23",
 } as const;
 
 const EMPTY_RESPONSE: ChatCompletionResponse = {
@@ -165,17 +165,16 @@ export async function chatCompletion(
             },
           };
         }
-        await backoff(attempt);
+        // No backoff on truncation — retry immediately with higher maxTokens
         continue;
       }
 
-      // Check for empty response
+      // Check for empty response — retry immediately (no backoff)
       if (!result.content || result.content.trim().length === 0) {
         console.warn(
           `[chatCompletion] Empty response on attempt ${attempt + 1}/${PRIMARY_ATTEMPTS}. ` +
           `Model: ${result.model}, finish_reason: ${result.finishReason}`
         );
-        await backoff(attempt);
         continue;
       }
 
@@ -220,7 +219,6 @@ export async function chatCompletion(
           `[chatCompletion] Fallback empty on attempt ${attempt + 1}/${FALLBACK_ATTEMPTS}. ` +
           `finish_reason: ${result.finishReason}`
         );
-        await backoff(attempt);
         continue;
       }
 

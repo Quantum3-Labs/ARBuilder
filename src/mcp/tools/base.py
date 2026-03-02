@@ -18,7 +18,7 @@ load_dotenv()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "openai/gpt-oss-120b")
-FALLBACK_MODEL = os.getenv("FALLBACK_MODEL", "qwen/qwen3.5-flash")
+FALLBACK_MODEL = os.getenv("FALLBACK_MODEL", "qwen/qwen3.5-flash-02-23")
 
 
 @dataclass
@@ -170,13 +170,13 @@ class BaseTool(ABC):
                     if attempt == primary_attempts - 1 and content and content.strip():
                         logger.warning("[_call_llm] Using truncated response on final primary attempt")
                         return content
-                    time.sleep(min(2**attempt, 4))
+                    # No backoff on truncation — retry immediately with higher max_tokens
                     continue
 
                 if content and content.strip():
                     return content
 
-                # Empty response — retry with backoff
+                # Empty response — retry immediately (no backoff)
                 logger.warning(
                     "[_call_llm] Empty response (attempt %d/%d). "
                     "Model: %s, finish_reason: %s",
@@ -185,7 +185,6 @@ class BaseTool(ABC):
                     data.get("model", "unknown"),
                     finish_reason,
                 )
-                time.sleep(min(2**attempt, 4))
 
             except (httpx.TimeoutException, httpx.ConnectError) as e:
                 logger.warning(
@@ -255,7 +254,6 @@ class BaseTool(ABC):
                     attempt + 1,
                     fallback_attempts,
                 )
-                time.sleep(min(2**attempt, 4))
 
             except Exception as e:
                 logger.warning(
