@@ -168,7 +168,9 @@ class BaseTool(ABC):
                     )
                     # On last attempt, use truncated content if non-empty
                     if attempt == primary_attempts - 1 and content and content.strip():
-                        logger.warning("[_call_llm] Using truncated response on final primary attempt")
+                        logger.warning(
+                            "[_call_llm] Using truncated response on final attempt"
+                        )
                         return content
                     # No backoff on truncation — retry immediately with higher max_tokens
                     continue

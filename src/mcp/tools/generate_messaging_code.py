@@ -600,7 +600,7 @@ The generated code uses ethers.js v5 and @arbitrum/sdk."""
     def execute(self, **kwargs) -> dict[str, Any]:
         """Generate messaging code based on the specified type."""
         message_type = kwargs.get("message_type")
-        include_example = kwargs.get("include_example", True)
+        _include_example = kwargs.get("include_example", True)
 
         if not message_type:
             return {"error": "message_type is required"}

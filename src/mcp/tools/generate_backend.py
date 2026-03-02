@@ -11,7 +11,6 @@ Supports:
 import json
 from typing import Any, Optional
 
-from .base import BaseTool
 from ...templates.backend_templates import (
     BackendTemplate,
     generate_service_from_abi,
@@ -19,6 +18,7 @@ from ...templates.backend_templates import (
     render_with_abi,
     select_backend_template,
 )
+from .base import BaseTool
 
 
 class GenerateBackendTool(BaseTool):

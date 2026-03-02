@@ -431,7 +431,7 @@ The generated code uses ethers.js v5 and @arbitrum/sdk."""
         amount = kwargs.get("amount", "0.1")
         token_address = kwargs.get("token_address", "0x...")
         destination = kwargs.get("destination_address", "0x...")
-        include_status = kwargs.get("include_status_check", True)
+        _include_status = kwargs.get("include_status_check", True)
 
         # Validate inputs
         if not bridge_type:
