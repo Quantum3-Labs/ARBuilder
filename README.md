@@ -34,7 +34,7 @@ ARBuilder uses a **Retrieval-Augmented Generation (RAG)** pipeline with hybrid s
 │                                         │                               │
 │  GENERATION                             ▼                               │
 │  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │                      MCP Server (14 tools)                        │  │
+│  │                      MCP Server (19 tools)                        │  │
 │  │                                                                   │  │
 │  │  M1: Stylus        M2: SDK           M3: dApp Builder            │  │
 │  │  ┌─────────────┐   ┌─────────────┐   ┌──────────────────────┐   │  │
@@ -46,6 +46,15 @@ ARBuilder uses a **Retrieval-Augmented Generation (RAG)** pipeline with hybrid s
 │  │  │ get_workflow │   │             │   │                      │   │  │
 │  │  │ validate_code│   │             │   │                      │   │  │
 │  │  └─────────────┘   └─────────────┘   └──────────────────────┘   │  │
+│  │                                                                   │  │
+│  │  M4: Orbit Chain                                                  │  │
+│  │  ┌──────────────────────┐                                        │  │
+│  │  │ generate_orbit_config│                                        │  │
+│  │  │ generate_orbit_deploy│                                        │  │
+│  │  │ gen_validator_setup  │                                        │  │
+│  │  │ ask_orbit            │                                        │  │
+│  │  │ orchestrate_orbit    │                                        │  │
+│  │  └──────────────────────┘                                        │  │
 │  └───────────────────────────────────────────────────────────────────┘  │
 │                           │                                             │
 │  IDE INTEGRATION          ▼                                             │
@@ -112,7 +121,7 @@ python -m src.embeddings.vectordb
 
 # 4. Test MCP server
 python -m src.mcp.server
-# Should show: "Capabilities: 14 tools, 11 resources, 5 prompts"
+# Should show: "Capabilities: 19 tools, 11 resources, 5 prompts"
 
 # 5. Configure Cursor IDE (~/.cursor/mcp.json) - see Setup section below
 ```
@@ -147,7 +156,8 @@ ArbBuilder/
 │   │   ├── backend_templates.py  # M3: NestJS/Express templates
 │   │   ├── frontend_templates.py # M3: Next.js + wagmi templates
 │   │   ├── indexer_templates.py  # M3: Subgraph templates
-│   │   └── oracle_templates.py   # M3: Chainlink templates
+│   │   ├── oracle_templates.py   # M3: Chainlink templates
+│   │   └── orbit_templates.py    # M4: Orbit chain deployment templates
 │   ├── utils/            # Shared utilities
 │   │   ├── version_manager.py   # SDK version management
 │   │   ├── env_config.py        # Centralized env var configuration
@@ -155,21 +165,26 @@ ArbBuilder/
 │   │   └── compiler_verifier.py # Docker-based cargo check verification
 │   ├── mcp/              # MCP server for IDE integration
 │   │   ├── server.py     # MCP server (tools, resources, prompts)
-│   │   ├── tools/        # MCP tool implementations (14 tools)
-│   │   │   ├── get_stylus_context.py   # M1
-│   │   │   ├── generate_stylus_code.py # M1
-│   │   │   ├── ask_stylus.py           # M1
-│   │   │   ├── generate_tests.py       # M1
-│   │   │   ├── get_workflow.py         # M1
-│   │   │   ├── validate_stylus_code.py # M1
-│   │   │   ├── generate_bridge_code.py # M2
-│   │   │   ├── generate_messaging_code.py # M2
-│   │   │   ├── ask_bridging.py         # M2
-│   │   │   ├── generate_backend.py     # M3
-│   │   │   ├── generate_frontend.py    # M3
-│   │   │   ├── generate_indexer.py     # M3
-│   │   │   ├── generate_oracle.py      # M3
-│   │   │   └── orchestrate_dapp.py     # M3
+│   │   ├── tools/        # MCP tool implementations (19 tools)
+│   │   │   ├── get_stylus_context.py       # M1
+│   │   │   ├── generate_stylus_code.py     # M1
+│   │   │   ├── ask_stylus.py               # M1
+│   │   │   ├── generate_tests.py           # M1
+│   │   │   ├── get_workflow.py             # M1
+│   │   │   ├── validate_stylus_code.py     # M1
+│   │   │   ├── generate_bridge_code.py     # M2
+│   │   │   ├── generate_messaging_code.py  # M2
+│   │   │   ├── ask_bridging.py             # M2
+│   │   │   ├── generate_backend.py         # M3
+│   │   │   ├── generate_frontend.py        # M3
+│   │   │   ├── generate_indexer.py         # M3
+│   │   │   ├── generate_oracle.py          # M3
+│   │   │   ├── orchestrate_dapp.py         # M3
+│   │   │   ├── generate_orbit_config.py    # M4
+│   │   │   ├── generate_orbit_deployment.py # M4
+│   │   │   ├── generate_validator_setup.py # M4
+│   │   │   ├── ask_orbit.py                # M4
+│   │   │   └── orchestrate_orbit.py        # M4
 │   │   ├── resources/    # Static knowledge (11 resources)
 │   │   │   ├── stylus_cli.py      # M1
 │   │   │   ├── workflows.py       # M1
@@ -276,7 +291,7 @@ python -m src.mcp.server
 You should see:
 ```
 ARBuilder MCP Server started
-Capabilities: 14 tools, 11 resources, 5 prompts
+Capabilities: 19 tools, 11 resources, 5 prompts
 ```
 
 #### Optional: Refresh Data
@@ -500,7 +515,11 @@ ARBBUILDER_ADMIN_SECRET=xxx npx tsx scripts/sync_sources.ts --remove-stale
 - Indexer: The Graph (5 docs), graph-tooling, messari/subgraphs
 - Oracle: Chainlink (4 docs), smart-contract-examples, chainlink
 
-**Orbit SDK (M4)** — planned
+**Orbit SDK (M4)** — 5 Python MCP tools + 9 TypeScript templates
+- Tools: `generate_orbit_config`, `generate_orbit_deployment`, `generate_validator_setup`, `ask_orbit`, `orchestrate_orbit`
+- Templates: Chain Config, Deploy Rollup, Deploy Token Bridge, Custom Gas Token, Validator Management, Governance, Node Config, AnyTrust Config, Orchestration
+- Uses `@arbitrum/orbit-sdk` v0.27.0 for `prepareChainConfig()`, `createRollup()`, `createTokenBridge()`, `setValidKeyset()`
+- Supports: Rollup and AnyTrust chains, custom gas tokens, validator/batch poster management, full project scaffolding
 
 ## API Access
 
@@ -540,7 +559,7 @@ Direct API routes at `/api/v1/tools/*` are for **internal testing only**:
 
 ## MCP Capabilities
 
-ARBuilder exposes a full MCP server with **13 tools**, **11 resources**, and **5 prompts** for Cursor/VS Code integration.
+ARBuilder exposes a full MCP server with **19 tools**, **11 resources**, and **5 prompts** for Cursor/VS Code integration.
 
 ### Tools
 
@@ -572,6 +591,16 @@ ARBuilder exposes a full MCP server with **13 tools**, **11 resources**, and **5
 | `generate_indexer` | Generate The Graph subgraphs for indexing |
 | `generate_oracle` | Generate Chainlink oracle integrations |
 | `orchestrate_dapp` | Scaffold complete dApps with multiple components |
+
+**M4: Orbit Chain Integration (5 tools)**
+
+| Tool | Description |
+|------|-------------|
+| `generate_orbit_config` | Generate Orbit chain configuration (prepareChainConfig, AnyTrust, custom gas tokens) |
+| `generate_orbit_deployment` | Generate rollup and token bridge deployment scripts (createRollup, createTokenBridge) |
+| `generate_validator_setup` | Manage validators, batch posters, and AnyTrust DAC keysets |
+| `ask_orbit` | Q&A about Orbit chain deployment, configuration, and operations |
+| `orchestrate_orbit` | Scaffold complete Orbit chain deployment projects with all scripts |
 
 #### Example: Get Build/Deploy Workflow
 
@@ -746,7 +775,7 @@ Returns: Commands for checking balance, deploying, and verifying
 | M1 | Stylus Smart Contract Builder | ✅ Complete |
 | M2 | Arbitrum SDK Integration (Bridging & Messaging) | ✅ Complete |
 | M3 | Full dApp Builder (Backend + Frontend + Indexer + Oracle + Orchestration) | ✅ Complete |
-| M4 | Orbit Chain Integration | Planned |
+| M4 | Orbit Chain Integration (Config, Deployment, Validators, Q&A, Orchestration) | In Progress |
 | M5 | Unified AI Assistant | Planned |
 
 ### M2: Arbitrum SDK Integration
@@ -813,6 +842,30 @@ echo '{"method": "tools/call", "params": {"name": "generate_backend", "arguments
 
 # Example: Generate frontend with contract ABI
 echo '{"method": "tools/call", "params": {"name": "generate_frontend", "arguments": {"prompt": "Create token dashboard", "contract_abi": "[...]"}}}' | python -m src.mcp.server
+```
+
+### M4: Orbit Chain Integration
+
+Orbit chain deployment and management support:
+
+- **Chain Configuration**: Generate `prepareChainConfig()` scripts for Rollup or AnyTrust chains
+- **Rollup Deployment**: Generate `createRollup()` deployment scripts with validators and batch posters
+- **Token Bridge**: Generate `createTokenBridge()` scripts for bridging support
+- **Custom Gas Tokens**: Configure ERC20 tokens as native gas tokens
+- **AnyTrust DAC**: Manage Data Availability Committee keysets via `setValidKeyset()`
+- **Validator Management**: Add/remove validators and batch posters
+- **Node Configuration**: Generate Nitro node configuration via `prepareNodeConfig()`
+- **Full Orchestration**: Scaffold complete deployment projects with all scripts, configs, and documentation
+
+```bash
+# Example: Scaffold a complete Orbit chain deployment project
+echo '{"method": "tools/call", "params": {"name": "orchestrate_orbit", "arguments": {"prompt": "Deploy an AnyTrust chain on Arbitrum Sepolia", "chain_name": "my-orbit-chain", "chain_id": 412346, "is_anytrust": true, "parent_chain": "arbitrum-sepolia"}}}' | python -m src.mcp.server
+
+# Example: Generate chain configuration
+echo '{"method": "tools/call", "params": {"name": "generate_orbit_config", "arguments": {"prompt": "Configure a custom gas token chain", "native_token": "0x...", "parent_chain": "arbitrum-sepolia"}}}' | python -m src.mcp.server
+
+# Example: Ask about Orbit deployment
+echo '{"method": "tools/call", "params": {"name": "ask_orbit", "arguments": {"question": "How do I deploy an Orbit chain with a custom gas token?"}}}' | python -m src.mcp.server
 ```
 
 ## Development

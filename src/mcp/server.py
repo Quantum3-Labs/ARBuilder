@@ -4,7 +4,7 @@ MCP Server for ARBuilder.
 Exposes Stylus development tools, resources, and prompts via the Model Context Protocol.
 
 MCP Capabilities:
-- Tools: 14 development tools (M1: Stylus + M2: Arbitrum SDK + M3: dApp Builder)
+- Tools: 19 development tools (M1: Stylus + M2: Arbitrum SDK + M3: dApp Builder + M4: Orbit)
 - Resources: Static knowledge (CLI commands, network configs, workflows)
 - Prompts: Reusable workflow templates
 """
@@ -26,8 +26,10 @@ from .resources import RESOURCES
 
 # M2: Arbitrum SDK Tools
 # M3: Full dApp Builder Tools
+# M4: Orbit Chain Tools
 from .tools import (
     AskBridgingTool,
+    AskOrbitTool,
     AskStylusTool,
     GenerateBackendTool,
     GenerateBridgeCodeTool,
@@ -35,11 +37,15 @@ from .tools import (
     GenerateIndexerTool,
     GenerateMessagingCodeTool,
     GenerateOracleTool,
+    GenerateOrbitConfigTool,
+    GenerateOrbitDeploymentTool,
     GenerateStylusCodeTool,
     GenerateTestsTool,
+    GenerateValidatorSetupTool,
     GetStylusContextTool,
     GetWorkflowTool,
     OrchestrateDappTool,
+    OrchestrateOrbitTool,
     ValidateStylusCodeTool,
 )
 
@@ -581,6 +587,269 @@ TOOL_DEFINITIONS = [
             "required": ["prompt"],
         },
     },
+    # M4: Orbit Chain Tools
+    {
+        "name": "generate_orbit_config",
+        "description": (
+            "Generate configuration code for Orbit"
+            " chain deployment. Supports chain config,"
+            " AnyTrust DAC setup, and custom gas token"
+            " configuration using @arbitrum/orbit-sdk."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "Description of the configuration needed",
+                },
+                "chain_id": {
+                    "type": "integer",
+                    "description": "Chain ID for the new Orbit chain",
+                    "default": 412346,
+                },
+                "owner": {
+                    "type": "string",
+                    "description": "Initial chain owner address (0x...)",
+                },
+                "is_anytrust": {
+                    "type": "boolean",
+                    "description": "Whether this is an AnyTrust chain (vs Rollup)",
+                    "default": False,
+                },
+                "native_token": {
+                    "type": "string",
+                    "description": "Custom gas token address (ERC20)",
+                },
+                "parent_chain": {
+                    "type": "string",
+                    "enum": [
+                        "arbitrum-one",
+                        "arbitrum-sepolia",
+                        "ethereum-mainnet",
+                        "ethereum-sepolia",
+                    ],
+                    "description": "Parent chain for the Orbit chain",
+                    "default": "arbitrum-sepolia",
+                },
+            },
+            "required": ["prompt"],
+        },
+    },
+    {
+        "name": "generate_orbit_deployment",
+        "description": (
+            "Generate deployment code for Orbit chains."
+            " Supports rollup deployment, token bridge"
+            " deployment, and full deployment with"
+            " validators and batch posters."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "Description of the deployment requirements",
+                },
+                "deployment_type": {
+                    "type": "string",
+                    "enum": ["rollup", "token_bridge", "full"],
+                    "description": "Type of deployment to generate",
+                    "default": "rollup",
+                },
+                "validators": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Validator addresses for the rollup",
+                },
+                "batch_posters": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Batch poster addresses",
+                },
+                "native_token": {
+                    "type": "string",
+                    "description": "Custom gas token address",
+                },
+                "parent_chain": {
+                    "type": "string",
+                    "enum": [
+                        "arbitrum-one",
+                        "arbitrum-sepolia",
+                        "ethereum-mainnet",
+                        "ethereum-sepolia",
+                    ],
+                    "description": "Parent chain for deployment",
+                    "default": "arbitrum-sepolia",
+                },
+                "rollup_version": {
+                    "type": "string",
+                    "enum": ["v2.1", "v3.1"],
+                    "description": "Rollup version to deploy",
+                    "default": "v3.1",
+                },
+                "chain_id": {
+                    "type": "integer",
+                    "description": "Chain ID for the new Orbit chain",
+                    "default": 412346,
+                },
+                "is_anytrust": {
+                    "type": "boolean",
+                    "description": "Whether to deploy as AnyTrust chain",
+                    "default": False,
+                },
+                "rollup_address": {
+                    "type": "string",
+                    "description": "Existing rollup address (for token_bridge deployment)",
+                },
+            },
+            "required": ["prompt"],
+        },
+    },
+    {
+        "name": "generate_validator_setup",
+        "description": (
+            "Generate code for managing Orbit chain"
+            " validators, batch posters, and AnyTrust"
+            " DAC keysets."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "Description of the validator management action",
+                },
+                "action": {
+                    "type": "string",
+                    "enum": ["list", "add", "remove"],
+                    "description": "Action to perform",
+                    "default": "list",
+                },
+                "target": {
+                    "type": "string",
+                    "enum": ["validator", "batch_poster", "keyset"],
+                    "description": "Target entity to manage",
+                    "default": "validator",
+                },
+                "addresses": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Addresses to check, add, or remove",
+                },
+                "rollup_address": {
+                    "type": "string",
+                    "description": "Rollup contract address on parent chain",
+                },
+                "sequencer_inbox": {
+                    "type": "string",
+                    "description": "SequencerInbox contract address",
+                },
+                "parent_chain": {
+                    "type": "string",
+                    "enum": [
+                        "arbitrum-one",
+                        "arbitrum-sepolia",
+                        "ethereum-mainnet",
+                        "ethereum-sepolia",
+                    ],
+                    "description": "Parent chain where contracts are deployed",
+                    "default": "arbitrum-sepolia",
+                },
+            },
+            "required": ["prompt"],
+        },
+    },
+    {
+        "name": "ask_orbit",
+        "description": (
+            "Answer questions about Arbitrum Orbit"
+            " chain deployment, configuration,"
+            " validators, AnyTrust, custom gas tokens,"
+            " and governance."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "Question about Orbit chain deployment or management",
+                },
+                "question_type": {
+                    "type": "string",
+                    "enum": [
+                        "general",
+                        "deployment",
+                        "config",
+                        "validator",
+                        "troubleshooting",
+                    ],
+                    "description": "Type of question for optimized response",
+                    "default": "general",
+                },
+            },
+            "required": ["question"],
+        },
+    },
+    {
+        "name": "orchestrate_orbit",
+        "description": (
+            "Scaffold a complete Orbit chain deployment"
+            " project with all scripts for chain config,"
+            " rollup deployment, token bridge, validator"
+            " management, and node configuration."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "Description of the Orbit chain project",
+                },
+                "chain_name": {
+                    "type": "string",
+                    "description": "Name for the Orbit chain",
+                    "default": "my-orbit-chain",
+                },
+                "chain_id": {
+                    "type": "integer",
+                    "description": "Chain ID for the new Orbit chain",
+                    "default": 412346,
+                },
+                "is_anytrust": {
+                    "type": "boolean",
+                    "description": "Whether to deploy as AnyTrust chain",
+                    "default": False,
+                },
+                "native_token": {
+                    "type": "string",
+                    "description": "Custom gas token address (ERC20)",
+                },
+                "parent_chain": {
+                    "type": "string",
+                    "enum": [
+                        "arbitrum-one",
+                        "arbitrum-sepolia",
+                        "ethereum-mainnet",
+                        "ethereum-sepolia",
+                    ],
+                    "description": "Parent chain for the Orbit chain",
+                    "default": "arbitrum-sepolia",
+                },
+                "validators": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Validator addresses",
+                },
+                "batch_posters": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Batch poster addresses",
+                },
+            },
+            "required": ["prompt"],
+        },
+    },
 ]
 
 
@@ -591,7 +860,7 @@ class MCPServer:
     Handles tool registration, resource access, prompt templates, and execution.
 
     Capabilities:
-    - tools/list, tools/call: 14 development tools (M1 + M2 + M3)
+    - tools/list, tools/call: 19 development tools (M1 + M2 + M3 + M4)
     - resources/list, resources/read: Static knowledge injection
     - prompts/list, prompts/get: Workflow templates
     """
@@ -620,6 +889,12 @@ class MCPServer:
             "generate_indexer": GenerateIndexerTool(),
             "generate_oracle": GenerateOracleTool(),
             "orchestrate_dapp": OrchestrateDappTool(),
+            # M4: Orbit Chain Tools
+            "generate_orbit_config": GenerateOrbitConfigTool(),
+            "generate_orbit_deployment": GenerateOrbitDeploymentTool(),
+            "generate_validator_setup": GenerateValidatorSetupTool(),
+            "ask_orbit": AskOrbitTool(context_tool=self.context_tool),
+            "orchestrate_orbit": OrchestrateOrbitTool(),
         }
 
         # Resources are static knowledge

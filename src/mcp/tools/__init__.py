@@ -20,9 +20,19 @@ M3: Full dApp Builder Tools (5):
 12. generate_indexer - The Graph subgraph generation
 13. generate_oracle - Chainlink oracle integration
 14. orchestrate_dapp - Full dApp scaffolding coordinator
+
+M4: Orbit Chain Tools (5):
+15. generate_orbit_config - Orbit chain configuration
+16. generate_orbit_deployment - Rollup/token bridge deployment
+17. generate_validator_setup - Validator/batch poster management
+18. ask_orbit - Orbit chain Q&A
+19. orchestrate_orbit - Full Orbit project scaffold
 """
 
 from .ask_bridging import AskBridgingTool
+
+# M4: Orbit Chain Tools
+from .ask_orbit import AskOrbitTool
 from .ask_stylus import AskStylusTool
 from .base import BaseTool, ToolResult
 
@@ -35,13 +45,17 @@ from .generate_frontend import GenerateFrontendTool
 from .generate_indexer import GenerateIndexerTool
 from .generate_messaging_code import GenerateMessagingCodeTool
 from .generate_oracle import GenerateOracleTool
+from .generate_orbit_config import GenerateOrbitConfigTool
+from .generate_orbit_deployment import GenerateOrbitDeploymentTool
 from .generate_stylus_code import GenerateStylusCodeTool
 from .generate_tests import GenerateTestsTool
+from .generate_validator_setup import GenerateValidatorSetupTool
 
 # M1: Stylus Tools
 from .get_stylus_context import GetStylusContextTool
 from .get_workflow import GetWorkflowTool
 from .orchestrate_dapp import OrchestrateDappTool
+from .orchestrate_orbit import OrchestrateOrbitTool
 from .validate_stylus_code import ValidateStylusCodeTool
 
 __all__ = [
@@ -65,4 +79,10 @@ __all__ = [
     "GenerateIndexerTool",
     "GenerateOracleTool",
     "OrchestrateDappTool",
+    # M4: Orbit Chain
+    "GenerateOrbitConfigTool",
+    "GenerateOrbitDeploymentTool",
+    "GenerateValidatorSetupTool",
+    "AskOrbitTool",
+    "OrchestrateOrbitTool",
 ]
