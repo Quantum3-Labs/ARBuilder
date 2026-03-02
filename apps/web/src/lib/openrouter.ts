@@ -746,6 +746,50 @@ Reference the correct SDK v4 classes: ParentTransactionReceipt, ChildTransaction
 }
 
 /**
+ * Answer questions about Arbitrum Orbit chain deployment and management.
+ */
+export async function answerOrbitQuestion(
+  apiKey: string,
+  question: string,
+  context: string
+): Promise<ChatCompletionResponse> {
+  const messages: Message[] = [
+    {
+      role: "system",
+      content: `You are an expert on Arbitrum Orbit chain deployment and management.
+Answer questions about:
+- Chain configuration using prepareChainConfig() from @arbitrum/orbit-sdk
+- Rollup deployment using createRollup() — validators, batch posters, native tokens
+- Token bridge deployment using createTokenBridge()
+- AnyTrust DAC configuration — keysets, data availability committees
+- Custom gas token chains — ERC20 native token setup and approval flow
+- Nitro node setup using prepareNodeConfig()
+- Governance via UpgradeExecutor — EXECUTOR_ROLE, ADMIN_ROLE, contract upgrades
+- Validator and batch poster management
+
+Use the provided context from the Orbit SDK documentation and code examples.
+Include TypeScript code examples using viem and @arbitrum/orbit-sdk when relevant.
+Be accurate about:
+- Deployment order: config → createRollup → start node → createTokenBridge
+- AnyTrust vs Rollup trade-offs (cost vs security assumptions)
+- Custom gas token requires ERC20 approval before createRollup()
+- UpgradeExecutor is the admin proxy for all chain contracts
+Reference the correct SDK functions: prepareChainConfig, createRollup, createTokenBridge, prepareNodeConfig.`,
+    },
+    {
+      role: "user",
+      content: `Context from Orbit SDK documentation:\n${context}\n\n---\n\nQuestion: ${question}`,
+    },
+  ];
+
+  return chatCompletion(apiKey, messages, {
+    model: MODELS.QA,
+    temperature: 0.3,
+    maxTokens: 6000,
+  });
+}
+
+/**
  * Generate tests for Stylus contract code.
  */
 export async function generateTests(
