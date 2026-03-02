@@ -38,8 +38,10 @@ env/
 *.swo
 *~
 
-# Data - raw and processed are committed
-# ChromaDB is excluded (must be generated locally due to binary compatibility)
+# Data - raw and processed are committed (small files only)
+# Large JSON exports (>10MB) must not be committed — use Git LFS or external storage
+data/raw/github_repos_*.json
+data/processed/processed_chunks_*.json
 
 # Chroma DB (any location)
 chroma_db/
