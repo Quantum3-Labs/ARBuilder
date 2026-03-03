@@ -1546,12 +1546,27 @@ class GenerateStylusCodeTool(BaseTool):
                 flags=re.MULTILINE,
             )
 
-            # Fix 22: MOVED TO CARGO CHECK — StorageVec .setter() unwrap
-            # cargo check catches Option type mismatch (E0599). Compiler fix loop
-            # handles it.
+            # Fix 22: StorageVec .setter(i).set(v) → .setter(i).unwrap().set(v)
+            # StorageVec::setter(usize) returns Option, needs unwrap.
+            # Only for dynamic array fields (type[] in sol_storage!), NOT mappings.
+            array_fields = set()
+            for af_match in re.finditer(r"\b\w+\[\]\s+(\w+)\s*;", fixed):
+                array_fields.add(af_match.group(1))
+            for af in array_fields:
+                fixed = re.sub(
+                    rf"\.{af}\s*\.setter\(((?:[^()]*|\([^()]*\))*)\)\s*\.set\(",
+                    rf".{af}.setter(\1).unwrap().set(",
+                    fixed,
+                )
 
-            # Fix 27: MOVED TO CARGO CHECK — nested mapping borrow conflict
-            # cargo check catches E0502. Compiler fix loop handles it.
+            # Fix 27: .get(k1).setter(k2) → .setter(k1).setter(k2)
+            # Nested mapping writes: .get() returns immutable ref, can't
+            # call .setter() on it. Must chain .setter() for writes.
+            fixed = re.sub(
+                r"\.get\(((?:[^()]*|\([^()]*\))*)\)\s*\.setter\(",
+                r".setter(\1).setter(",
+                fixed,
+            )
 
             # Fix 23: REMOVED — regex cannot distinguish sol! event/error
             # declarations from struct initialization. Applied inside sol! {}
