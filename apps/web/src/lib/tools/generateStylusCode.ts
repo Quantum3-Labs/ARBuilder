@@ -691,6 +691,36 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     }
   }
 
+  // Fix 51: Spurious .get() / .get_string() on mapping reads.
+  // (a) .get(key).get() → .get(key) — mapping .get(key) returns value directly
+  fixed = fixed.replace(
+    /\.get\(((?:[^()]*|\([^()]*\))*)\)\.get\(\)/g,
+    ".get($1)"
+  );
+  // (b) .get_string().get() → .get_string()
+  fixed = fixed.replace(/\.get_string\(\)\.get\(\)/g, ".get_string()");
+  // (c) .getter(key).get_string() on non-string mappings → .get(key)
+  {
+    const stringMapFields = new Set<string>();
+    const smfPattern = /mapping\([^)]*=>\s*string\)\s+(\w+)\s*;/g;
+    let smfMatch;
+    while ((smfMatch = smfPattern.exec(fixed)) !== null) {
+      stringMapFields.add(smfMatch[1]);
+    }
+    const getterStringPattern = /self\.(\w+)\.getter\(([^)]+)\)\.get_string\(\)/g;
+    let gsMatch;
+    // Collect replacements first to avoid modifying during iteration
+    const gsReplacements: Array<[string, string]> = [];
+    while ((gsMatch = getterStringPattern.exec(fixed)) !== null) {
+      if (!stringMapFields.has(gsMatch[1])) {
+        gsReplacements.push([gsMatch[0], `self.${gsMatch[1]}.get(${gsMatch[2]})`]);
+      }
+    }
+    for (const [from, to] of gsReplacements) {
+      fixed = fixed.replace(from, to);
+    }
+  }
+
   // Fix 13: Remove deprecated stylus_sdk::evm and stylus_sdk::msg imports
   fixed = fixed.replace(/^use stylus_sdk::evm.*;\s*$/gm, "");
   fixed = fixed.replace(/^use stylus_sdk::msg.*;\s*$/gm, "");

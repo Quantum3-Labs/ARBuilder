@@ -516,7 +516,14 @@ IMPORTANT: .setter(key) is ONLY for mappings. \
 For simple fields (uint256, address, bool), use \
 `self.field.set(val)` directly — NOT \
 `self.field.setter().set(val)` or \
-`self.field.setter(val).set(val)`.
+`self.field.setter(val).set(val)`. \
+NESTED MAPPINGS: `mapping(a => mapping(b => c))` — \
+read with `self.map.get(key1).get(key2)`. \
+Do NOT use `.getter(key).get_string()` — that is \
+ONLY for `mapping(... => string)`. \
+Do NOT add extra `.get()` after mapping reads — \
+`.get(key)` already returns the value, NOT a \
+storage wrapper.
 - TRANSFER ETH: \
 `use stylus_sdk::call::transfer::transfer_eth;` \
 then `transfer_eth(self.vm(), to, amount)?;`. \
@@ -1859,6 +1866,41 @@ class GenerateStylusCodeTool(BaseTool):
                     rf"self.{sf}.set(\1)",
                     fixed,
                 )
+
+            # Fix 51: Spurious .get() / .get_string() on mapping reads.
+            # (a) .get(key).get() → .get(key)
+            #     Mapping .get(key) already returns the value directly,
+            #     an extra parameterless .get() is always wrong.
+            fixed = re.sub(
+                r"\.get\(((?:[^()]*|\([^()]*\))*)\)\.get\(\)",
+                r".get(\1)",
+                fixed,
+            )
+            # (b) .get_string().get() → .get_string()
+            #     get_string() returns String, extra .get() is wrong.
+            fixed = re.sub(
+                r"\.get_string\(\)\.get\(\)",
+                ".get_string()",
+                fixed,
+            )
+            # (c) .getter(key).get_string() on non-string mappings.
+            #     Only mapping(... => string) uses .getter(k).get_string().
+            #     For other mappings it should be .get(key).
+            #     Detect string mappings, then fix non-string uses.
+            string_map_fields = set(
+                re.findall(r"mapping\([^)]*=>\s*string\)\s+(\w+)\s*;", fixed)
+            )
+            # Find all .getter(key).get_string() usages
+            for m in re.finditer(
+                r"self\.(\w+)\.getter\(([^)]+)\)\.get_string\(\)", fixed
+            ):
+                field = m.group(1)
+                if field not in string_map_fields:
+                    # Not a string mapping — replace with .get(key)
+                    fixed = fixed.replace(
+                        m.group(0),
+                        f"self.{field}.get({m.group(2)})",
+                    )
 
             # Fix 33: MOVED TO CARGO CHECK — B256::from_limbs()
             # cargo check catches missing method (E0599). Compiler fix loop handles it.
