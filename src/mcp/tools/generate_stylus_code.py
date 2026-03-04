@@ -498,6 +498,11 @@ If only using events (no .abi_encode()), \
 `use alloy_sol_types::sol;` is sufficient.
 7. If adding events/errors with sol! macro, they \
 must be BEFORE sol_storage!
+7b. EVERY event emitted with self.vm().log(EventName {{ ... }}) \
+MUST be declared in a sol! block. If the template declares \
+Transfer and Approval events but you add/keep an approve() \
+function that emits Approval, you MUST keep the Approval event \
+declaration. Undeclared events cause compile errors.
 8. KEEP the Cargo.toml [profile.release] section \
 exactly as provided
 
