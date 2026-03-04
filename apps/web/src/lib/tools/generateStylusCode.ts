@@ -610,6 +610,55 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
   // redundant shadow. Safe to remove.
   fixed = fixed.replace(/^\s*let\s+(mut\s+)?([a-z_]\w*)\s*=\s*\2\s*;\s*$/gm, "");
 
+  // Fix 49: Remove duplicate function definitions.
+  // Rust doesn't support overloading — two `fn foo(...)` in the same impl is
+  // a compile error. LLM sometimes re-defines a helper with a different
+  // signature. Keep the LAST definition (LLM refines on second attempt).
+  {
+    const fnDefPattern = /(\n[ \t]*)(pub\s+)?fn\s+(\w+)\s*\(/g;
+    const fnPositions: Array<{ name: string; pos: number }> = [];
+    let fnMatch;
+    while ((fnMatch = fnDefPattern.exec(fixed)) !== null) {
+      fnPositions.push({ name: fnMatch[3], pos: fnMatch.index });
+    }
+    // Group positions by name
+    const seenFns = new Map<string, number[]>();
+    for (const { name, pos } of fnPositions) {
+      const arr = seenFns.get(name) ?? [];
+      arr.push(pos);
+      seenFns.set(name, arr);
+    }
+    // Collect earlier duplicate spans to remove
+    const toRemove: Array<[number, number]> = [];
+    for (const [, positions] of seenFns) {
+      if (positions.length < 2) continue;
+      for (const dupPos of positions.slice(0, -1)) {
+        const braceStart = fixed.indexOf("{", dupPos);
+        if (braceStart === -1) continue;
+        let depth = 0;
+        let i = braceStart;
+        while (i < fixed.length) {
+          if (fixed[i] === "{") depth++;
+          else if (fixed[i] === "}") {
+            depth--;
+            if (depth === 0) break;
+          }
+          i++;
+        }
+        if (depth === 0) {
+          let lineStart = fixed.lastIndexOf("\n", dupPos);
+          if (lineStart === -1) lineStart = 0;
+          toRemove.push([lineStart, i + 1]);
+        }
+      }
+    }
+    // Remove in reverse order to preserve indices
+    toRemove.sort((a, b) => b[0] - a[0]);
+    for (const [start, end] of toRemove) {
+      fixed = fixed.slice(0, start) + fixed.slice(end);
+    }
+  }
+
   // Fix 13: Remove deprecated stylus_sdk::evm and stylus_sdk::msg imports
   fixed = fixed.replace(/^use stylus_sdk::evm.*;\s*$/gm, "");
   fixed = fixed.replace(/^use stylus_sdk::msg.*;\s*$/gm, "");

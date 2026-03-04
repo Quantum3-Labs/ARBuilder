@@ -390,6 +390,7 @@ let val = self.items.get(index).unwrap();
 - **address[] deref** — `*self.list.get(idx).unwrap()` on `address[]` returns `FixedBytes<20>`, not `Address`. Use `Address::from(*self.list.get(idx).unwrap())`.
 - **String mapping writes** — For `mapping(... => string)`, `.setter(key)` returns `StorageGuardMut<StorageString>` — call `.set_str(val)` directly. WRONG: `.setter(key).setter().set_str(val)`. CORRECT: `.setter(key).set_str(val)`.
 - **Nested struct writes** — For `mapping(uint256 => MyStruct)`, `.get(key)` returns immutable `StorageGuard<MyStruct>` — CANNOT call `.setter()` on its fields. Use `.setter(key)` for writes. WRONG: `self.roles.get(role).members.setter(account).set(true)`. CORRECT: `self.roles.setter(role).members.setter(account).set(true)`.
+- **No function overloading** — Rust does not support function overloading. Two `fn` with the same name in the same impl block is a compile error (E0428). If you need variants, use different names (e.g. `check_role`, `check_role_with_admin`). Never define a function twice.
 
 ## Network Endpoints
 

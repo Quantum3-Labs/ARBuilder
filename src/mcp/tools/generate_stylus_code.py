@@ -1775,6 +1775,51 @@ class GenerateStylusCodeTool(BaseTool):
                 flags=re.MULTILINE,
             )
 
+            # Fix 49: Remove duplicate function definitions.
+            # Rust doesn't support overloading — two `fn foo(...)` in the
+            # same impl block is a compile error.  LLM sometimes re-defines
+            # a helper (e.g. _check_role_admin) with different signatures.
+            # Keep the LAST definition (LLM often refines on second attempt).
+            fn_def_pattern = re.compile(
+                r"(\n[ \t]*)(pub\s+)?fn\s+(\w+)\s*\(", re.MULTILINE
+            )
+            fn_positions = [
+                (m.group(3), m.start()) for m in fn_def_pattern.finditer(fixed)
+            ]
+            seen_fns: dict[str, list[int]] = {}
+            for fn_name, pos in fn_positions:
+                seen_fns.setdefault(fn_name, []).append(pos)
+            # Remove earlier duplicates (keep last)
+            to_remove: list[tuple[int, int]] = []  # (start, end) spans
+            for fn_name, positions in seen_fns.items():
+                if len(positions) < 2:
+                    continue
+                for dup_pos in positions[:-1]:  # all except last
+                    # Find the opening brace
+                    brace_start = fixed.find("{", dup_pos)
+                    if brace_start == -1:
+                        continue
+                    # Count braces to find matching closing brace
+                    depth = 0
+                    i = brace_start
+                    while i < len(fixed):
+                        if fixed[i] == "{":
+                            depth += 1
+                        elif fixed[i] == "}":
+                            depth -= 1
+                            if depth == 0:
+                                break
+                        i += 1
+                    if depth == 0:
+                        # Find the start of the fn line (back to newline)
+                        line_start = fixed.rfind("\n", 0, dup_pos)
+                        if line_start == -1:
+                            line_start = 0
+                        to_remove.append((line_start, i + 1))
+            # Remove spans in reverse order to preserve positions
+            for start, end in sorted(to_remove, reverse=True):
+                fixed = fixed[:start] + fixed[end:]
+
             # Fix 33: MOVED TO CARGO CHECK — B256::from_limbs()
             # cargo check catches missing method (E0599). Compiler fix loop handles it.
 
