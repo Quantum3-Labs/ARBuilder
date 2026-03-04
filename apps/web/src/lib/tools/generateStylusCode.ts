@@ -321,6 +321,11 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     ".getter($1).get_string()"
   );
 
+  // Fix 48: B32 → B256 for bytes32
+  // LLM sometimes generates B32 (non-existent) instead of B256.
+  // bytes32 maps to FixedBytes<32> which is aliased as B256.
+  fixed = fixed.replace(/\bB32\b/g, "B256");
+
   // Fix 23: REMOVED — corrupts sol! event/error declarations.
 
   // Fix 28: Remove spurious .unwrap_or_default() on mapping reads.

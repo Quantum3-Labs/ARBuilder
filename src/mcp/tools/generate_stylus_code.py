@@ -1597,6 +1597,11 @@ class GenerateStylusCodeTool(BaseTool):
                 fixed,
             )
 
+            # Fix 48: B32 → B256 for bytes32
+            # LLM sometimes generates B32 (non-existent) instead of B256.
+            # bytes32 maps to FixedBytes<32> which is aliased as B256.
+            fixed = re.sub(r"\bB32\b", "B256", fixed)
+
             # Fix 23: REMOVED — regex cannot distinguish sol! event/error
             # declarations from struct initialization. Applied inside sol! {}
             # blocks, it corrupts `event Foo(uint256 fieldName)` into
