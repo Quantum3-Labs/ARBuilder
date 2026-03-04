@@ -334,10 +334,11 @@ mappings like `mapping(address => mapping(address \
 Do NOT use tuple keys: \
 `self.allowances.setter((owner, spender))` — \
 tuple indexing does NOT exist. \
-Do NOT mix .get() and .setter() on the same root: \
-`self.allowances.get(owner).setter(spender)` — \
-.get() returns an immutable reference that \
-conflicts with .setter()'s mutable borrow. \
+Do NOT mix .get() or .getter() with .setter() on the same root: \
+`self.allowances.get(owner).setter(spender)` — WRONG. \
+`self.allowances.getter(owner).setter(spender)` — WRONG. \
+Both .get() and .getter() return immutable references \
+that conflict with .setter()'s mutable borrow. \
 ALWAYS chain .setter() for writes.
 50. MAPPING READS RETURN VALUES DIRECTLY: \
 `StorageMap::get(key)` returns the value type \
@@ -580,9 +581,11 @@ like `StorageU256`, `StorageString`, etc.
 - NESTED MAPPING WRITES: Chain `.setter()` calls: \
 `self.map.setter(k1).setter(k2).set(v);` \
 Do NOT use tuple keys `(k1, k2)`. \
-Do NOT mix `.get()` then `.setter()` — \
-`.get()` returns immutable ref conflicting with \
-`.setter()`'s mutable borrow.
+Do NOT mix `.get()` or `.getter()` then `.setter()` — \
+both return immutable refs conflicting with \
+`.setter()`'s mutable borrow. \
+WRONG: `.getter(k1).setter(k2)` or `.get(k1).setter(k2)`. \
+CORRECT: `.setter(k1).setter(k2)`.
 - MAPPING READS: `StorageMap::get(key)` returns \
 the value directly (zero-default), NOT `Option`. \
 Do NOT call `.unwrap_or_default()` on mapping reads. \
@@ -1559,11 +1562,16 @@ class GenerateStylusCodeTool(BaseTool):
                     fixed,
                 )
 
-            # Fix 27: .get(k1).setter(k2) → .setter(k1).setter(k2)
-            # Nested mapping writes: .get() returns immutable ref, can't
-            # call .setter() on it. Must chain .setter() for writes.
+            # Fix 27: .get/.getter(k1).setter(k2) → .setter(k1).setter(k2)
+            # Nested mapping writes: .get()/.getter() return immutable ref,
+            # can't call .setter() on it. Must chain .setter() for writes.
             fixed = re.sub(
                 r"\.get\(((?:[^()]*|\([^()]*\))*)\)\s*\.setter\(",
+                r".setter(\1).setter(",
+                fixed,
+            )
+            fixed = re.sub(
+                r"\.getter\(((?:[^()]*|\([^()]*\))*)\)\s*\.setter\(",
                 r".setter(\1).setter(",
                 fixed,
             )

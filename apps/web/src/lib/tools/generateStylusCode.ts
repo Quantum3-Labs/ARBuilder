@@ -286,12 +286,15 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     );
   }
 
-  // Fix 27: .get(k1).setter(k2) → .setter(k1).setter(k2)
-  // Nested mapping writes: .get() returns immutable ref, can't
+  // Fix 27: .get/.getter(k1).setter(k2) → .setter(k1).setter(k2)
+  // Nested mapping writes: .get()/.getter() return immutable ref, can't
   // call .setter() on it. Must chain .setter() for writes.
-  // Allow optional whitespace/newlines between ) and .setter( for multiline chains.
   fixed = fixed.replace(
     /\.get\(((?:[^()]*|\([^()]*\))*)\)\s*\.setter\(/g,
+    ".setter($1).setter("
+  );
+  fixed = fixed.replace(
+    /\.getter\(((?:[^()]*|\([^()]*\))*)\)\s*\.setter\(/g,
     ".setter($1).setter("
   );
 
