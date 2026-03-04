@@ -305,6 +305,22 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     ".setter($1)$2.setter("
   );
 
+  // Fix 46: .field.set(key, value) → .field.setter(key).set(value)
+  // StorageMap has no .set(k,v) method — must use .setter(k).set(v).
+  // Only matches two-arg .set() calls (single-arg is valid on StorageGuardMut).
+  fixed = fixed.replace(
+    /(\.\w+)\.set\(\s*((?:[^,()]*|\([^()]*\))*)\s*,\s*((?:[^,()]*|\([^()]*\))*)\s*\)/g,
+    "$1.setter($2).set($3)"
+  );
+
+  // Fix 47: .get(key).getter(key) → .getter(key).get_string()
+  // LLM generates double key access on mapping(... => string).
+  // .get() returns StorageGuard, .getter() is the correct read accessor.
+  fixed = fixed.replace(
+    /\.get\(((?:[^()]*|\([^()]*\))*)\)\.getter\(((?:[^()]*|\([^()]*\))*)\)/g,
+    ".getter($1).get_string()"
+  );
+
   // Fix 23: REMOVED — corrupts sol! event/error declarations.
 
   // Fix 28: Remove spurious .unwrap_or_default() on mapping reads.

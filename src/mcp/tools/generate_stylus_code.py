@@ -1579,6 +1579,24 @@ class GenerateStylusCodeTool(BaseTool):
                 fixed,
             )
 
+            # Fix 46: .field.set(key, value) → .field.setter(key).set(value)
+            # StorageMap has no .set(k,v) method — must use .setter(k).set(v).
+            # Only matches two-arg .set() calls (single-arg is valid on StorageGuardMut).
+            fixed = re.sub(
+                r"(\.\w+)\.set\(\s*((?:[^,()]*|\([^()]*\))*)\s*,\s*((?:[^,()]*|\([^()]*\))*)\s*\)",
+                r"\1.setter(\2).set(\3)",
+                fixed,
+            )
+
+            # Fix 47: .get(key).getter(key) → .getter(key).get_string()
+            # LLM generates double key access on mapping(... => string).
+            # .get() returns StorageGuard, .getter() is the correct read accessor.
+            fixed = re.sub(
+                r"\.get\(((?:[^()]*|\([^()]*\))*)\)\.getter\(((?:[^()]*|\([^()]*\))*)\)",
+                r".getter(\1).get_string()",
+                fixed,
+            )
+
             # Fix 23: REMOVED — regex cannot distinguish sol! event/error
             # declarations from struct initialization. Applied inside sol! {}
             # blocks, it corrupts `event Foo(uint256 fieldName)` into
