@@ -659,6 +659,38 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     }
   }
 
+  // Fix 50: .setter().set() on simple (non-mapping) fields.
+  // StorageUint/StorageAddress/StorageBool have .set(val) directly.
+  // .setter(key) is ONLY for StorageMap.
+  {
+    const simpleFieldTypes = [
+      "uint256", "uint128", "uint64", "uint32", "uint16", "uint8",
+      "int256", "int128", "int64", "int32", "int16", "int8",
+      "address", "bool", "bytes32",
+    ];
+    const sfPattern = new RegExp(
+      `(?:${simpleFieldTypes.join("|")})\\s+(\\w+)\\s*;`, "g"
+    );
+    const simpleFields = new Set<string>();
+    let sfMatch;
+    while ((sfMatch = sfPattern.exec(fixed)) !== null) {
+      simpleFields.add(sfMatch[1]);
+    }
+    for (const sf of simpleFields) {
+      const esc = sf.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      // self.field.setter().set(val) → self.field.set(val)
+      fixed = fixed.replace(
+        new RegExp(`self\\.${esc}\\.setter\\(\\)\\.set\\(`, "g"),
+        `self.${sf}.set(`
+      );
+      // self.field.setter(val).set(val) → self.field.set(val)
+      fixed = fixed.replace(
+        new RegExp(`self\\.${esc}\\.setter\\(([^)]+)\\)\\.set\\(\\1\\)`, "g"),
+        `self.${sf}.set($1)`
+      );
+    }
+  }
+
   // Fix 13: Remove deprecated stylus_sdk::evm and stylus_sdk::msg imports
   fixed = fixed.replace(/^use stylus_sdk::evm.*;\s*$/gm, "");
   fixed = fixed.replace(/^use stylus_sdk::msg.*;\s*$/gm, "");

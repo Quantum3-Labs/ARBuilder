@@ -511,7 +511,12 @@ COMPILATION-CRITICAL — these WILL break the build:
 `self.field.get()` NOT `self.field`. ALWAYS use \
 .set(val) to write: `self.field.set(val)`. \
 For mappings: read with `self.map.get(key)`, \
-write with `self.map.setter(key).set(val)`.
+write with `self.map.setter(key).set(val)`. \
+IMPORTANT: .setter(key) is ONLY for mappings. \
+For simple fields (uint256, address, bool), use \
+`self.field.set(val)` directly — NOT \
+`self.field.setter().set(val)` or \
+`self.field.setter(val).set(val)`.
 - TRANSFER ETH: \
 `use stylus_sdk::call::transfer::transfer_eth;` \
 then `transfer_eth(self.vm(), to, amount)?;`. \
@@ -1824,6 +1829,36 @@ class GenerateStylusCodeTool(BaseTool):
             # Remove spans in reverse order to preserve positions
             for start, end in sorted(to_remove, reverse=True):
                 fixed = fixed[:start] + fixed[end:]
+
+            # Fix 50: .setter().set() / .setter(val).set(val) on simple fields.
+            # StorageUint/StorageAddress/StorageBool have .set(val) directly.
+            # .setter(key) is ONLY for StorageMap. Detect simple fields from
+            # sol_storage! and fix wrong patterns.
+            simple_field_types = {
+                "uint256", "uint128", "uint64", "uint32", "uint16", "uint8",
+                "int256", "int128", "int64", "int32", "int16", "int8",
+                "address", "bool", "bytes32",
+            }
+            simple_fields_50 = set(
+                re.findall(
+                    r"(?:" + "|".join(simple_field_types) + r")\s+(\w+)\s*;",
+                    fixed,
+                )
+            )
+            for sf in simple_fields_50:
+                # self.field.setter().set(val) → self.field.set(val)
+                fixed = re.sub(
+                    rf"self\.{re.escape(sf)}\.setter\(\)\.set\(",
+                    rf"self.{sf}.set(",
+                    fixed,
+                )
+                # self.field.setter(val).set(val) → self.field.set(val)
+                # (LLM passes the value to setter as if it were a key)
+                fixed = re.sub(
+                    rf"self\.{re.escape(sf)}\.setter\(([^)]+)\)\.set\(\1\)",
+                    rf"self.{sf}.set(\1)",
+                    fixed,
+                )
 
             # Fix 33: MOVED TO CARGO CHECK — B256::from_limbs()
             # cargo check catches missing method (E0599). Compiler fix loop handles it.

@@ -426,7 +426,7 @@ ABSOLUTE RULES - NEVER VIOLATE THESE:
 8. KEEP the Cargo.toml [profile.release] section exactly as provided
 
 COMPILATION-CRITICAL — these mistakes WILL break the build:
-- STORAGE ACCESS: ALWAYS use .get() to read storage: \`self.field.get()\` NOT \`self.field\`. ALWAYS use .set(val) to write: \`self.field.set(val)\`. For mappings: read with \`self.map.get(key)\`, write with \`self.map.setter(key).set(val)\`.
+- STORAGE ACCESS: ALWAYS use .get() to read storage: \`self.field.get()\` NOT \`self.field\`. ALWAYS use .set(val) to write: \`self.field.set(val)\`. For mappings: read with \`self.map.get(key)\`, write with \`self.map.setter(key).set(val)\`. IMPORTANT: .setter(key) is ONLY for mappings. For simple fields (uint256, address, bool), use \`self.field.set(val)\` directly — NOT \`self.field.setter().set(val)\`.
 - TRANSFER ETH: \`use stylus_sdk::call::transfer::transfer_eth;\` then \`transfer_eth(self.vm(), to, amount)?;\`. Do NOT use \`self.transfer_eth()\`, \`call::transfer_eth()\`, or any other path.
 - EXTERNAL INTERFACES: use \`sol_interface!\` macro (NOT \`sol!\`). \`sol!\` is ONLY for events and errors.
 - CROSS-CONTRACT CALLS: VIEW calls: \`ifoo.method(self.vm(), Call::new(), args)?\`. STATE-MODIFYING calls: extract Call first: \`let call = Call::new_mutating(self);\` then \`ifoo.method(self.vm(), call, args)?\` — avoids borrow conflict.
