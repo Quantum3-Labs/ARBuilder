@@ -295,6 +295,16 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     ".setter($1).setter("
   );
 
+  // Fix 45: .get(key).field.setter( → .setter(key).field.setter(
+  // Nested struct writes: .get(key) on mapping returns immutable
+  // StorageGuard, can't call .setter() on struct fields through it.
+  // e.g. self.roles.get(role).members.setter(account).set(true)
+  //   → self.roles.setter(role).members.setter(account).set(true)
+  fixed = fixed.replace(
+    /\.get\(((?:[^()]*|\([^()]*\))*)\)((?:\.\w+)+)\.setter\(/g,
+    ".setter($1)$2.setter("
+  );
+
   // Fix 23: REMOVED — corrupts sol! event/error declarations.
 
   // Fix 28: Remove spurious .unwrap_or_default() on mapping reads.

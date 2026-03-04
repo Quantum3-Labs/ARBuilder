@@ -389,6 +389,7 @@ let val = self.items.get(index).unwrap();
 - **No underscore fns in #[public] impl** — `#[public]` macro strips leading underscores for ABI selectors, so `fn _grant_role` and `fn grant_role` produce the same selector ("unreachable pattern"). Put internal helpers in a separate `impl MyContract { ... }` block without `#[public]`.
 - **address[] deref** — `*self.list.get(idx).unwrap()` on `address[]` returns `FixedBytes<20>`, not `Address`. Use `Address::from(*self.list.get(idx).unwrap())`.
 - **String mapping writes** — For `mapping(... => string)`, `.setter(key)` returns `StorageGuardMut<StorageString>` — call `.set_str(val)` directly. WRONG: `.setter(key).setter().set_str(val)`. CORRECT: `.setter(key).set_str(val)`.
+- **Nested struct writes** — For `mapping(uint256 => MyStruct)`, `.get(key)` returns immutable `StorageGuard<MyStruct>` — CANNOT call `.setter()` on its fields. Use `.setter(key)` for writes. WRONG: `self.roles.get(role).members.setter(account).set(true)`. CORRECT: `self.roles.setter(role).members.setter(account).set(true)`.
 
 ## Network Endpoints
 

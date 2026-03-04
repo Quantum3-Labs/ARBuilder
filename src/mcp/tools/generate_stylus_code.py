@@ -1568,6 +1568,17 @@ class GenerateStylusCodeTool(BaseTool):
                 fixed,
             )
 
+            # Fix 45: .get(key).field.setter( → .setter(key).field.setter(
+            # Nested struct writes: .get(key) on mapping returns immutable
+            # StorageGuard, can't call .setter() on struct fields through it.
+            # e.g. self.roles.get(role).members.setter(account).set(true)
+            #   → self.roles.setter(role).members.setter(account).set(true)
+            fixed = re.sub(
+                r"\.get\(((?:[^()]*|\([^()]*\))*)\)((?:\.\w+)+)\.setter\(",
+                r".setter(\1)\2.setter(",
+                fixed,
+            )
+
             # Fix 23: REMOVED — regex cannot distinguish sol! event/error
             # declarations from struct initialization. Applied inside sol! {}
             # blocks, it corrupts `event Foo(uint256 fieldName)` into
