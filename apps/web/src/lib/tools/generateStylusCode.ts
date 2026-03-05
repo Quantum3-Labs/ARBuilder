@@ -721,6 +721,19 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     ".setter($1).set_str("
   );
 
+  // Fix 53: .get_string().unwrap_or_default() → .get_string()
+  // get_string() returns String (not Option<String>), unwrap is wrong.
+  fixed = fixed.replace(/\.get_string\(\)\.unwrap_or_default\(\)/g, ".get_string()");
+  // Also: .get_string().unwrap() — same issue
+  fixed = fixed.replace(/\.get_string\(\)\.unwrap\(\)/g, ".get_string()");
+
+  // Fix 54: const X: U256 = U256::from(N) → const X: U256 = U256::from_limbs([N, 0, 0, 0])
+  // From::from() is not a const fn. U256::from_limbs is the const-compatible alternative.
+  fixed = fixed.replace(
+    /const\s+(\w+)\s*:\s*U256\s*=\s*U256::from\((\d+)\)\s*;/g,
+    "const $1: U256 = U256::from_limbs([$2, 0, 0, 0]);"
+  );
+
   // Fix 44: Remove phantom variable self-assignments (let x = x;).
   // LLM sometimes generates `let role = role;` in helpers where `role` is not
   // a parameter — always a compile error. Even if it IS a parameter, it's a

@@ -1840,8 +1840,27 @@ class GenerateStylusCodeTool(BaseTool):
             # Fix 30: MOVED TO CARGO CHECK — B256::from_uint()
             # cargo check catches missing method (E0599). Compiler fix loop handles it.
 
-            # Fix 31: MOVED TO CARGO CHECK — const U256::from()
-            # cargo check catches E0015. Compiler fix loop handles it.
+            # Fix 31 (restored): const U256::from(N) → U256::from_limbs([N, 0, 0, 0])
+            # From::from() is not a const fn. Cargo check catches E0015 but
+            # the fix loop often generates wrong alternatives. Direct regex is safer.
+            fixed = re.sub(
+                r"const\s+(\w+)\s*:\s*U256\s*=\s*U256::from\((\d+)\)\s*;",
+                r"const \1: U256 = U256::from_limbs([\2, 0, 0, 0]);",
+                fixed,
+            )
+
+            # Fix 53: .get_string().unwrap_or_default() → .get_string()
+            # get_string() returns String (not Option), unwrap is wrong.
+            fixed = re.sub(
+                r"\.get_string\(\)\.unwrap_or_default\(\)",
+                ".get_string()",
+                fixed,
+            )
+            fixed = re.sub(
+                r"\.get_string\(\)\.unwrap\(\)",
+                ".get_string()",
+                fixed,
+            )
 
             # Fix 32: sol_interface! calls must have self.vm() as first
             # host argument.  LLMs often omit self.vm() and pass the
