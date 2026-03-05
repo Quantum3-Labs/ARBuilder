@@ -1818,9 +1818,15 @@ class GenerateStylusCodeTool(BaseTool):
                 fixed,
             )
 
-            # Fix 47: Strip redundant .get(key) before .getter(key) chains.
-            # .get(key) returns a value (or StorageGuard for string), .getter()
-            # is not a valid method on the result. Handles N52 and all variants.
+            # Fix 47: Normalize .get(key).getter(...) chains.
+            # .get(key) returns a value, .getter() is not a valid method on it.
+            # Step a: .get(key).getter() → .getter(key) — preserve key when empty
+            fixed = re.sub(
+                r"\.get\(((?:[^()]*|\([^()]*\))+)\)\s*\.getter\(\)",
+                r".getter(\1)",
+                fixed,
+            )
+            # Step b: .get(key1).getter(key2...) → .getter(key2...) — strip .get()
             fixed = re.sub(
                 r"\.get\(((?:[^()]*|\([^()]*\))*)\)\s*\.getter\(",
                 r".getter(",

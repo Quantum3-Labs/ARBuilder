@@ -466,10 +466,16 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     "$1.setter($2).set($3)"
   );
 
-  // Fix 47: Strip redundant .get(key) before .getter(key) chains.
-  // .get(key) returns a value (or StorageGuard for string), .getter() is not
-  // a valid method on the result. This handles N52 (.get(k).getter(k).get_string())
-  // and all variants. Allows optional whitespace/newlines between calls.
+  // Fix 47: Normalize .get(key).getter(...) chains.
+  // .get(key) returns a value, .getter() is not a valid method on it.
+  // Two-step: (a) inject key into empty .getter(), (b) strip redundant .get().
+  // Step a: .get(key).getter() → .getter(key) — preserve key when getter is empty
+  fixed = fixed.replace(
+    /\.get\(((?:[^()]*|\([^()]*\))+)\)\s*\.getter\(\)/g,
+    ".getter($1)"
+  );
+  // Step b: .get(key1).getter(key2...) → .getter(key2...) — strip redundant .get()
+  // Handles N52 (.get(k).getter(k).get_string()) and all variants.
   fixed = fixed.replace(
     /\.get\(((?:[^()]*|\([^()]*\))*)\)\s*\.getter\(/g,
     ".getter("
