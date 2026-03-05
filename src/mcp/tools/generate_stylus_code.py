@@ -1444,11 +1444,16 @@ class GenerateStylusCodeTool(BaseTool):
 
         # Check for missing fields: scan code for self.xxx.get/set/setter
         # references and ensure each has a declaration in sol_storage!
-        declared_fields = set(
-            re.findall(r"(?:uint\d+|int\d+|address|bool|string|bytes\d*"
-                        r"|mapping\([^)]*\)|[\w]+\[\])\s+(\w+)\s*;",
-                        "\n".join(clean_lines))
-        )
+        # Extract field names from cleaned lines — any `type fieldname;` pattern.
+        # Use a simple approach: the last word before `;` is the field name.
+        declared_fields: set[str] = set()
+        for cl in clean_lines:
+            cl_stripped = cl.strip()
+            if cl_stripped.startswith("//"):
+                continue
+            fname_m = re.search(r"(\w+)\s*;$", cl_stripped)
+            if fname_m:
+                declared_fields.add(fname_m.group(1))
         # Find self.xxx references outside sol_storage! block
         rest_of_code = code[block_end:]
         referenced_fields = set(

@@ -154,11 +154,11 @@ function sanitizeSolStorage(code: string, template: StylusTemplate): string {
   // Check for missing fields: scan code for self.xxx.get/set/setter
   // references and auto-declare any missing fields
   const declaredFields = new Set<string>();
-  const dfPattern = /(?:uint\d+|int\d+|address|bool|string|bytes\d*|mapping\([^)]*\)|[\w]+\[\])\s+(\w+)\s*;/g;
-  let dfMatch;
-  const allClean = cleanLines.join("\n");
-  while ((dfMatch = dfPattern.exec(allClean)) !== null) {
-    declaredFields.add(dfMatch[1]);
+  for (const cl of cleanLines) {
+    const clStripped = cl.trim();
+    if (clStripped.startsWith("//")) continue;
+    const fnameMatch = clStripped.match(/(\w+)\s*;$/);
+    if (fnameMatch) declaredFields.add(fnameMatch[1]);
   }
   const restOfCode = code.slice(blockEnd);
   const refPattern = /self\.(\w+)\s*\.(?:get|set|setter|getter|push|len|grow)\b/g;
