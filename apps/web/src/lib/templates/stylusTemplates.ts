@@ -1272,22 +1272,27 @@ export function selectTemplate(
 ): StylusTemplate {
   const lowerPrompt = prompt.toLowerCase();
 
-  // NFT keywords — check BEFORE ERC20 (both have "transfer"/"balance")
+  // ERC20 explicit match FIRST — "erc20" is unambiguous
+  if (lowerPrompt.includes("erc20") || lowerPrompt.includes("erc-20")) {
+    return SIMPLE_ERC20_TEMPLATE;
+  }
+
+  // NFT keywords — "mint" alone is ambiguous (ERC20 also mints),
+  // so only match when combined with NFT-specific terms
   if (
     lowerPrompt.includes("nft") ||
     lowerPrompt.includes("erc721") ||
     lowerPrompt.includes("erc-721") ||
-    lowerPrompt.includes("mint") ||
     lowerPrompt.includes("token id") ||
     lowerPrompt.includes("collectible") ||
-    lowerPrompt.includes("registry")
+    lowerPrompt.includes("nft registry") ||
+    (lowerPrompt.includes("mint") && !lowerPrompt.includes("token"))
   ) {
     return NFT_REGISTRY_TEMPLATE;
   }
 
-  // Check for specific keywords in prompt
+  // ERC20 by broader keywords
   if (
-    lowerPrompt.includes("erc20") ||
     lowerPrompt.includes("token") ||
     lowerPrompt.includes("transfer") ||
     lowerPrompt.includes("balance")

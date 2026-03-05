@@ -151,6 +151,39 @@ function sanitizeSolStorage(code: string, template: StylusTemplate): string {
     if (tmplMatch) return code.slice(0, blockStart) + tmplMatch[0] + code.slice(blockEnd);
   }
 
+  // Check for missing fields: scan code for self.xxx.get/set/setter
+  // references and auto-declare any missing fields
+  const declaredFields = new Set<string>();
+  const dfPattern = /(?:uint\d+|int\d+|address|bool|string|bytes\d*|mapping\([^)]*\)|[\w]+\[\])\s+(\w+)\s*;/g;
+  let dfMatch;
+  const allClean = cleanLines.join("\n");
+  while ((dfMatch = dfPattern.exec(allClean)) !== null) {
+    declaredFields.add(dfMatch[1]);
+  }
+  const restOfCode = code.slice(blockEnd);
+  const refPattern = /self\.(\w+)\s*\.(?:get|set|setter|getter|push|len|grow)\b/g;
+  const referencedFields = new Set<string>();
+  let refMatch;
+  while ((refMatch = refPattern.exec(restOfCode)) !== null) {
+    if (refMatch[1] !== "vm") referencedFields.add(refMatch[1]);
+  }
+  for (const field of [...referencedFields].sort()) {
+    if (declaredFields.has(field)) continue;
+    // Infer type from usage
+    let fieldType = "uint256";
+    if (new RegExp(`self\\.${field}\\.setter\\([^)]+\\)\\.setter\\(`).test(restOfCode)) {
+      fieldType = "mapping(uint256 => mapping(address => bool))";
+    } else if (new RegExp(`self\\.${field}\\.setter\\([^)]+\\)\\.set\\(`).test(restOfCode)) {
+      fieldType = new RegExp(`self\\.${field}\\.(?:get|setter)\\([^)]*Address`).test(restOfCode)
+        ? "mapping(address => uint256)" : "mapping(uint256 => uint256)";
+    } else if (new RegExp(`self\\.${field}\\.push\\(`).test(restOfCode)) {
+      fieldType = "uint256[]";
+    } else if (new RegExp(`self\\.${field}\\.get_string\\(`).test(restOfCode)) {
+      fieldType = "string";
+    }
+    cleanLines.push(`        ${fieldType} ${field};`);
+  }
+
   // Reconstruct
   const preStruct = blockContent.slice(0, structBrace + 1);
   const postStruct = blockContent.slice(j);
@@ -733,6 +766,25 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     /const\s+(\w+)\s*:\s*U256\s*=\s*U256::from\((\d+)\)\s*;/g,
     "const $1: U256 = U256::from_limbs([$2, 0, 0, 0]);"
   );
+
+  // Fix 55: .setter(key).unwrap().set(val) → .setter(key).set(val)
+  // StorageMap .setter(key) returns StorageGuardMut (NOT Option).
+  // Only StorageVec .setter(idx) returns Option needing .unwrap().
+  {
+    const mapFields55 = new Set<string>();
+    const mfPattern55 = /mapping\([^)]*\)\s+(\w+)\s*;/g;
+    let mfMatch55;
+    while ((mfMatch55 = mfPattern55.exec(fixed)) !== null) {
+      mapFields55.add(mfMatch55[1]);
+    }
+    for (const mf of mapFields55) {
+      const esc = mf.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      fixed = fixed.replace(
+        new RegExp(`\\.${esc}\\.setter\\(([^)]+)\\)\\.unwrap\\(\\)`, "g"),
+        `.${mf}.setter($1)`
+      );
+    }
+  }
 
   // Fix 44: Remove phantom variable self-assignments (let x = x;).
   // LLM sometimes generates `let role = role;` in helpers where `role` is not

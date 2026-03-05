@@ -1442,6 +1442,39 @@ class GenerateStylusCodeTool(BaseTool):
             if tmpl_m:
                 return code[:block_start] + tmpl_m.group(0) + code[block_end:]
 
+        # Check for missing fields: scan code for self.xxx.get/set/setter
+        # references and ensure each has a declaration in sol_storage!
+        declared_fields = set(
+            re.findall(r"(?:uint\d+|int\d+|address|bool|string|bytes\d*"
+                        r"|mapping\([^)]*\)|[\w]+\[\])\s+(\w+)\s*;",
+                        "\n".join(clean_lines))
+        )
+        # Find self.xxx references outside sol_storage! block
+        rest_of_code = code[block_end:]
+        referenced_fields = set(
+            re.findall(r"self\.(\w+)\s*\.(?:get|set|setter|getter|push|len|grow)\b",
+                        rest_of_code)
+        )
+        # Exclude known non-storage method calls
+        non_fields = {"vm"}
+        missing = referenced_fields - declared_fields - non_fields
+        for field in sorted(missing):
+            # Infer type from usage patterns
+            if re.search(rf"self\.{field}\.setter\([^)]+\)\.setter\(", rest_of_code):
+                field_type = "mapping(uint256 => mapping(address => bool))"
+            elif re.search(rf"self\.{field}\.setter\([^)]+\)\.set\(", rest_of_code):
+                if re.search(rf"self\.{field}\.(?:get|setter)\([^)]*Address", rest_of_code):
+                    field_type = "mapping(address => uint256)"
+                else:
+                    field_type = "mapping(uint256 => uint256)"
+            elif re.search(rf"self\.{field}\.push\(", rest_of_code):
+                field_type = "uint256[]"
+            elif re.search(rf"self\.{field}\.get_string\(", rest_of_code):
+                field_type = "string"
+            else:
+                field_type = "uint256"
+            clean_lines.append(f"        {field_type} {field};")
+
         # Reconstruct the block
         pre_struct = block_content[: struct_brace + 1]
         post_struct = block_content[j:]
@@ -1861,6 +1894,20 @@ class GenerateStylusCodeTool(BaseTool):
                 ".get_string()",
                 fixed,
             )
+
+            # Fix 55: .setter(key).unwrap().set(val) → .setter(key).set(val)
+            # StorageMap's .setter(key) returns StorageGuardMut directly,
+            # NOT Option. Only StorageVec's .setter(idx) returns Option.
+            # Detect mapping fields and strip spurious .unwrap() after .setter().
+            map_fields_55 = set(
+                re.findall(r"mapping\([^)]*\)\s+(\w+)\s*;", fixed)
+            )
+            for mf in map_fields_55:
+                fixed = re.sub(
+                    rf"\.{re.escape(mf)}\.setter\(([^)]+)\)\.unwrap\(\)",
+                    rf".{mf}.setter(\1)",
+                    fixed,
+                )
 
             # Fix 32: sol_interface! calls must have self.vm() as first
             # host argument.  LLMs often omit self.vm() and pass the

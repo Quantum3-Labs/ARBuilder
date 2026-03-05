@@ -1382,13 +1382,18 @@ def select_template(
     lower_prompt = prompt.lower()
 
     # Check for specific keywords in prompt
-    # NFT keywords checked first to avoid "token" matching ERC20
-    if any(
+    # ERC20 explicit match FIRST — "erc20" is unambiguous
+    if "erc20" in lower_prompt or "erc-20" in lower_prompt:
+        template = SIMPLE_ERC20_TEMPLATE
+    # NFT keywords — "mint" alone is ambiguous (ERC20 also mints),
+    # so only match when combined with NFT-specific terms
+    elif any(
         kw in lower_prompt
-        for kw in ["nft", "erc721", "mint", "token id", "collectible", "registry"]
-    ):
+        for kw in ["nft", "erc721", "erc-721", "token id", "collectible",
+                    "nft registry"]
+    ) or ("mint" in lower_prompt and "token" not in lower_prompt):
         template = NFT_REGISTRY_TEMPLATE
-    elif any(kw in lower_prompt for kw in ["erc20", "token", "transfer", "balance"]):
+    elif any(kw in lower_prompt for kw in ["token", "transfer", "balance"]):
         template = SIMPLE_ERC20_TEMPLATE
     elif any(kw in lower_prompt for kw in ["owner", "admin", "access control", "permission"]):
         template = ACCESS_CONTROL_TEMPLATE
