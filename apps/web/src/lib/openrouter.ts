@@ -431,6 +431,7 @@ COMPILATION-CRITICAL — these mistakes WILL break the build:
 - EXTERNAL INTERFACES: use \`sol_interface!\` macro (NOT \`sol!\`). \`sol!\` is ONLY for events and errors.
 - CROSS-CONTRACT CALLS: VIEW calls: \`ifoo.method(self.vm(), Call::new(), args)?\`. STATE-MODIFYING calls: extract Call first: \`let call = Call::new_mutating(self);\` then \`ifoo.method(self.vm(), call, args)?\` — avoids borrow conflict.
 - External calls require \`&mut self\` (NOT \`&self\` — view functions revert on external calls)
+- sol_storage! SYNTAX: Fields are type + name + semicolon ONLY. NO default values: \`uint256 value;\` NOT \`uint256 value = 0;\`. NO Rust types: use \`uint256\`, \`address\`, \`bool\`, \`string\`, \`mapping(...)\`, \`type[]\`. NOT StorageU256, StorageMap, etc.
 - DYNAMIC ARRAYS: In sol_storage!, declare as \`uint256[] items;\`. Append with \`self.items.push(val)\` for primitives, \`self.items.grow()\` for structs. Do NOT use \`.setter(len).unwrap()\`.
 - BORROW CHECKER: Extract values to local vars before combining storage reads and writes.
 - sol! EVENT/ERROR FIELDS: Use camelCase (Solidity convention): \`tokenId\` NOT \`token_id\`.

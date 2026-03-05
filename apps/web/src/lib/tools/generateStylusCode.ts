@@ -46,6 +46,119 @@ import { selectTemplate, StylusTemplate } from "../templates/stylusTemplates";
  *   IMPORT MGMT (37/9d): alloc::string imports dedup + insertion
  *   CLEANUP (24-26, 39): unwrap_or_else, vm().log()?, as_usize, garbled output
  */
+/**
+ * Structurally sanitize the sol_storage! block.
+ * Strips `= value` defaults, removes garbled lines, validates field syntax.
+ * Falls back to template's sol_storage! if the block is unsalvageable.
+ */
+function sanitizeSolStorage(code: string, template: StylusTemplate): string {
+  const blockMatch = code.match(/sol_storage!\s*\{/);
+  if (!blockMatch || blockMatch.index === undefined) return code;
+
+  const blockStart = blockMatch.index;
+  const braceStart = code.indexOf("{", blockStart);
+
+  // Find matching closing brace
+  let depth = 0;
+  let i = braceStart;
+  while (i < code.length) {
+    if (code[i] === "{") depth++;
+    else if (code[i] === "}") {
+      depth--;
+      if (depth === 0) break;
+    }
+    i++;
+  }
+
+  if (depth !== 0) {
+    // Unbalanced — fall back to template
+    const tmplMatch = template.libRs.match(/sol_storage!\s*\{[\s\S]*?\n\}/);
+    if (tmplMatch) return code.slice(0, blockStart) + tmplMatch[0] + code.slice(i + 1);
+    return code;
+  }
+
+  const blockEnd = i + 1;
+  const blockContent = code.slice(braceStart + 1, i);
+
+  // Valid field type pattern
+  const validTypeRe = /^\s*(?:(?:u?int(?:8|16|32|64|128|256))|address|bool|string|bytes\d*|mapping\(.*\)|[\w]+\[\])\s+\w+\s*;$/;
+
+  // Find the inner struct
+  const structMatch = blockContent.match(/pub\s+struct\s+\w+\s*\{/);
+  if (!structMatch || structMatch.index === undefined) {
+    const tmplMatch = template.libRs.match(/sol_storage!\s*\{[\s\S]*?\n\}/);
+    if (tmplMatch) return code.slice(0, blockStart) + tmplMatch[0] + code.slice(blockEnd);
+    return code;
+  }
+
+  const structBrace = blockContent.indexOf("{", structMatch.index);
+  let sDepth = 0;
+  let j = structBrace;
+  while (j < blockContent.length) {
+    if (blockContent[j] === "{") sDepth++;
+    else if (blockContent[j] === "}") {
+      sDepth--;
+      if (sDepth === 0) break;
+    }
+    j++;
+  }
+
+  const structInner = blockContent.slice(structBrace + 1, j);
+  const lines = structInner.split("\n");
+  const cleanLines: string[] = [];
+  let garbledCount = 0;
+  let totalLines = 0;
+
+  for (const line of lines) {
+    const stripped = line.trim();
+    if (!stripped) continue;
+    totalLines++;
+
+    // Allow comments
+    if (stripped.startsWith("//")) {
+      cleanLines.push(line);
+      continue;
+    }
+
+    // Strip default value assignments: `uint256 x = 0;` → `uint256 x;`
+    // Negative lookahead (?!>) avoids matching `=>` in mapping declarations
+    let cleaned = stripped.replace(/(\w+)\s*=\s*(?!>)[^;]*;/, "$1;");
+
+    // Remove pure garbage lines (only punctuation/numbers)
+    if (/^[;=\s\[\]0-9,]+$/.test(cleaned)) {
+      garbledCount++;
+      continue;
+    }
+
+    // Validate it looks like a field declaration
+    if (validTypeRe.test(cleaned)) {
+      cleanLines.push(`        ${cleaned}`);
+    } else if (/^\s*mapping\(/.test(cleaned)) {
+      cleaned = cleaned.replace(/\s*=\s*(?!>)[^;]*;/, ";");
+      if (cleaned.endsWith(";")) {
+        cleanLines.push(`        ${cleaned}`);
+      } else {
+        garbledCount++;
+      }
+    } else {
+      garbledCount++;
+    }
+  }
+
+  // If more than half garbled, fall back to template
+  if (totalLines > 0 && garbledCount > totalLines / 2) {
+    const tmplMatch = template.libRs.match(/sol_storage!\s*\{[\s\S]*?\n\}/);
+    if (tmplMatch) return code.slice(0, blockStart) + tmplMatch[0] + code.slice(blockEnd);
+  }
+
+  // Reconstruct
+  const preStruct = blockContent.slice(0, structBrace + 1);
+  const postStruct = blockContent.slice(j);
+  const newStructInner = "\n" + cleanLines.join("\n") + "\n    ";
+  const newBlock = "sol_storage! {" + preStruct + newStructInner + postStruct + "\n}";
+  return code.slice(0, blockStart) + newBlock + code.slice(blockEnd);
+}
+
 function validateAndFixCode(code: string, template: StylusTemplate): string {
   let fixed = code;
 
@@ -119,6 +232,10 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
       "sol_storage! {\n    #[entrypoint]$1"
     );
   }
+
+  // Fix 52: Sanitize sol_storage! block — structural validation.
+  // Strips `= value` defaults, removes garbled lines, validates fields.
+  fixed = sanitizeSolStorage(fixed, template);
 
   // Fix 9: Convert sol! { interface ... } to sol_interface! { interface ... }
   // LLMs often use sol! for interfaces, but Stylus requires sol_interface!

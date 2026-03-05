@@ -539,6 +539,10 @@ STATE-MODIFYING calls: extract Call first: \
 avoids borrow checker conflicts.
 - External calls require `&mut self` \
 (NOT `&self` — view functions revert)
+- sol_storage! SYNTAX: Fields are type + name + semicolon ONLY. \
+NO default values: `uint256 value;` NOT `uint256 value = 0;`. \
+NO Rust types: use `uint256`, `address`, `bool`, `string`, \
+`mapping(...)`, `type[]`. NOT StorageU256, StorageMap, etc.
 - DYNAMIC ARRAYS: In sol_storage!, declare as \
 `uint256[] items;`. Append with \
 `self.items.push(val)` for primitives, \
@@ -1293,6 +1297,164 @@ class GenerateStylusCodeTool(BaseTool):
 
         return warnings
 
+    @staticmethod
+    def _sanitize_sol_storage(code: str, template: Optional["StylusTemplate"]) -> str:
+        """Structurally sanitize the sol_storage! block.
+
+        Parses line-by-line inside the block and:
+        - Strips `= value` default assignments (invalid in sol_storage!)
+        - Removes garbled/empty lines (`;`, `= = ;`, etc.)
+        - Validates each field matches known Solidity-in-Rust type patterns
+        - Falls back to template's sol_storage! if the block is unsalvageable
+
+        Returns the code with a cleaned sol_storage! block.
+        """
+        # Find the sol_storage! block
+        m = re.search(r"(sol_storage!\s*\{)", code)
+        if not m:
+            return code
+
+        block_start = m.start()
+        brace_start = code.index("{", m.start())
+
+        # Find matching closing brace
+        depth = 0
+        i = brace_start
+        while i < len(code):
+            if code[i] == "{":
+                depth += 1
+            elif code[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            i += 1
+
+        if depth != 0:
+            # Unbalanced — fall back to template if available
+            if template:
+                tmpl_m = re.search(
+                    r"sol_storage!\s*\{[\s\S]*?\n\}", template.lib_rs
+                )
+                if tmpl_m:
+                    return code[:block_start] + tmpl_m.group(0) + code[i + 1 :]
+            return code
+
+        block_end = i + 1
+        block_content = code[brace_start + 1 : i]  # inside outer braces
+
+        # Valid Solidity-in-Rust field type patterns for sol_storage!
+        # Types: uint256, address, bool, string, bytes32, mapping(...), type[]
+        valid_type_re = re.compile(
+            r"^\s*(?:"
+            r"(?:u?int(?:8|16|32|64|128|256))"  # uint256, int128, etc.
+            r"|address"
+            r"|bool"
+            r"|string"
+            r"|bytes\d*"  # bytes, bytes32, etc.
+            r"|mapping\(.*\)"  # mapping(...)
+            r"|[\w]+\[\]"  # dynamic arrays: uint256[], address[]
+            r")\s+\w+\s*;$"
+        )
+
+        # Known structural lines (not field declarations)
+        structural_re = re.compile(
+            r"^\s*(?:"
+            r"#\[entrypoint\]"
+            r"|pub\s+struct\s+\w+"
+            r"|\{|\}"
+            r"|///.*"  # doc comments
+            r"|//.*"  # comments
+            r")$"
+        )
+
+        # Process the block's struct content
+        # Find the inner struct braces
+        struct_m = re.search(r"pub\s+struct\s+\w+\s*\{", block_content)
+        if not struct_m:
+            # No struct found — severely garbled, use template
+            if template:
+                tmpl_m = re.search(
+                    r"sol_storage!\s*\{[\s\S]*?\n\}", template.lib_rs
+                )
+                if tmpl_m:
+                    return code[:block_start] + tmpl_m.group(0) + code[block_end:]
+            return code
+
+        # Split into pre-struct and struct content
+        struct_brace = block_content.index("{", struct_m.start())
+        struct_depth = 0
+        j = struct_brace
+        while j < len(block_content):
+            if block_content[j] == "{":
+                struct_depth += 1
+            elif block_content[j] == "}":
+                struct_depth -= 1
+                if struct_depth == 0:
+                    break
+            j += 1
+
+        struct_inner = block_content[struct_brace + 1 : j]
+        lines = struct_inner.split("\n")
+        clean_lines = []
+        garbled_count = 0
+
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+
+            # Allow comments
+            if stripped.startswith("//"):
+                clean_lines.append(line)
+                continue
+
+            # Strip default value assignments: `uint256 x = 0;` → `uint256 x;`
+            # Use negative lookahead (?!>) to avoid matching `=>` in mappings
+            cleaned = re.sub(
+                r"(\w+)\s*=\s*(?!>)[^;]*;", r"\1;", stripped
+            )
+
+            # Remove pure garbage lines (only punctuation, no type keyword)
+            if re.match(r"^[;=\s\[\]0-9,]+$", cleaned):
+                garbled_count += 1
+                continue
+
+            # Validate it looks like a field declaration
+            if valid_type_re.match(cleaned):
+                # Reconstruct with proper indentation
+                clean_lines.append(f"        {cleaned}")
+            elif re.match(r"^\s*mapping\(", cleaned):
+                # Mapping that might have complex nesting — keep but clean
+                cleaned = re.sub(r"\s*=\s*(?!>)[^;]*;", ";", cleaned)
+                if cleaned.endswith(";"):
+                    clean_lines.append(f"        {cleaned}")
+                else:
+                    garbled_count += 1
+            else:
+                garbled_count += 1
+
+        # If more than half the lines were garbled, fall back to template
+        total_lines = len(lines) - lines.count("")
+        if total_lines > 0 and garbled_count > total_lines / 2 and template:
+            tmpl_m = re.search(
+                r"sol_storage!\s*\{[\s\S]*?\n\}", template.lib_rs
+            )
+            if tmpl_m:
+                return code[:block_start] + tmpl_m.group(0) + code[block_end:]
+
+        # Reconstruct the block
+        pre_struct = block_content[: struct_brace + 1]
+        post_struct = block_content[j:]
+        new_struct_inner = "\n" + "\n".join(clean_lines) + "\n    "
+        new_block = (
+            "sol_storage! {"
+            + pre_struct
+            + new_struct_inner
+            + post_struct
+            + "\n}"
+        )
+        return code[:block_start] + new_block + code[block_end:]
+
     def _fix_code(
         self, code: str, template: Optional["StylusTemplate"], target_version: str = "0.10.0"
     ) -> str:
@@ -1361,6 +1523,11 @@ class GenerateStylusCodeTool(BaseTool):
                 r"sol_storage! {\n    #[entrypoint]\1",
                 fixed,
             )
+
+        # Fix 52: Sanitize sol_storage! block — structural validation.
+        # Strips invalid default values (= 0), removes garbled lines,
+        # validates field declarations match Solidity-in-Rust syntax.
+        fixed = self._sanitize_sol_storage(fixed, template)
 
         # ── VERSION-SPECIFIC FIXES ──
 
