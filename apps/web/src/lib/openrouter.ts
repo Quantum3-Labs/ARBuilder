@@ -457,6 +457,7 @@ COMPILATION-CRITICAL — these mistakes WILL break the build:
 - sol_interface! SNAKE_CASE: \`transferFrom\` → \`.transfer_from()\`, \`balanceOf\` → \`.balance_of()\`. Always snake_case for sol_interface! calls.
 - B256 CONVERSION: \`B256::from_uint()\` does NOT exist. Use \`B256::from(value.to_be_bytes::<32>())\`.
 - CONST U256: \`U256::from()\` is NOT const-compatible. Use \`U256::from_limbs([N, 0, 0, 0])\` for const declarations.
+- I256 (SIGNED INT): \`I256\` implements \`From<i64>\` but NOT \`From<i128>\`. Use \`I256::from(1)\` (bare literal, no suffix). NEVER use \`I256::from(1_i128)\` — it will not compile. Import: \`use stylus_sdk::alloy_primitives::I256;\`.
 - sol_interface! HOST ARGUMENT: When calling methods on sol_interface!-generated types, \`self.vm()\` MUST be the FIRST argument, followed by Call context, then Solidity parameters. Example: \`token.transfer(self.vm(), call, to, amount)?;\` NOT \`token.transfer(call, to, amount)?;\`.
 - B256 IS NOT Uint: B256 is \`FixedBytes<32>\`, NOT \`Uint<256>\`. \`B256::from_limbs()\` does NOT exist. Use \`B256::from(U256::from_limbs([...]).to_be_bytes::<32>())\`.
 - STRING MAPPING READS: \`mapping(... => string)\` — \`.get(key)\` returns \`StorageGuard<StorageString>\`, NOT String. Use \`.getter(key).get_string()\` to read as String. Do NOT call \`.get_string()\` again on the result — it already IS a String. Write: \`.setter(key).set_str("val")\`.

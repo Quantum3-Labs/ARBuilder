@@ -1900,6 +1900,21 @@ class GenerateStylusCodeTool(BaseTool):
                 fixed,
             )
 
+            # Fix 56: I256::from(N_i128) → I256::from(N)
+            # alloy-primitives 1.0.1 I256 (Signed<256,4>) implements From<i64>
+            # but NOT From<i128>. Strip type suffix so Rust infers i64.
+            fixed = re.sub(
+                r"I256::from\((-?\d+)_i128\)",
+                r"I256::from(\1)",
+                fixed,
+            )
+            # Normalize any typed suffix on I256 literals
+            fixed = re.sub(
+                r"I256::from\((-?\d+)_[iu]\d+\)",
+                r"I256::from(\1)",
+                fixed,
+            )
+
             # Fix 55: .setter(key).unwrap().set(val) → .setter(key).set(val)
             # StorageMap's .setter(key) returns StorageGuardMut directly,
             # NOT Option. Only StorageVec's .setter(idx) returns Option.

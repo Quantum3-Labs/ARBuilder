@@ -770,6 +770,14 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
   // Also: .get_string().unwrap() — same issue
   fixed = fixed.replace(/\.get_string\(\)\.unwrap\(\)/g, ".get_string()");
 
+  // Fix 56: I256::from(N_i128) → I256::from(N)
+  // alloy-primitives 1.0.1 I256 (Signed<256,4>) implements From<i64> but NOT
+  // From<i128>. LLM generates _i128 suffix which has no matching impl.
+  // Strip the suffix so Rust infers i64 (which has From impl).
+  fixed = fixed.replace(/I256::from\((-?\d+)_i128\)/g, "I256::from($1)");
+  // Also handle I256::from(N_i32) and I256::from(N_u64) etc — normalize to bare literal
+  fixed = fixed.replace(/I256::from\((-?\d+)_[iu]\d+\)/g, "I256::from($1)");
+
   // Fix 54: const X: U256 = U256::from(N) → const X: U256 = U256::from_limbs([N, 0, 0, 0])
   // From::from() is not a const fn. U256::from_limbs is the const-compatible alternative.
   fixed = fixed.replace(
