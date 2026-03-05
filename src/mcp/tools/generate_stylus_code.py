@@ -1818,12 +1818,12 @@ class GenerateStylusCodeTool(BaseTool):
                 fixed,
             )
 
-            # Fix 47: .get(key).getter(key) → .getter(key).get_string()
-            # LLM generates double key access on mapping(... => string).
-            # .get() returns StorageGuard, .getter() is the correct read accessor.
+            # Fix 47: Strip redundant .get(key) before .getter(key) chains.
+            # .get(key) returns a value (or StorageGuard for string), .getter()
+            # is not a valid method on the result. Handles N52 and all variants.
             fixed = re.sub(
-                r"\.get\(((?:[^()]*|\([^()]*\))*)\)\.getter\(((?:[^()]*|\([^()]*\))*)\)",
-                r".getter(\1).get_string()",
+                r"\.get\(((?:[^()]*|\([^()]*\))*)\)\s*\.getter\(",
+                r".getter(",
                 fixed,
             )
 

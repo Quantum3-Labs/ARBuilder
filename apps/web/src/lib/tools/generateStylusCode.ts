@@ -466,12 +466,13 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     "$1.setter($2).set($3)"
   );
 
-  // Fix 47: .get(key).getter(key) → .getter(key).get_string()
-  // LLM generates double key access on mapping(... => string).
-  // .get() returns StorageGuard, .getter() is the correct read accessor.
+  // Fix 47: Strip redundant .get(key) before .getter(key) chains.
+  // .get(key) returns a value (or StorageGuard for string), .getter() is not
+  // a valid method on the result. This handles N52 (.get(k).getter(k).get_string())
+  // and all variants. Allows optional whitespace/newlines between calls.
   fixed = fixed.replace(
-    /\.get\(((?:[^()]*|\([^()]*\))*)\)\.getter\(((?:[^()]*|\([^()]*\))*)\)/g,
-    ".getter($1).get_string()"
+    /\.get\(((?:[^()]*|\([^()]*\))*)\)\s*\.getter\(/g,
+    ".getter("
   );
 
   // Fix 48: B32 → B256 for bytes32
@@ -592,8 +593,9 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     "B256::from(U256::from_limbs($1).to_be_bytes::<32>())"
   );
 
-  // Fix 34: mapping(... => string) .get(key) returns StorageGuard<StorageString>.
-  // Two-pass: first fix .get(k).get_string(), then fix bare .get(k).
+  // Fix 34: Unified string mapping accessor normalization.
+  // mapping(... => string) fields require .getter(key).get_string() for reads.
+  // Handles all malformed patterns in order (most specific → least specific).
   const stringMapFields = new Set<string>();
   const stringMapPattern = /mapping\([^=]+=>\s*string\)\s+(\w+)\s*;/g;
   let stringMapMatch;
@@ -601,20 +603,28 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     stringMapFields.add(stringMapMatch[1]);
   }
   for (const smf of stringMapFields) {
+    const esc = smf.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     // Pass 1: .field.get(k).get_string() → .field.getter(k).get_string()
     fixed = fixed.replace(
-      new RegExp(`\\.${smf}\\.get\\(([^)]+)\\)\\.get_string\\(\\)`, "g"),
+      new RegExp(`\\.${esc}\\.get\\(([^)]+)\\)\\.get_string\\(\\)`, "g"),
       `.${smf}.getter($1).get_string()`
     );
     // Pass 2: bare .field.get(k) → .field.getter(k).get_string()
     fixed = fixed.replace(
-      new RegExp(`\\.${smf}\\.get\\(([^)]+)\\)`, "g"),
+      new RegExp(`\\.${esc}\\.get\\(([^)]+)\\)`, "g"),
+      `.${smf}.getter($1).get_string()`
+    );
+    // Pass 3: bare .field.getter(k) without .get_string() → append .get_string()
+    // After Fix 47 strips .get(k) from .get(k).getter(k), this ensures
+    // the remaining .getter(k) gets .get_string() appended.
+    fixed = fixed.replace(
+      new RegExp(`\\.${esc}\\.getter\\(([^)]+)\\)(?!\\.get_string\\(\\))`, "g"),
       `.${smf}.getter($1).get_string()`
     );
   }
-  // Cleanup: doubled .get_string() chains (LLM garbage)
+  // Cleanup: doubled .get_string() chains (LLM garbage or fix interactions)
   fixed = fixed.replace(
-    /\.get_string\(\)(?:\.getter\([^)]*\))?\.get_string\(\)/g,
+    /\.get_string\(\)\s*\.get_string\(\)/g,
     ".get_string()"
   );
   // Cleanup: local_var.get_string() is always wrong.
