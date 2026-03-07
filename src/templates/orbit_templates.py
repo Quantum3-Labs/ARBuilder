@@ -36,8 +36,8 @@ class OrbitTemplate:
 
 # Default dependencies shared by all Orbit templates
 ORBIT_DEPENDENCIES = {
-    "@arbitrum/orbit-sdk": "^0.27.0",
-    "viem": "^2.23.0",
+    "@arbitrum/orbit-sdk": "^0.25.0",
+    "viem": "^1.20.0",
     "dotenv": "^16.4.0",
 }
 
@@ -102,8 +102,10 @@ DEPLOY_ROLLUP_TEMPLATE = OrbitTemplate(
         "Batch poster setup",
         "Native token support",
         "Rollup version selection (v2.1/v3.1)",
+        "Saves deployment output to deployment.json",
     ],
     code='''import 'dotenv/config';
+import * as fs from 'fs';
 import {{
   createPublicClient,
   createWalletClient,
@@ -185,6 +187,19 @@ async function main() {{
   console.log('  SequencerInbox:', deployResult.coreContracts.sequencerInbox);
   console.log('  RollupEventInbox:', deployResult.coreContracts.rollupEventInbox);
   console.log('  UpgradeExecutor:', deployResult.coreContracts.upgradeExecutor);
+
+  // Save deployment output for downstream scripts
+  const deployment = {{
+    chainId: {chain_id},
+    parentChainId: {parent_chain_id},
+    transactionHash: deployResult.transactionHash,
+    chainConfig,
+    coreContracts: deployResult.coreContracts,
+    deployer: account.address,
+    timestamp: new Date().toISOString(),
+  }};
+  fs.writeFileSync('deployment.json', JSON.stringify(deployment, null, 2));
+  console.log('\\nDeployment saved to deployment.json');
 }}
 
 main().catch(console.error);
@@ -201,11 +216,13 @@ DEPLOY_TOKEN_BRIDGE_TEMPLATE = OrbitTemplate(
     template_type="deployment",
     features=[
         "Token bridge deployment",
+        "Reads rollup address from deployment.json",
         "L2/L3 bridge contracts",
         "Gateway router setup",
         "Standard ERC20 gateway",
     ],
     code='''import 'dotenv/config';
+import * as fs from 'fs';
 import {
   createPublicClient,
   createWalletClient,
@@ -225,17 +242,31 @@ const parentChain: Chain = {
   },
 };
 
-// Orbit chain configuration
-const orbitChain: Chain = {
-  id: {chain_id},
-  name: '{chain_name}',
-  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-  rpcUrls: {
-    default: { http: [process.env.ORBIT_CHAIN_RPC!] },
-  },
-};
-
 async function main() {
+  // Read rollup address from deployment.json (output of deploy-rollup.ts)
+  let rollupAddress: `0x${string}` = '{rollup_address}' as `0x${string}`;
+  let orbitChainId = {chain_id};
+
+  if (fs.existsSync('deployment.json')) {
+    const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));
+    rollupAddress = deployment.coreContracts.rollup as `0x${string}`;
+    orbitChainId = deployment.chainId ?? orbitChainId;
+    console.log('Loaded deployment.json — rollup:', rollupAddress);
+  } else {
+    console.log('Warning: deployment.json not found, using placeholder rollup address.');
+    console.log('Run deploy-rollup.ts first, or set rollupAddress manually.');
+  }
+
+  // Orbit chain configuration
+  const orbitChain: Chain = {
+    id: orbitChainId,
+    name: '{chain_name}',
+    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+    rpcUrls: {
+      default: { http: [process.env.ORBIT_CHAIN_RPC!] },
+    },
+  };
+
   const account = privateKeyToAccount(
     process.env.DEPLOYER_PRIVATE_KEY! as `0x${string}`
   );
@@ -257,10 +288,10 @@ async function main() {
   });
 
   console.log('Deploying token bridge...');
-  console.log('  Rollup address:', '{rollup_address}');
+  console.log('  Rollup address:', rollupAddress);
 
   const tokenBridgeResult = await createTokenBridge({
-    rollupAddress: '{rollup_address}' as `0x${string}`,
+    rollupAddress,
     rollupOwner: account.address,
     parentChainPublicClient: parentPublicClient,
     orbitChainPublicClient: orbitPublicClient,
@@ -275,6 +306,17 @@ async function main() {
   console.log('\\nOrbit chain contracts:');
   console.log('  Router:', tokenBridgeResult.orbitChainContracts.router);
   console.log('  StandardGateway:', tokenBridgeResult.orbitChainContracts.standardGateway);
+
+  // Update deployment.json with token bridge contracts
+  if (fs.existsSync('deployment.json')) {
+    const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));
+    deployment.tokenBridgeContracts = {
+      parentChain: tokenBridgeResult.parentChainContracts,
+      orbitChain: tokenBridgeResult.orbitChainContracts,
+    };
+    fs.writeFileSync('deployment.json', JSON.stringify(deployment, null, 2));
+    console.log('\\nUpdated deployment.json with token bridge contracts');
+  }
 }
 
 main().catch(console.error);
@@ -662,71 +704,64 @@ NODE_CONFIG_TEMPLATE = OrbitTemplate(
     template_type="config",
     features=[
         "Nitro node configuration",
-        "Chain info generation",
-        "RPC endpoint setup",
+        "Reads deployment.json from deploy-rollup output",
+        "Private key handling (strips 0x prefix for Nitro)",
         "Sequencer configuration",
     ],
     code='''import 'dotenv/config';
-import {
-  createPublicClient,
-  http,
-  Chain,
-} from 'viem';
+import * as fs from 'fs';
 import { prepareNodeConfig } from '@arbitrum/orbit-sdk';
+import { zeroAddress } from 'viem';
 
-const parentChain: Chain = {
-  id: {parent_chain_id},
-  name: '{parent_chain_name}',
-  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-  rpcUrls: {
-    default: { http: [process.env.PARENT_CHAIN_RPC!] },
-  },
-};
-
+/**
+ * Generate Nitro node configuration from deployment output.
+ *
+ * Reads deployment.json (created by deploy-rollup.ts) and generates
+ * the nodeConfig.json required by the Nitro node.
+ */
 async function main() {
-  const publicClient = createPublicClient({
-    chain: parentChain,
-    transport: http(process.env.PARENT_CHAIN_RPC),
-  });
+  // Read deployment output
+  if (!fs.existsSync('deployment.json')) {
+    console.error('Error: deployment.json not found.');
+    console.error('Run deploy-rollup.ts first to create it.');
+    process.exit(1);
+  }
 
-  // Chain info from deployment
-  const chainInfo = {
-    chainId: {chain_id},
-    chainName: '{chain_name}',
-    parentChainId: {parent_chain_id},
-    coreContracts: {
-      rollup: '{rollup_address}' as `0x${string}`,
-      inbox: '{inbox_address}' as `0x${string}`,
-      outbox: '{outbox_address}' as `0x${string}`,
-      bridge: '{bridge_address}' as `0x${string}`,
-      sequencerInbox: '{sequencer_inbox}' as `0x${string}`,
-      rollupEventInbox: '{rollup_event_inbox}' as `0x${string}`,
-      upgradeExecutor: '{upgrade_executor}' as `0x${string}`,
-    },
-  };
+  const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));
+  console.log('Loaded deployment.json');
+  console.log('  Chain ID:', deployment.chainId);
+  console.log('  Rollup:', deployment.coreContracts.rollup);
 
-  // Generate node configuration
+  // Private keys for batch poster and validator (strip 0x prefix for Nitro)
+  const batchPosterKey = (process.env.BATCH_POSTER_PRIVATE_KEY ?? process.env.DEPLOYER_PRIVATE_KEY!).replace(/^0x/, '');
+  const validatorKey = (process.env.VALIDATOR_PRIVATE_KEY ?? process.env.DEPLOYER_PRIVATE_KEY!).replace(/^0x/, '');
+
+  // Generate node configuration using the actual SDK API
   const nodeConfig = prepareNodeConfig({
-    chainId: chainInfo.chainId,
-    chainName: chainInfo.chainName,
-    coreContracts: chainInfo.coreContracts,
-    parentChainId: chainInfo.parentChainId,
+    chainName: '{chain_name}',
+    chainConfig: deployment.chainConfig,
+    coreContracts: deployment.coreContracts,
+    batchPosterPrivateKey: batchPosterKey,
+    validatorPrivateKey: validatorKey,
+    stakeToken: zeroAddress,
+    parentChainId: {parent_chain_id},
+    parentChainIsArbitrum: {parent_chain_is_arbitrum},
     parentChainRpcUrl: process.env.PARENT_CHAIN_RPC!,
   });
 
-  console.log('Node Configuration:');
+  console.log('\\nNode Configuration:');
   console.log(JSON.stringify(nodeConfig, null, 2));
 
-  // Write to file for Nitro node
-  const fs = await import('fs');
   fs.writeFileSync('nodeConfig.json', JSON.stringify(nodeConfig, null, 2));
   console.log('\\nSaved to nodeConfig.json');
+  console.log('\\nNext: Start the Nitro node with this config.');
+  console.log('  docker-compose up -d  (if using docker-compose.yml)');
 }
 
 main().catch(console.error);
 ''',
     dependencies=ORBIT_DEPENDENCIES,
-    env_vars=["PARENT_CHAIN_RPC"],
+    env_vars=["DEPLOYER_PRIVATE_KEY", "PARENT_CHAIN_RPC", "BATCH_POSTER_PRIVATE_KEY", "VALIDATOR_PRIVATE_KEY"],
 )
 
 
@@ -866,8 +901,8 @@ ORCHESTRATION_TEMPLATE = OrbitTemplate(
     "deploy": "bash deploy.sh"
   },
   "dependencies": {
-    "@arbitrum/orbit-sdk": "^0.27.0",
-    "viem": "^2.23.0",
+    "@arbitrum/orbit-sdk": "^0.25.0",
+    "viem": "^1.20.0",
     "dotenv": "^16.4.0"
   },
   "devDependencies": {
@@ -955,17 +990,30 @@ echo ""
 echo "Step 2: Deploy rollup contracts..."
 npx tsx scripts/deploy-rollup.ts
 
-echo ""
-echo "Step 3: Deploy token bridge..."
-npx tsx scripts/deploy-token-bridge.ts
+if [ ! -f deployment.json ]; then
+  echo "ERROR: deployment.json not created. Rollup deployment may have failed."
+  exit 1
+fi
 
 echo ""
-echo "Step 4: Generate node config..."
+echo "Step 3: Generate node config..."
 npx tsx scripts/prepare-node-config.ts
 
 echo ""
+echo "Step 4: Start node (manual step)..."
+echo "  Run: docker-compose up -d"
+echo "  Wait for the node to sync, then continue with token bridge deployment."
+echo "  Press ENTER to continue when the node is ready, or Ctrl+C to stop."
+read -r
+
+echo ""
+echo "Step 5: Deploy token bridge..."
+npx tsx scripts/deploy-token-bridge.ts
+
+echo ""
 echo "=== Deployment complete! ==="
-echo "Use the generated nodeConfig.json to start your Nitro node."
+echo "Deployment output saved to deployment.json"
+echo "Node config saved to nodeConfig.json"
 ''',
     },
 )

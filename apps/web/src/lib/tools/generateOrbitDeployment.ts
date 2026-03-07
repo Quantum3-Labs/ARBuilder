@@ -78,6 +78,7 @@ const ROLLUP_CREATOR_ADDRESSES = {
 } as const;
 
 const DEPLOY_ROLLUP_V3_TEMPLATE = `import 'dotenv/config';
+import * as fs from 'fs';
 import {
   createPublicClient,
   http,
@@ -159,12 +160,27 @@ async function main() {
   console.log('  SequencerInbox:', deployResult.coreContracts.sequencerInbox);
   console.log('  RollupEventInbox:', deployResult.coreContracts.rollupEventInbox);
   console.log('  UpgradeExecutor:', deployResult.coreContracts.upgradeExecutor);
+
+  // Save deployment output for downstream scripts
+  const deployment = {
+    chainId: {chainId},
+    parentChainId: {parentChainId},
+    rollupVersion: 'v3.1',
+    transactionHash: deployResult.transactionHash,
+    chainConfig,
+    coreContracts: deployResult.coreContracts,
+    deployer: account.address,
+    timestamp: new Date().toISOString(),
+  };
+  fs.writeFileSync('deployment.json', JSON.stringify(deployment, null, 2));
+  console.log('\\nDeployment saved to deployment.json');
 }
 
 main().catch(console.error);
 `;
 
 const DEPLOY_ROLLUP_V2_TEMPLATE = `import 'dotenv/config';
+import * as fs from 'fs';
 import {
   createPublicClient,
   http,
@@ -252,12 +268,27 @@ async function main() {
   console.log('  Base stake: 0.1 ETH');
   console.log('  Stake token: ETH (zeroAddress)');
   console.log('  Extra challenge time blocks: 0');
+
+  // Save deployment output for downstream scripts
+  const deployment = {
+    chainId: {chainId},
+    parentChainId: {parentChainId},
+    rollupVersion: 'v2.1',
+    transactionHash: deployResult.transactionHash,
+    chainConfig,
+    coreContracts: deployResult.coreContracts,
+    deployer: account.address,
+    timestamp: new Date().toISOString(),
+  };
+  fs.writeFileSync('deployment.json', JSON.stringify(deployment, null, 2));
+  console.log('\\nDeployment saved to deployment.json');
 }
 
 main().catch(console.error);
 `;
 
 const DEPLOY_TOKEN_BRIDGE_TEMPLATE = `import 'dotenv/config';
+import * as fs from 'fs';
 import {
   createPublicClient,
   createWalletClient,
@@ -277,17 +308,31 @@ const parentChain: Chain = {
   },
 };
 
-// Orbit chain configuration
-const orbitChain: Chain = {
-  id: {chainId},
-  name: '{chainName}',
-  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-  rpcUrls: {
-    default: { http: [process.env.ORBIT_CHAIN_RPC!] },
-  },
-};
-
 async function main() {
+  // Read rollup address from deployment.json (output of deploy-rollup.ts)
+  let rollupAddress: \`0x\${string}\` = '{rollupAddress}' as \`0x\${string}\`;
+  let orbitChainId = {chainId};
+
+  if (fs.existsSync('deployment.json')) {
+    const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));
+    rollupAddress = deployment.coreContracts.rollup as \`0x\${string}\`;
+    orbitChainId = deployment.chainId ?? orbitChainId;
+    console.log('Loaded deployment.json — rollup:', rollupAddress);
+  } else {
+    console.log('Warning: deployment.json not found, using placeholder rollup address.');
+    console.log('Run deploy-rollup.ts first, or set rollupAddress manually.');
+  }
+
+  // Orbit chain configuration
+  const orbitChain: Chain = {
+    id: orbitChainId,
+    name: '{chainName}',
+    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+    rpcUrls: {
+      default: { http: [process.env.ORBIT_CHAIN_RPC!] },
+    },
+  };
+
   const account = privateKeyToAccount(
     process.env.DEPLOYER_PRIVATE_KEY! as \`0x\${string}\`
   );
@@ -309,10 +354,10 @@ async function main() {
   });
 
   console.log('Deploying token bridge...');
-  console.log('  Rollup address:', '{rollupAddress}');
+  console.log('  Rollup address:', rollupAddress);
 
   const tokenBridgeResult = await createTokenBridge({
-    rollupAddress: '{rollupAddress}' as \`0x\${string}\`,
+    rollupAddress,
     rollupOwner: account.address,
     parentChainPublicClient: parentPublicClient,
     orbitChainPublicClient: orbitPublicClient,
@@ -327,6 +372,17 @@ async function main() {
   console.log('\\nOrbit chain contracts:');
   console.log('  Router:', tokenBridgeResult.orbitChainContracts.router);
   console.log('  StandardGateway:', tokenBridgeResult.orbitChainContracts.standardGateway);
+
+  // Update deployment.json with token bridge contracts
+  if (fs.existsSync('deployment.json')) {
+    const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));
+    deployment.tokenBridgeContracts = {
+      parentChain: tokenBridgeResult.parentChainContracts,
+      orbitChain: tokenBridgeResult.orbitChainContracts,
+    };
+    fs.writeFileSync('deployment.json', JSON.stringify(deployment, null, 2));
+    console.log('\\nUpdated deployment.json with token bridge contracts');
+  }
 }
 
 main().catch(console.error);
@@ -346,7 +402,7 @@ function formatAddressArray(addresses: string[]): string {
 
 function getSetupInstructions(deploymentType: DeploymentType): string[] {
   const instructions = [
-    "1. Install dependencies: npm install @arbitrum/orbit-sdk viem dotenv",
+    "1. Install dependencies: npm install",
     "2. Copy .env.example to .env and configure",
     "3. Ensure deployer account has sufficient funds on parent chain",
   ];

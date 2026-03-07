@@ -49,8 +49,8 @@ interface GenerateOrbitConfigOutput {
 
 // Dependencies shared by all Orbit tools
 export const ORBIT_DEPENDENCIES: Record<string, string> = {
-  "@arbitrum/orbit-sdk": "^0.27.0",
-  viem: "^2.23.0",
+  "@arbitrum/orbit-sdk": "^0.25.0",
+  viem: "^1.20.0",
   dotenv: "^16.4.0",
 };
 
@@ -390,7 +390,7 @@ export function generateOrbitConfig(
       nativeToken,
     },
     setupInstructions: [
-      "1. Install dependencies: npm install @arbitrum/orbit-sdk viem dotenv",
+      "1. Install dependencies: npm install",
       "2. Copy .env.example to .env and fill in your private key",
       `3. Run the script: npx tsx ${firstFile}`,
     ],

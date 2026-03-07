@@ -161,7 +161,7 @@ Generates TypeScript scripts using @arbitrum/orbit-sdk."""
                 "native_token": native_token,
             },
             "setup_instructions": [
-                "1. Install dependencies: npm install @arbitrum/orbit-sdk viem dotenv",
+                "1. Install dependencies: npm install",
                 "2. Copy .env.example to .env and fill in your private key",
                 f"3. Run the script: npx tsx {list(files.keys())[0]}",
             ],

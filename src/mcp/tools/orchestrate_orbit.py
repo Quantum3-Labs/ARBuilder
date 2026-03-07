@@ -188,16 +188,12 @@ Includes package.json, tsconfig.json, .env.example, setup.sh, and deploy.sh."""
             code = code.replace("{chain_name}", chain_name)
             code = code.replace("{parent_chain_id}", str(parent_chain_id))
             code = code.replace("{parent_chain_name}", parent_chain_name)
-            # Replace contract address placeholders
-            for placeholder in [
-                "rollup_address", "inbox_address", "outbox_address",
-                "bridge_address", "sequencer_inbox", "rollup_event_inbox",
-                "upgrade_executor",
-            ]:
-                code = code.replace(
-                    f"{{{placeholder}}}",
-                    "0x0000000000000000000000000000000000000000",
-                )
+            # Set parentChainIsArbitrum based on parent chain type
+            parent_is_arbitrum = parent_chain_id in (42161, 421614)
+            code = code.replace(
+                "{parent_chain_is_arbitrum}",
+                "true" if parent_is_arbitrum else "false",
+            )
             files["scripts/prepare-node-config.ts"] = code
 
         # 6. AnyTrust keyset config (if applicable)
@@ -270,12 +266,12 @@ Includes package.json, tsconfig.json, .env.example, setup.sh, and deploy.sh."""
             "batch_posters": batch_posters,
             "setup_instructions": [
                 "1. Run: bash setup.sh",
-                "2. Edit .env with your DEPLOYER_PRIVATE_KEY",
+                "2. Edit .env with DEPLOYER_PRIVATE_KEY (and optionally separate BATCH_POSTER/VALIDATOR keys)",
                 "3. Run: npm run config:chain",
-                "4. Run: npm run deploy:rollup (save output addresses)",
-                "5. Start Nitro node with deployment output",
-                "6. Run: npm run deploy:token-bridge",
-                "7. Run: npm run config:node",
+                "4. Run: npm run deploy:rollup (output saved to deployment.json)",
+                "5. Run: npm run config:node (reads deployment.json)",
+                "6. Start Nitro node: docker-compose up -d",
+                "7. Run: npm run deploy:token-bridge (reads deployment.json)",
             ],
             "development_workflow": self._generate_workflow(is_anytrust),
             "disclaimer": TEMPLATE_DISCLAIMER,
@@ -417,8 +413,8 @@ Built with [ARBuilder](https://github.com/arbbuilder)
                 "step": 3,
                 "component": "Node Setup",
                 "actions": [
-                    "Run npm run config:node to generate nodeConfig.json",
-                    "Start Nitro node with Docker using the config",
+                    "Run npm run config:node to generate nodeConfig.json (reads deployment.json)",
+                    "Start Nitro node: docker-compose up -d",
                     "Verify node is syncing with parent chain",
                 ],
             },
