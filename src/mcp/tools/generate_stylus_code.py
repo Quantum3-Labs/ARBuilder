@@ -182,7 +182,9 @@ by Call context, then Solidity parameters. \
 Example: `token.transfer(self.vm(), call, to, amount)?;` \
 NOT `token.transfer(call, to, amount)?;`.
 - sol_interface! GENERATES SNAKE_CASE METHODS: `transferFrom` -> `.transfer_from()`, \
-`balanceOf` -> `.balance_of()`. NEVER use camelCase in Rust sol_interface! calls.
+`balanceOf` -> `.balance_of()`, `totalSupply` -> `.total_supply()`, \
+`latestPrice` -> `.latest_price()`. ALWAYS convert ALL camelCase to snake_case — \
+this applies to EVERY method, not just common ones.
 
 TYPES:
 - sol_storage! TYPES: Use SOLIDITY syntax inside sol_storage!: `uint256`, `address`, \
@@ -212,10 +214,16 @@ EVENTS AND ERRORS:
 - sol! MACRO IMPORT: When using sol! for events or errors, MUST explicitly import: \
 `use alloy_sol_types::{sol, SolError};`. sol! is NOT available from prelude::*.
 - sol! EVENT/ERROR FIELDS: Use camelCase (Solidity convention): `tokenId` NOT `token_id`.
-- sol! STRUCT INIT: ALWAYS use explicit `field: value` syntax. \
-WRONG: `CapExceeded { newCap }` (shorthand — no local `newCap` exists). \
-CORRECT: `CapExceeded { newCap: new_cap }`. NEVER use Rust shorthand for sol! structs \
-because field names are camelCase but Rust variables are snake_case.
+- sol! STRUCT INIT: ALWAYS use explicit `field: value` syntax with camelCase field \
+name on left, snake_case variable on right. \
+WRONG: `Transfer { from, to, tokenId }` — shorthand fails because `tokenId` variable \
+doesn't exist in Rust (it's `token_id`). \
+WRONG: `CapExceeded { newCap }` — no local `newCap` exists. \
+CORRECT: `Transfer { from, to, tokenId: token_id }`. \
+CORRECT: `CapExceeded { newCap: new_cap }`. \
+Rule: if the field name contains an uppercase letter after a lowercase letter \
+(camelCase), you MUST use explicit `field: value` syntax. Only pure lowercase \
+fields (from, to, owner) can use shorthand.
 - abi_encode() ON ERRORS: `.abi_encode()` is on the inner `sol!` error struct \
 (SolError trait), NOT on the `#[derive(SolidityError)]` enum wrapper. \
 WRONG: `MyErrors::NotOwner(NotOwner{...}).abi_encode()`. \
@@ -1650,27 +1658,18 @@ class GenerateStylusCodeTool(BaseTool):
         fixed = re.sub(r"U64::zero\(\)", "U64::ZERO", fixed)
 
         # Fix 29: sol_interface! generates snake_case Rust methods from
-        # Solidity camelCase function names. Common wrong patterns:
-        # Only apply when followed by (self.vm(), which signals sol_interface! call.
-        sol_iface_renames = {
-            "transferFrom": "transfer_from",
-            "balanceOf": "balance_of",
-            "ownerOf": "owner_of",
-            "getApproved": "get_approved",
-            "isApprovedForAll": "is_approved_for_all",
-            "safeTransferFrom": "safe_transfer_from",
-            "setApprovalForAll": "set_approval_for_all",
-            "totalSupply": "total_supply",
-            "latestAnswer": "latest_answer",
-            "latestRoundData": "latest_round_data",
-            "getRoundData": "get_round_data",
-        }
-        for camel, snake in sol_iface_renames.items():
-            fixed = re.sub(
-                rf"\.{camel}\(self\.vm\(\)",
-                rf".{snake}(self.vm()",
-                fixed,
-            )
+        # Solidity camelCase function names. Generic: any .camelCase(self.vm()
+        # pattern is a sol_interface! call that should use snake_case.
+        def _camel_to_snake_method(m):
+            camel = m.group(1)
+            snake = re.sub(r"([A-Z])", r"_\1", camel).lower()
+            return f".{snake}(self.vm()"
+
+        fixed = re.sub(
+            r"\.([a-z][a-zA-Z]*[A-Z]\w*)\(self\.vm\(\)",
+            _camel_to_snake_method,
+            fixed,
+        )
 
         # Fix 32: sol_interface! calls must have self.vm() as first
         # host argument.  LLMs often omit self.vm() and pass the
@@ -1924,6 +1923,9 @@ class GenerateStylusCodeTool(BaseTool):
         # Rust variables are snake_case. LLM uses shorthand `MyError { newCap }`
         # which fails because no local `newCap` exists — should be
         # `MyError { newCap: new_cap }`.
+        # Broader lookahead: comma, brace, newline, whitespace, or end of fields.
+        # Negative lookbehind: skip if preceded by `: ` (already assigned).
+        # Negative lookahead: skip if followed by `:` (already assigned).
         def _fix_camel_shorthand(m):
             struct_name = m.group(1)
             fields = m.group(2)
@@ -1940,7 +1942,7 @@ class GenerateStylusCodeTool(BaseTool):
                 return f"{camel}: {snake}"
 
             fixed_fields = re.sub(
-                r"\b([a-z][a-zA-Z]*[A-Z]\w*)\s*(?=[,}\n])",
+                r"(?<!:\s)\b([a-z][a-zA-Z]*[A-Z]\w*)\s*(?=[,}\n\s]|$)(?!\s*:)",
                 _camel_to_snake_field,
                 fields,
             )

@@ -612,25 +612,15 @@ function migrateApi(code: string, _ctx: FixContext): string {
   fixed = fixed.replace(/std::time::SystemTime::now\(\)[^;]*/g, "self.vm().block_timestamp()");
 
   // sol_interface! camelCase → snake_case call sites
-  const solIfaceRenames: Record<string, string> = {
-    transferFrom: "transfer_from",
-    balanceOf: "balance_of",
-    ownerOf: "owner_of",
-    getApproved: "get_approved",
-    isApprovedForAll: "is_approved_for_all",
-    safeTransferFrom: "safe_transfer_from",
-    setApprovalForAll: "set_approval_for_all",
-    totalSupply: "total_supply",
-    latestAnswer: "latest_answer",
-    latestRoundData: "latest_round_data",
-    getRoundData: "get_round_data",
-  };
-  for (const [camel, snake] of Object.entries(solIfaceRenames)) {
-    fixed = fixed.replace(
-      new RegExp(`\\.${camel}\\(self\\.vm\\(\\)`, "g"),
-      `.${snake}(self.vm()`
-    );
-  }
+  // Generic: any .camelCase(self.vm(), ...) pattern is a sol_interface! call
+  // that should use snake_case. Handles ALL camelCase methods, not just a hardcoded list.
+  fixed = fixed.replace(
+    /\.([a-z][a-zA-Z]*[A-Z]\w*)\(self\.vm\(\)/g,
+    (_match: string, camelName: string) => {
+      const snakeName = camelName.replace(/([A-Z])/g, "_$1").toLowerCase();
+      return `.${snakeName}(self.vm()`;
+    }
+  );
 
   // sol_interface! missing self.vm() host arg
   fixed = fixed.replace(/\b(\w+)\.(\w+)\(Call::new\(\)/g, "$1.$2(self.vm(), Call::new()");
@@ -783,7 +773,7 @@ function sanitizeOutput(code: string, _ctx: FixContext): string {
   // sol! event/error structs have camelCase fields (Solidity convention), but Rust
   // variables are snake_case. LLM uses shorthand `MyError { newCap }` which fails
   // because no local `newCap` exists — should be `MyError { newCap: new_cap }`.
-  // Match: ident { ... camelField ... } where camelField has no `:` after it.
+  // Match: PascalCase { ... camelField ... } where camelField has no `:` after it.
   fixed = fixed.replace(
     /\b([A-Z]\w*)\s*\{([^}]*)\}/g,
     (match, _structName: string, fields: string) => {
@@ -791,10 +781,10 @@ function sanitizeOutput(code: string, _ctx: FixContext): string {
       if (/^\s*(?:event|error|interface|function)\s/.test(fields)) return match;
       let changed = false;
       const fixedFields = fields.replace(
-        /\b([a-z][a-zA-Z]*[A-Z]\w*)\s*(?=[,}\n])/g,
-        (fieldMatch: string, camelName: string) => {
-          // Skip if already has `:` assignment (check preceding context)
-          // Convert camelCase to snake_case
+        // Match camelCase idents NOT preceded by `:` (already assigned) and NOT followed by `:`
+        // Lookahead: comma, closing brace, newline, whitespace-then-brace, or end-of-fields
+        /(?<!:\s*)\b([a-z][a-zA-Z]*[A-Z]\w*)\s*(?=[,}\n\s]|$)(?!\s*:)/g,
+        (_fieldMatch: string, camelName: string) => {
           const snakeName = camelName.replace(/([A-Z])/g, "_$1").toLowerCase();
           changed = true;
           return `${camelName}: ${snakeName}`;

@@ -287,7 +287,7 @@ IMPORTS AND no_std:
 
 EXTERNAL INTERFACES:
 - CRITICAL: sol! is for events and errors ONLY. External contract interfaces MUST use sol_interface!.
-- sol_interface! generates Rust methods in snake_case: transferFrom → .transfer_from(), balanceOf → .balance_of(). NEVER use camelCase.
+- sol_interface! generates Rust methods in snake_case: transferFrom → .transfer_from(), balanceOf → .balance_of(), totalSupply → .total_supply(), latestPrice → .latest_price(). ALWAYS convert ALL camelCase to snake_case — this applies to EVERY method, not just common ones.
 - sol_interface! HOST ARG: self.vm() MUST be the FIRST argument, then Call context, then Solidity args.
 - VIEW calls: Call::new(). STATE-MODIFYING calls: extract Call first: \`let call = Call::new_mutating(self);\` — avoids borrow conflict.
 - External calls require &mut self (NOT &self — view functions revert on external calls).
@@ -304,7 +304,12 @@ TYPES:
 EVENTS AND ERRORS:
 - sol! MACRO: MUST \`use alloy_sol_types::{sol, SolError};\` — NOT in prelude.
 - sol! fields use camelCase: tokenId NOT token_id.
-- sol! STRUCT INIT: ALWAYS use explicit \`field: value\` syntax. WRONG: \`CapExceeded { newCap }\` (shorthand — no local \`newCap\` exists). CORRECT: \`CapExceeded { newCap: new_cap }\`. NEVER use Rust shorthand for sol! structs because field names are camelCase but Rust variables are snake_case.
+- sol! STRUCT INIT: ALWAYS use explicit \`field: value\` syntax with camelCase field name on left, snake_case variable on right.
+  WRONG: \`Transfer { from, to, tokenId }\` — shorthand fails because \`tokenId\` variable doesn't exist in Rust (it's \`token_id\`).
+  WRONG: \`CapExceeded { newCap }\` — no local \`newCap\` exists.
+  CORRECT: \`Transfer { from, to, tokenId: token_id }\`.
+  CORRECT: \`CapExceeded { newCap: new_cap }\`.
+  Rule: if the field name contains an uppercase letter after a lowercase letter (camelCase), you MUST use explicit \`field: value\` syntax. Only pure lowercase fields (from, to, owner) can use shorthand.
 - sol! TYPE MATCHING: address → Address, uint256 → U256. Match RUST TYPE, not semantic meaning.
 - abi_encode(): on inner sol! error struct, NOT the #[derive(SolidityError)] enum.
 - EVENT/ERROR NAMING: Never same name for event and error.
