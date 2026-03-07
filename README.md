@@ -518,9 +518,11 @@ ARBBUILDER_ADMIN_SECRET=xxx npx tsx scripts/sync_sources.ts --remove-stale
 **Orbit SDK (M4)** — 5 Python MCP tools + 9 TypeScript templates
 - Tools: `generate_orbit_config`, `generate_orbit_deployment`, `generate_validator_setup`, `ask_orbit`, `orchestrate_orbit`
 - Templates: Chain Config, Deploy Rollup, Deploy Token Bridge, Custom Gas Token, Validator Management, Governance, Node Config, AnyTrust Config, Orchestration
-- Uses `@arbitrum/orbit-sdk` ^0.25.0 + `viem` ^1.20.0 for `prepareChainConfig()`, `createRollup()`, `createTokenBridge()`, `prepareNodeConfig()`
+- Uses `@arbitrum/chain-sdk` ^0.25.0 + `viem` ^1.20.0 for `prepareChainConfig()`, `createRollup()`, `createTokenBridge()`, `prepareNodeConfig()`
 - Deployment output persisted to `deployment.json` — downstream scripts (token bridge, node config) chain automatically
-- Includes `docker-compose.yml` for Nitro node (+ DAS server for AnyTrust chains)
+- Custom gas tokens: generates `approve-token.ts` with correct RollupCreator addresses, ERC-20 deploy guidance
+- Docker: `offchainlabs/nitro-node:v3.9.7-75e084e`, DAS uses same image with `daserver` entrypoint
+- AnyTrust: BLS keygen via `datool keygen` from nitro-node image
 - Supports: Rollup and AnyTrust chains, custom gas tokens, validator/batch poster management, full project scaffolding
 
 ## API Access
