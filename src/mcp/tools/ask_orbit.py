@@ -122,6 +122,31 @@ ORBIT_KNOWLEDGE = {
             "permissions": "Volumes need user: root or writable permissions",
         },
     },
+    "node_troubleshooting": {
+        "description": "Common issues and fixes when spinning up a Nitro devnode for an Orbit chain",
+        "startup_issues": [
+            "Node exits immediately — check docker logs: usually missing or malformed nodeConfig.json",
+            "no sequencer coordinator error — add --node.dangerous.no-sequencer-coordinator for single-node testnet",
+            "Permission denied on volumes — add user: root to docker-compose, or chmod the data directory",
+            "Node can't connect to parent chain — verify PARENT_CHAIN_RPC is reachable from inside the container",
+            "deployed-at block 0 causes full rescan — ensure deployedAtBlock matches actual rollup deployment block",
+            "DAS server fails — use same nitro-node image with entrypoint /usr/local/bin/daserver, NOT offchainlabs/das",
+        ],
+        "config_issues": [
+            "Wrong chainConfig format — must be exact JSON from prepareChainConfig(), not a subset",
+            "Private keys must NOT have 0x prefix in nodeConfig — Nitro expects raw hex",
+            "parentChainIsArbitrum must be true if parent is Arbitrum One (42161) or Sepolia (421614)",
+            "stakeToken should be zeroAddress for ETH-staked chains",
+            "Missing coreContracts — nodeConfig needs ALL addresses from createRollup output",
+        ],
+        "docker_tips": [
+            "Use pinned image: offchainlabs/nitro-node:v3.9.7-75e084e (not :latest)",
+            "Check node health: curl -s http://localhost:8449 -X POST -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[],\"id\":1}'",
+            "View logs: docker logs -f <container-name>",
+            "For AnyTrust: DAS must be running BEFORE the node starts batch posting",
+            "Common ports: 8449 (RPC), 8548 (WS), 9642 (metrics), 9877 (DAS REST)",
+        ],
+    },
     "governance": {
         "description": "Governance and admin operations via UpgradeExecutor",
         "roles": [
@@ -260,8 +285,18 @@ Uses curated knowledge base and optional LLM for detailed answers."""
         # Node setup questions
         if any(kw in q_lower for kw in [
             "node", "nitro", "node config", "run node", "start node",
+            "devnode", "docker",
         ]):
             relevant_topics.append("node_setup")
+
+        # Node troubleshooting questions
+        if any(kw in q_lower for kw in [
+            "error", "fail", "not working", "troubleshoot",
+            "can't start", "won't start", "permission denied", "crash",
+        ]) or ("node" in q_lower and any(kw in q_lower for kw in [
+            "issue", "problem", "fix",
+        ])):
+            relevant_topics.append("node_troubleshooting")
 
         # Governance questions
         if any(kw in q_lower for kw in [

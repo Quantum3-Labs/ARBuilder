@@ -132,6 +132,37 @@ const ORBIT_KNOWLEDGE: Record<string, Record<string, string | string[]>> = {
       "Volumes need user: root or writable permissions",
     ],
   },
+  node_troubleshooting: {
+    description: "Common issues and fixes when spinning up a Nitro devnode for an Orbit chain",
+    startup_issues: [
+      "Node exits immediately — check docker logs: usually missing or malformed nodeConfig.json",
+      "\"no sequencer coordinator\" error — add --node.dangerous.no-sequencer-coordinator for single-node testnet setups",
+      "Permission denied on volumes — add 'user: root' to docker-compose service, or chmod the data directory",
+      "Node can't connect to parent chain — verify PARENT_CHAIN_RPC is reachable from inside the container (not localhost if parent is also Docker)",
+      "\"deployed-at block 0\" causes full rescan — ensure deployedAtBlock in nodeConfig matches the actual rollup deployment block (saved in deployment.json)",
+      "DAS server fails to start — use same offchainlabs/nitro-node image with entrypoint /usr/local/bin/daserver, NOT offchainlabs/das (does not exist)",
+    ],
+    config_issues: [
+      "Wrong chainConfig format — must be the exact JSON output from prepareChainConfig(), not a subset",
+      "Private keys must NOT have 0x prefix in nodeConfig — Nitro expects raw hex (strip with .replace(/^0x/, ''))",
+      "parentChainIsArbitrum must be true if parent is Arbitrum One (42161) or Arbitrum Sepolia (421614)",
+      "stakeToken should be zeroAddress (0x000...000) for ETH-staked chains",
+      "Missing coreContracts fields — nodeConfig needs ALL addresses from createRollup output (rollup, inbox, outbox, bridge, sequencerInbox, rollupEventInbox, upgradeExecutor)",
+    ],
+    docker_tips: [
+      "Use pinned image tag: offchainlabs/nitro-node:v3.9.7-75e084e (not :latest)",
+      "Mount nodeConfig.json as read-only: ./nodeConfig.json:/config/nodeConfig.json:ro",
+      "Check node health: curl -s http://localhost:8449 -X POST -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[],\"id\":1}'",
+      "View logs: docker logs -f <container-name>",
+      "For AnyTrust: DAS must be running and accessible BEFORE the node starts batch posting",
+      "Common port mapping: 8449 (RPC), 8548 (WebSocket), 9642 (metrics), 9877 (DAS REST)",
+    ],
+    networking: [
+      "If both parent chain and Orbit node are in Docker, use Docker network (not localhost)",
+      "Rate limits on public RPCs can cause node sync failures — use a dedicated RPC provider for production",
+      "WebSocket endpoint needed for real-time parent chain event monitoring in production",
+    ],
+  },
   governance: {
     description: "Governance and admin operations via UpgradeExecutor",
     roles: [
@@ -277,10 +308,27 @@ export async function askOrbit(
   if (
     qLower.includes("node") ||
     qLower.includes("nitro") ||
-    qLower.includes("run node")
+    qLower.includes("run node") ||
+    qLower.includes("devnode") ||
+    qLower.includes("docker")
   ) {
     relevantTopics.push("node_setup");
     enrichments.push(formatKnowledge("node_setup"));
+  }
+
+  if (
+    qLower.includes("error") ||
+    qLower.includes("fail") ||
+    qLower.includes("not working") ||
+    qLower.includes("troubleshoot") ||
+    qLower.includes("can't start") ||
+    qLower.includes("won't start") ||
+    qLower.includes("permission denied") ||
+    qLower.includes("crash") ||
+    (qLower.includes("node") && (qLower.includes("issue") || qLower.includes("problem") || qLower.includes("fix")))
+  ) {
+    relevantTopics.push("node_troubleshooting");
+    enrichments.push(formatKnowledge("node_troubleshooting"));
   }
 
   if (
