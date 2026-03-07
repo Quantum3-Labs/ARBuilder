@@ -141,21 +141,22 @@ Generates TypeScript scripts using @arbitrum/orbit-sdk."""
                     native_token=native_token,
                 )
                 # Apply version-specific modifications
+                version_label = "v2.1 / classic" if rollup_version == "v2.1" else "v3.1 / BoLD"
+                code = code.replace(
+                    "console.log('Deploying Orbit chain...');",
+                    f"console.log('Deploying Orbit chain ({version_label})...');",
+                )
                 if rollup_version == "v2.1":
                     code = code.replace(
-                        "console.log('Deploying Orbit chain...');",
-                        "console.log('Deploying Orbit chain (v2.1 / classic)...');",
-                    )
-                    code = code.replace(
                         "  // Deploy rollup\n",
-                        "  // Deploy rollup using v2.1 RollupCreator (classic challenge protocol)\n"
-                        "  // v2.1 defaults: baseStake = 0.1 ETH, stakeToken = zeroAddress (ETH)\n",
+                        "  // Deploy rollup — v2.1 uses classic challenge protocol\n"
+                        "  // baseStake = 0.1 ETH, stakeToken = ETH (default)\n",
                     )
                     code = code.replace(
                         "    walletClient,\n  }});",
-                        "    walletClient,\n"
-                        "    // Use v2.1 RollupCreator (classic challenge, not BoLD)\n"
-                        "    rollupCreatorAddressOverride: process.env.ROLLUP_CREATOR_V2_ADDRESS as `0x${{string}}` | undefined,\n"
+                        "    parentChainPublicClient: publicClient,\n"
+                        "    // v2.1: classic challenge protocol (stable, non-BoLD)\n"
+                        "    rollupCreatorVersion: 'v2.1',\n"
                         "  }});",
                     )
                     code = code.replace(
@@ -163,16 +164,23 @@ Generates TypeScript scripts using @arbitrum/orbit-sdk."""
                         "console.log('\\nRollup deployed successfully! (v2.1 classic)');\n"
                         "  console.log('\\nv2.1 validator config:');\n"
                         "  console.log('  Base stake: 0.1 ETH (default)');\n"
-                        "  console.log('  Stake token: ETH (zeroAddress)');",
+                        "  console.log('  Stake token: ETH');",
                     )
                 else:
                     code = code.replace(
-                        "console.log('Deploying Orbit chain...');",
-                        "console.log('Deploying Orbit chain (v3.1 / BoLD)...');",
+                        "  // Deploy rollup\n",
+                        "  // Deploy rollup — v3.1 uses BoLD challenge protocol\n",
                     )
                     code = code.replace(
-                        "  // Deploy rollup\n",
-                        "  // Deploy rollup using v3.1 RollupCreator (BoLD)\n",
+                        "    walletClient,\n  }});",
+                        "    parentChainPublicClient: publicClient,\n"
+                        "    // v3.1: BoLD challenge protocol (default)\n"
+                        "    rollupCreatorVersion: 'v3.1',\n"
+                        "  }});",
+                    )
+                    code = code.replace(
+                        "console.log('\\nRollup deployed successfully!');",
+                        "console.log('\\nRollup deployed successfully! (v3.1 BoLD)');",
                     )
                 files["scripts/deploy-rollup.ts"] = code
 
@@ -194,8 +202,7 @@ Generates TypeScript scripts using @arbitrum/orbit-sdk."""
             f"PARENT_CHAIN_RPC={parent_rpc}",
         ]
         if rollup_version == "v2.1":
-            env_vars.append("# Optional: override v2.1 RollupCreator address (defaults to SDK builtin)")
-            env_vars.append("# ROLLUP_CREATOR_V2_ADDRESS=0x...")
+            env_vars.append("# Using v2.1 RollupCreator (classic challenge protocol)")
         if deployment_type in ("token_bridge", "full"):
             env_vars.append("ORBIT_CHAIN_RPC=http://localhost:8449")
         files[".env.example"] = "\n".join(env_vars) + "\n"
@@ -310,7 +317,7 @@ Generates TypeScript scripts using @arbitrum/orbit-sdk."""
 
         if rollup_version == "v2.1":
             notes.append("v2.1 (classic): baseStake = 0.1 ETH, classic challenge protocol")
-            notes.append("v2.1 uses the legacy RollupCreator — set ROLLUP_CREATOR_V2_ADDRESS if needed")
+            notes.append("v2.1 uses the classic RollupCreator via rollupCreatorVersion: 'v2.1'")
         else:
             notes.append("v3.1 (BoLD): uses assertion staking with bounded liquidity delay challenge protocol")
 

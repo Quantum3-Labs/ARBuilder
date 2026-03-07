@@ -64,9 +64,7 @@ interface GenerateOrbitDeploymentOutput {
 const DEPLOY_ROLLUP_V3_TEMPLATE = `import 'dotenv/config';
 import {
   createPublicClient,
-  createWalletClient,
   http,
-  parseEther,
   Chain,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
@@ -76,8 +74,7 @@ import {
   createRollupPrepareDeploymentParamsConfig,
 } from '@arbitrum/orbit-sdk';
 
-// v3.1 RollupCreator (BoLD challenge protocol)
-// Parent chain configuration
+// v3.1 RollupCreator — BoLD (Bounded Liquidity Delay) challenge protocol
 const parentChain: Chain = {
   id: {parentChainId},
   name: '{parentChainName}',
@@ -93,12 +90,6 @@ async function main() {
   );
 
   const publicClient = createPublicClient({
-    chain: parentChain,
-    transport: http(process.env.PARENT_CHAIN_RPC),
-  });
-
-  const walletClient = createWalletClient({
-    account,
     chain: parentChain,
     transport: http(process.env.PARENT_CHAIN_RPC),
   });
@@ -117,7 +108,7 @@ async function main() {
   console.log('  Owner:', account.address);
   console.log('  AnyTrust:', {isAnyTrust});
 
-  // Deploy rollup using v3.1 RollupCreator (BoLD)
+  // Deploy rollup — v3.1 uses BoLD challenge protocol
   const deployResult = await createRollup({
     params: {
       config: createRollupPrepareDeploymentParamsConfig(publicClient, {
@@ -131,11 +122,12 @@ async function main() {
       deployFactoriesToL2: true,{nativeTokenLine}
     },
     account,
-    publicClient,
-    walletClient,
+    parentChainPublicClient: publicClient,
+    // v3.1: BoLD challenge protocol (default)
+    rollupCreatorVersion: 'v3.1',
   });
 
-  console.log('\\nRollup deployed successfully!');
+  console.log('\\nRollup deployed successfully! (v3.1 BoLD)');
   console.log('Transaction hash:', deployResult.transactionHash);
   console.log('\\nCore contracts:');
   console.log('  Rollup:', deployResult.coreContracts.rollup);
@@ -153,11 +145,8 @@ main().catch(console.error);
 const DEPLOY_ROLLUP_V2_TEMPLATE = `import 'dotenv/config';
 import {
   createPublicClient,
-  createWalletClient,
   http,
-  parseEther,
   Chain,
-  zeroAddress,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import {
@@ -166,8 +155,7 @@ import {
   createRollupPrepareDeploymentParamsConfig,
 } from '@arbitrum/orbit-sdk';
 
-// v2.1 RollupCreator (classic challenge protocol)
-// Parent chain configuration
+// v2.1 RollupCreator — classic challenge protocol (stable)
 const parentChain: Chain = {
   id: {parentChainId},
   name: '{parentChainName}',
@@ -187,13 +175,7 @@ async function main() {
     transport: http(process.env.PARENT_CHAIN_RPC),
   });
 
-  const walletClient = createWalletClient({
-    account,
-    chain: parentChain,
-    transport: http(process.env.PARENT_CHAIN_RPC),
-  });
-
-  // Prepare chain config (v2.1 classic)
+  // Prepare chain config
   const chainConfig = prepareChainConfig({
     chainId: {chainId},
     arbitrum: {
@@ -207,8 +189,8 @@ async function main() {
   console.log('  Owner:', account.address);
   console.log('  AnyTrust:', {isAnyTrust});
 
-  // Deploy rollup using v2.1 RollupCreator (classic challenge protocol)
-  // v2.1 defaults: baseStake = 0.1 ETH, stakeToken = zeroAddress (ETH)
+  // Deploy rollup — v2.1 uses classic challenge protocol
+  // baseStake = 0.1 ETH, stakeToken = ETH (default)
   const deployResult = await createRollup({
     params: {
       config: createRollupPrepareDeploymentParamsConfig(publicClient, {
@@ -222,10 +204,9 @@ async function main() {
       deployFactoriesToL2: true,{nativeTokenLine}
     },
     account,
-    publicClient,
-    walletClient,
-    // Use v2.1 RollupCreator (classic challenge, not BoLD)
-    rollupCreatorAddressOverride: process.env.ROLLUP_CREATOR_V2_ADDRESS as \`0x\${string}\` | undefined,
+    parentChainPublicClient: publicClient,
+    // v2.1: classic challenge protocol (stable, non-BoLD)
+    rollupCreatorVersion: 'v2.1',
   });
 
   console.log('\\nRollup deployed successfully! (v2.1 classic)');
@@ -239,11 +220,13 @@ async function main() {
   console.log('  RollupEventInbox:', deployResult.coreContracts.rollupEventInbox);
   console.log('  UpgradeExecutor:', deployResult.coreContracts.upgradeExecutor);
 
-  // v2.1 note: baseStake is 0.1 ETH by default
-  // Validators must stake this amount on the parent chain
+  // v2.1 validator staking:
+  //   baseStake: 0.1 ETH (validators must stake this on the parent chain)
+  //   stakeToken: ETH (zeroAddress)
+  //   extraChallengeTimeBlocks: 0
   console.log('\\nv2.1 validator config:');
   console.log('  Base stake: 0.1 ETH (default)');
-  console.log('  Stake token: ETH (zeroAddress)');
+  console.log('  Stake token: ETH');
 }
 
 main().catch(console.error);
@@ -372,7 +355,7 @@ function getDeploymentNotes(
 
   if (rollupVersion === "v2.1") {
     notes.push("v2.1 (classic): baseStake = 0.1 ETH, classic challenge protocol");
-    notes.push("v2.1 uses the legacy RollupCreator — set ROLLUP_CREATOR_V2_ADDRESS if needed");
+    notes.push("v2.1 uses the classic RollupCreator via rollupCreatorVersion: 'v2.1'");
   } else {
     notes.push("v3.1 (BoLD): uses assertion staking with bounded liquidity delay challenge protocol");
   }
@@ -461,8 +444,7 @@ export function generateOrbitDeployment(
   // Add .env.example
   const envVars = [`DEPLOYER_PRIVATE_KEY=0x...`, `PARENT_CHAIN_RPC=${parentRpc}`];
   if (rollupVersion === "v2.1") {
-    envVars.push("# Optional: override v2.1 RollupCreator address (defaults to SDK builtin)");
-    envVars.push("# ROLLUP_CREATOR_V2_ADDRESS=0x...");
+    envVars.push("# Using v2.1 RollupCreator (classic challenge protocol)");
   }
   if (deploymentType === "token_bridge" || deploymentType === "full") {
     envVars.push("ORBIT_CHAIN_RPC=http://localhost:8449");
