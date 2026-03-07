@@ -66,9 +66,10 @@ ORBIT_KNOWLEDGE = {
             "Users pay gas in the custom token instead of ETH",
         ],
         "setup": [
-            "1. Deploy (or use existing) ERC20 on parent chain",
-            "2. Approve the RollupCreator to spend the token",
+            "1. Deploy (or use existing) ERC20 on parent chain (Foundry: forge create, Hardhat: npx hardhat run)",
+            "2. Approve the RollupCreator to spend the token (use maxUint256 for convenience)",
             "3. Pass nativeToken address to createRollup()",
+            "RollupCreator addresses (v3.1): Arb Sepolia 0x5F45...16cF, Arb One 0xB90e...eB8b, Eth Mainnet 0x4369...AB44",
         ],
         "considerations": [
             "Token must have standard ERC20 interface",
@@ -85,6 +86,7 @@ ORBIT_KNOWLEDGE = {
         ],
         "keyset": [
             "DAC members have BLS public keys",
+            "Generate BLS keys with: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.7-75e084e datool keygen --dir /keys",
             "Keyset is registered via setValidKeyset() on SequencerInbox",
             "Keyset changes require UpgradeExecutor access",
         ],
@@ -100,14 +102,25 @@ ORBIT_KNOWLEDGE = {
             "Nitro node — executes transactions and produces blocks",
             "Validator node — posts assertions to parent chain",
             "Batch poster — submits transaction batches",
+            "DAS server (AnyTrust only) — runs from same nitro-node image with daserver entrypoint",
         ],
         "config_params": [
-            "chainId — Orbit chain ID",
+            "chainConfig — JSON from prepareChainConfig()",
+            "coreContracts — addresses from createRollup() output",
+            "batchPosterPrivateKey — raw hex WITHOUT 0x prefix",
+            "validatorPrivateKey — raw hex WITHOUT 0x prefix",
+            "stakeToken — zeroAddress for ETH",
             "parentChainId — parent chain ID",
-            "coreContracts — addresses from deployment output",
+            "parentChainIsArbitrum — true if parent is Arbitrum L2",
             "parentChainRpcUrl — parent chain RPC endpoint",
+            "dasServerUrl — DAS endpoint (AnyTrust only)",
         ],
-        "docker": "Nitro nodes are typically run via Docker images from OffchainLabs",
+        "docker": {
+            "image": "offchainlabs/nitro-node:v3.9.7-75e084e (pinned stable)",
+            "das": "DAS uses same image with entrypoint /usr/local/bin/daserver (NOT offchainlabs/das)",
+            "testnet_flag": "For single-node testnet: --node.dangerous.no-sequencer-coordinator",
+            "permissions": "Volumes need user: root or writable permissions",
+        },
     },
     "governance": {
         "description": "Governance and admin operations via UpgradeExecutor",
@@ -338,7 +351,7 @@ Uses curated knowledge base and optional LLM for detailed answers."""
         return """## Arbitrum Orbit Chain Overview
 
 Orbit chains are customizable L3 chains built on top of Arbitrum L2.
-They use the @arbitrum/orbit-sdk for deployment and management.
+They use the @arbitrum/chain-sdk for deployment and management.
 
 **Key Concepts:**
 - **Rollup mode**: All data posted on-chain (full Ethereum security)

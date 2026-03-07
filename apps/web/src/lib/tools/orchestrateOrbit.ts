@@ -80,7 +80,7 @@ function generatePackageJson(chainName: string): string {
     "deploy": "bash deploy.sh"
   },
   "dependencies": {
-    "@arbitrum/orbit-sdk": "^0.25.0",
+    "@arbitrum/chain-sdk": "^0.25.0",
     "viem": "^1.20.0",
     "dotenv": "^16.4.0"
   },
@@ -113,7 +113,7 @@ function generateTsconfig(): string {
 `;
 }
 
-function generateEnvExample(parentRpc: string, chainId: number, chainName: string, isAnyTrust: boolean): string {
+function generateEnvExample(parentRpc: string, chainId: number, chainName: string, isAnyTrust: boolean, nativeToken?: string): string {
   let env = `# Deployer private key (with 0x prefix)
 DEPLOYER_PRIVATE_KEY=0x...
 
@@ -136,6 +136,14 @@ ORBIT_CHAIN_RPC=http://localhost:8449
 CHAIN_ID=${chainId}
 CHAIN_NAME=${chainName}
 `;
+
+  if (nativeToken) {
+    env += `
+# Custom gas token (ERC-20 address on parent chain)
+# Deploy your own ERC-20 or use an existing one
+NATIVE_TOKEN=${nativeToken}
+`;
+  }
 
   if (isAnyTrust) {
     env += `
@@ -229,7 +237,7 @@ function generateDockerCompose(
   isAnyTrust: boolean
 ): string {
   // Use a specific known-good Nitro image tag
-  const nitroImage = 'offchainlabs/nitro-node:v3.5.3-rc.1';
+  const nitroImage = 'offchainlabs/nitro-node:v3.9.7-75e084e';
 
   let compose = `version: '3.8'
 
@@ -238,6 +246,7 @@ services:
     image: ${nitroImage}
     container_name: ${chainName}-node
     restart: unless-stopped
+    user: root
     ports:
       - "8449:8449"   # L3 RPC
       - "8548:8548"   # L3 WebSocket
@@ -247,22 +256,26 @@ services:
       - nitro-data:/home/user/.arbitrum
     command:
       - --conf.file=/config/nodeConfig.json
+      - --node.dangerous.no-sequencer-coordinator
     environment:
       - NITRO_NODE_CONFIG=/config/nodeConfig.json
 `;
 
   if (isAnyTrust) {
     compose += `
+  # Generate BLS keys for DAC members before starting:
+  #   docker run --rm -v $(pwd)/das-keys:/keys ${nitroImage} datool keygen --dir /keys
   das-server:
     image: ${nitroImage}
     container_name: ${chainName}-das
     restart: unless-stopped
+    user: root
     ports:
       - "9877:9877"   # DAS REST API
     volumes:
       - das-data:/home/user/das-data
+    entrypoint: /usr/local/bin/daserver
     command:
-      - daserver
       - --data-availability.local-file-storage.enable
       - --data-availability.local-file-storage.data-dir=/home/user/das-data
       - --enable-rest
@@ -297,7 +310,7 @@ function generateNodeConfigScript(
 
   return `import 'dotenv/config';
 import * as fs from 'fs';
-import { prepareNodeConfig } from '@arbitrum/orbit-sdk';
+import { prepareNodeConfig } from '@arbitrum/chain-sdk';
 import { zeroAddress } from 'viem';
 
 /**
@@ -495,7 +508,8 @@ function generateDevelopmentWorkflow(isAnyTrust: boolean) {
       step: 5,
       component: "AnyTrust DAC Setup",
       actions: [
-        "Configure DAC member BLS keys",
+        "Generate BLS keys: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.7-75e084e datool keygen --dir /keys",
+        "Configure DAC member BLS keys in the keyset script",
         "Run npm run configure:anytrust",
         "Verify keyset is active on SequencerInbox",
       ],
@@ -558,7 +572,7 @@ export function orchestrateOrbit(
     files["scripts/prepare-chain-config.ts"] = configFile[1];
   }
 
-  // 2. Deploy rollup script
+  // 2. Deploy rollup script (+ token approval if custom gas token)
   const deployResult = generateOrbitDeployment({
     prompt: "deploy rollup",
     deploymentType: "rollup",
@@ -571,6 +585,9 @@ export function orchestrateOrbit(
   });
   if (deployResult.files["scripts/deploy-rollup.ts"]) {
     files["scripts/deploy-rollup.ts"] = deployResult.files["scripts/deploy-rollup.ts"];
+  }
+  if (deployResult.files["scripts/approve-token.ts"]) {
+    files["scripts/approve-token.ts"] = deployResult.files["scripts/approve-token.ts"];
   }
 
   // 3. Token bridge script
@@ -624,7 +641,7 @@ export function orchestrateOrbit(
   // 7. Scaffold files
   files["package.json"] = generatePackageJson(chainName);
   files["tsconfig.json"] = generateTsconfig();
-  files[".env.example"] = generateEnvExample(parentRpc, chainId, chainName, isAnyTrust);
+  files[".env.example"] = generateEnvExample(parentRpc, chainId, chainName, isAnyTrust, nativeToken);
   files["setup.sh"] = generateSetupSh();
   files["deploy.sh"] = generateDeploySh();
 
@@ -664,6 +681,9 @@ export function orchestrateOrbit(
       "README.md",
     ],
   };
+  if (nativeToken) {
+    projectStructure["scripts/"].push("approve-token.ts");
+  }
   if (isAnyTrust) {
     projectStructure["scripts/"].push("configure-anytrust.ts");
   }
@@ -685,15 +705,27 @@ export function orchestrateOrbit(
     },
     validators,
     batchPosters,
-    setupInstructions: [
-      "1. Run: bash setup.sh",
-      "2. Edit .env with DEPLOYER_PRIVATE_KEY (and optionally separate BATCH_POSTER/VALIDATOR keys)",
-      "3. Run: npm run config:chain",
-      "4. Run: npm run deploy:rollup (output saved to deployment.json)",
-      "5. Run: npm run config:node (reads deployment.json)",
-      "6. Start Nitro node: docker-compose up -d",
-      "7. Run: npm run deploy:token-bridge (reads deployment.json)",
-    ],
+    setupInstructions: nativeToken
+      ? [
+          "1. Run: bash setup.sh",
+          "2. Edit .env with DEPLOYER_PRIVATE_KEY, NATIVE_TOKEN, and optionally separate BATCH_POSTER/VALIDATOR keys",
+          "3. Deploy or obtain your ERC-20 gas token on the parent chain",
+          "4. Run: npx tsx scripts/approve-token.ts (approve token for RollupCreator)",
+          "5. Run: npm run config:chain",
+          "6. Run: npm run deploy:rollup (output saved to deployment.json)",
+          "7. Run: npm run config:node (reads deployment.json)",
+          "8. Start Nitro node: docker-compose up -d",
+          "9. Run: npm run deploy:token-bridge (reads deployment.json)",
+        ]
+      : [
+          "1. Run: bash setup.sh",
+          "2. Edit .env with DEPLOYER_PRIVATE_KEY (and optionally separate BATCH_POSTER/VALIDATOR keys)",
+          "3. Run: npm run config:chain",
+          "4. Run: npm run deploy:rollup (output saved to deployment.json)",
+          "5. Run: npm run config:node (reads deployment.json)",
+          "6. Start Nitro node: docker-compose up -d",
+          "7. Run: npm run deploy:token-bridge (reads deployment.json)",
+        ],
     developmentWorkflow: generateDevelopmentWorkflow(isAnyTrust),
     disclaimer: TEMPLATE_DISCLAIMER,
   };

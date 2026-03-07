@@ -2,7 +2,7 @@
 Orbit chain templates for Arbitrum L3 deployment.
 
 These templates provide scaffolding for deploying and managing
-Orbit chains (L3s) using the @arbitrum/orbit-sdk.
+Orbit chains (L3s) using the @arbitrum/chain-sdk.
 
 Templates:
 - Chain Config: Prepare chain configuration
@@ -36,7 +36,7 @@ class OrbitTemplate:
 
 # Default dependencies shared by all Orbit templates
 ORBIT_DEPENDENCIES = {
-    "@arbitrum/orbit-sdk": "^0.25.0",
+    "@arbitrum/chain-sdk": "^0.25.0",
     "viem": "^1.20.0",
     "dotenv": "^16.4.0",
 }
@@ -62,7 +62,7 @@ CHAIN_CONFIG_TEMPLATE = OrbitTemplate(
         "Data availability mode",
     ],
     code='''import 'dotenv/config';
-import { prepareChainConfig } from '@arbitrum/orbit-sdk';
+import { prepareChainConfig } from '@arbitrum/chain-sdk';
 
 /**
  * Prepare the chain configuration for a new Orbit chain.
@@ -118,7 +118,7 @@ import {{
   prepareChainConfig,
   createRollup,
   createRollupPrepareDeploymentParamsConfig,
-}} from '@arbitrum/orbit-sdk';
+}} from '@arbitrum/chain-sdk';
 
 // Parent chain configuration
 const parentChain: Chain = {{
@@ -188,11 +188,17 @@ async function main() {{
   console.log('  RollupEventInbox:', deployResult.coreContracts.rollupEventInbox);
   console.log('  UpgradeExecutor:', deployResult.coreContracts.upgradeExecutor);
 
+  // Get deployment block number (needed for node config deployed-at)
+  const receipt = await publicClient.getTransactionReceipt({{
+    hash: deployResult.transactionHash,
+  }});
+
   // Save deployment output for downstream scripts
   const deployment = {{
     chainId: {chain_id},
     parentChainId: {parent_chain_id},
     transactionHash: deployResult.transactionHash,
+    deployedAtBlock: Number(receipt.blockNumber),
     chainConfig,
     coreContracts: deployResult.coreContracts,
     deployer: account.address,
@@ -200,6 +206,7 @@ async function main() {{
   }};
   fs.writeFileSync('deployment.json', JSON.stringify(deployment, null, 2));
   console.log('\\nDeployment saved to deployment.json');
+  console.log('  Deployed at block:', deployment.deployedAtBlock);
 }}
 
 main().catch(console.error);
@@ -230,7 +237,7 @@ import {
   Chain,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { createTokenBridge } from '@arbitrum/orbit-sdk';
+import { createTokenBridge } from '@arbitrum/chain-sdk';
 
 // Parent chain configuration
 const parentChain: Chain = {
@@ -350,7 +357,7 @@ import {
   prepareChainConfig,
   createRollup,
   createRollupPrepareDeploymentParamsConfig,
-} from '@arbitrum/orbit-sdk';
+} from '@arbitrum/chain-sdk';
 
 // ERC20 ABI for token approval
 const erc20Abi = [
@@ -482,6 +489,7 @@ VALIDATOR_MANAGEMENT_TEMPLATE = OrbitTemplate(
         "Batch poster management",
     ],
     code='''import 'dotenv/config';
+import * as fs from 'fs';
 import {
   createPublicClient,
   createWalletClient,
@@ -532,8 +540,16 @@ async function main() {
     transport: http(process.env.PARENT_CHAIN_RPC),
   });
 
-  const rollupAddress = '{rollup_address}' as `0x${string}`;
-  const sequencerInboxAddress = '{sequencer_inbox}' as `0x${string}`;
+  // Read contract addresses from deployment.json if available
+  let rollupAddress: `0x${string}` = '{rollup_address}' as `0x${string}`;
+  let sequencerInboxAddress: `0x${string}` = '{sequencer_inbox}' as `0x${string}`;
+
+  if (fs.existsSync('deployment.json')) {
+    const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));
+    rollupAddress = deployment.coreContracts.rollup as `0x${string}`;
+    sequencerInboxAddress = deployment.coreContracts.sequencerInbox as `0x${string}`;
+    console.log('Loaded contract addresses from deployment.json');
+  }
 
   // Check if specific addresses are validators
   const addressesToCheck: `0x${string}`[] = {addresses_array};
@@ -710,7 +726,7 @@ NODE_CONFIG_TEMPLATE = OrbitTemplate(
     ],
     code='''import 'dotenv/config';
 import * as fs from 'fs';
-import { prepareNodeConfig } from '@arbitrum/orbit-sdk';
+import { prepareNodeConfig } from '@arbitrum/chain-sdk';
 import { zeroAddress } from 'viem';
 
 /**
@@ -901,7 +917,7 @@ ORCHESTRATION_TEMPLATE = OrbitTemplate(
     "deploy": "bash deploy.sh"
   },
   "dependencies": {
-    "@arbitrum/orbit-sdk": "^0.25.0",
+    "@arbitrum/chain-sdk": "^0.25.0",
     "viem": "^1.20.0",
     "dotenv": "^16.4.0"
   },

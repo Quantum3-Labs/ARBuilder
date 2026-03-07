@@ -59,6 +59,7 @@ interface GenerateValidatorSetupOutput {
 // --- Templates ---
 
 const VALIDATOR_MANAGEMENT_TEMPLATE = `import 'dotenv/config';
+import * as fs from 'fs';
 import {
   createPublicClient,
   createWalletClient,
@@ -109,13 +110,22 @@ async function main() {
     transport: http(process.env.PARENT_CHAIN_RPC),
   });
 
-  const rollupAddress = '{rollupAddress}' as \`0x\${string}\`;
-  const sequencerInboxAddress = '{sequencerInbox}' as \`0x\${string}\`;
+  // Read contract addresses from deployment.json if available
+  let rollupAddress: \`0x\${string}\` = '{rollupAddress}' as \`0x\${string}\`;
+  let sequencerInboxAddress: \`0x\${string}\` = '{sequencerInbox}' as \`0x\${string}\`;
+
+  if (fs.existsSync('deployment.json')) {
+    const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));
+    rollupAddress = deployment.coreContracts.rollup as \`0x\${string}\`;
+    sequencerInboxAddress = deployment.coreContracts.sequencerInbox as \`0x\${string}\`;
+    console.log('Loaded contract addresses from deployment.json');
+  }
 
   // Check if specific addresses are validators
   const addressesToCheck: \`0x\${string}\`[] = {addressesArray};
 
   console.log('=== Validator Status ===');
+  console.log('  Rollup:', rollupAddress);
   for (const addr of addressesToCheck) {
     const isValidator = await publicClient.readContract({
       address: rollupAddress,
@@ -127,6 +137,7 @@ async function main() {
   }
 
   console.log('\\n=== Batch Poster Status ===');
+  console.log('  SequencerInbox:', sequencerInboxAddress);
   for (const addr of addressesToCheck) {
     const isBatchPoster = await publicClient.readContract({
       address: sequencerInboxAddress,

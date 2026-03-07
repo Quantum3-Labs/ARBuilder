@@ -61,7 +61,7 @@ interface GenerateOrbitDeploymentOutput {
 
 // --- Templates ---
 
-// Known RollupCreator contract addresses from @arbitrum/orbit-sdk
+// Known RollupCreator contract addresses from @arbitrum/chain-sdk
 const ROLLUP_CREATOR_ADDRESSES = {
   'v2.1': {
     1: '0x8c88430658a03497D13cDff7684D37b15aA2F3e1',       // Ethereum Mainnet
@@ -89,7 +89,7 @@ import {
   prepareChainConfig,
   createRollup,
   createRollupPrepareDeploymentParamsConfig,
-} from '@arbitrum/orbit-sdk';
+} from '@arbitrum/chain-sdk';
 
 /**
  * v3.1 Orbit Rollup Deployment — BoLD Challenge Protocol
@@ -161,12 +161,18 @@ async function main() {
   console.log('  RollupEventInbox:', deployResult.coreContracts.rollupEventInbox);
   console.log('  UpgradeExecutor:', deployResult.coreContracts.upgradeExecutor);
 
+  // Get deployment block number (needed for node config deployed-at)
+  const receipt = await parentChainPublicClient.getTransactionReceipt({
+    hash: deployResult.transactionHash,
+  });
+
   // Save deployment output for downstream scripts
   const deployment = {
     chainId: {chainId},
     parentChainId: {parentChainId},
     rollupVersion: 'v3.1',
     transactionHash: deployResult.transactionHash,
+    deployedAtBlock: Number(receipt.blockNumber),
     chainConfig,
     coreContracts: deployResult.coreContracts,
     deployer: account.address,
@@ -174,6 +180,7 @@ async function main() {
   };
   fs.writeFileSync('deployment.json', JSON.stringify(deployment, null, 2));
   console.log('\\nDeployment saved to deployment.json');
+  console.log('  Deployed at block:', deployment.deployedAtBlock);
 }
 
 main().catch(console.error);
@@ -191,7 +198,7 @@ import {
   prepareChainConfig,
   createRollup,
   createRollupPrepareDeploymentParamsConfig,
-} from '@arbitrum/orbit-sdk';
+} from '@arbitrum/chain-sdk';
 
 /**
  * v2.1 Orbit Rollup Deployment — Classic Challenge Protocol
@@ -269,12 +276,18 @@ async function main() {
   console.log('  Stake token: ETH (zeroAddress)');
   console.log('  Extra challenge time blocks: 0');
 
+  // Get deployment block number (needed for node config deployed-at)
+  const receipt = await parentChainPublicClient.getTransactionReceipt({
+    hash: deployResult.transactionHash,
+  });
+
   // Save deployment output for downstream scripts
   const deployment = {
     chainId: {chainId},
     parentChainId: {parentChainId},
     rollupVersion: 'v2.1',
     transactionHash: deployResult.transactionHash,
+    deployedAtBlock: Number(receipt.blockNumber),
     chainConfig,
     coreContracts: deployResult.coreContracts,
     deployer: account.address,
@@ -282,6 +295,7 @@ async function main() {
   };
   fs.writeFileSync('deployment.json', JSON.stringify(deployment, null, 2));
   console.log('\\nDeployment saved to deployment.json');
+  console.log('  Deployed at block:', deployment.deployedAtBlock);
 }
 
 main().catch(console.error);
@@ -296,7 +310,7 @@ import {
   Chain,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { createTokenBridge } from '@arbitrum/orbit-sdk';
+import { createTokenBridge } from '@arbitrum/chain-sdk';
 
 // Parent chain configuration
 const parentChain: Chain = {
@@ -388,6 +402,155 @@ async function main() {
 main().catch(console.error);
 `;
 
+// Token approval script — generated when nativeToken is set
+const APPROVE_TOKEN_TEMPLATE = `import 'dotenv/config';
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  Chain,
+  maxUint256,
+} from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+
+// Known RollupCreator addresses (v3.1)
+// See: https://docs.arbitrum.io/launch-orbit-chain/orbit-sdk-introduction
+const ROLLUP_CREATOR: Record<number, \`0x\${string}\`> = {
+  1: '0x43698080f40dB54DEE6871540037b8AB8fD0AB44',       // Ethereum Mainnet
+  42161: '0xB90e53fd945Cd28Ec4728cBfB566981dD571eB8b',   // Arbitrum One
+  421614: '0x5F45675AC8DDF7d45713b2c7D191B287475C16cF',  // Arbitrum Sepolia
+  11155111: '0x687Bc1D23390875a868Db158DA1cDC8998E31640', // Ethereum Sepolia
+};
+
+const erc20Abi = [
+  {
+    name: 'approve',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    name: 'allowance',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'spender', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'symbol',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'string' }],
+  },
+  {
+    name: 'decimals',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint8' }],
+  },
+] as const;
+
+const parentChain: Chain = {
+  id: {parentChainId},
+  name: '{parentChainName}',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: {
+    default: { http: [process.env.PARENT_CHAIN_RPC!] },
+  },
+};
+
+/**
+ * Approve the custom gas token for the RollupCreator.
+ *
+ * This MUST be run before deploy-rollup.ts when using a custom gas token.
+ * The RollupCreator needs allowance to transfer the token during deployment.
+ *
+ * If you don't have a token yet, deploy an ERC-20 on the parent chain first:
+ *   - Foundry: forge create src/MyToken.sol:MyToken --rpc-url $PARENT_CHAIN_RPC --private-key $DEPLOYER_PRIVATE_KEY
+ *   - Hardhat: npx hardhat run scripts/deploy-token.ts --network <parent-chain>
+ *   - Or use any existing ERC-20 on the parent chain
+ */
+async function main() {
+  const account = privateKeyToAccount(
+    process.env.DEPLOYER_PRIVATE_KEY! as \`0x\${string}\`
+  );
+
+  const publicClient = createPublicClient({
+    chain: parentChain,
+    transport: http(process.env.PARENT_CHAIN_RPC),
+  });
+
+  const walletClient = createWalletClient({
+    account,
+    chain: parentChain,
+    transport: http(process.env.PARENT_CHAIN_RPC),
+  });
+
+  const nativeToken = '{nativeToken}' as \`0x\${string}\`;
+  const rollupCreator = ROLLUP_CREATOR[{parentChainId}];
+
+  if (!rollupCreator) {
+    console.error('No known RollupCreator for chain ID {parentChainId}.');
+    console.error('Set the correct RollupCreator address manually.');
+    process.exit(1);
+  }
+
+  // Check token info
+  const [symbol, decimals] = await Promise.all([
+    publicClient.readContract({ address: nativeToken, abi: erc20Abi, functionName: 'symbol' }),
+    publicClient.readContract({ address: nativeToken, abi: erc20Abi, functionName: 'decimals' }),
+  ]);
+
+  console.log('=== Token Approval for Custom Gas Token ===');
+  console.log('  Token:', nativeToken);
+  console.log('  Symbol:', symbol);
+  console.log('  Decimals:', decimals);
+  console.log('  RollupCreator:', rollupCreator);
+
+  // Check current allowance
+  const currentAllowance = await publicClient.readContract({
+    address: nativeToken,
+    abi: erc20Abi,
+    functionName: 'allowance',
+    args: [account.address, rollupCreator],
+  });
+
+  console.log('  Current allowance:', currentAllowance.toString());
+
+  if (currentAllowance > 0n) {
+    console.log('\\nToken already approved. You can proceed with deployment.');
+    console.log('  Run: npx tsx scripts/deploy-rollup.ts');
+    return;
+  }
+
+  // Approve max amount
+  console.log('\\nApproving token for RollupCreator...');
+  const txHash = await walletClient.writeContract({
+    address: nativeToken,
+    abi: erc20Abi,
+    functionName: 'approve',
+    args: [rollupCreator, maxUint256],
+  });
+
+  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+  console.log('\\nToken approved!');
+  console.log('  Transaction:', receipt.transactionHash);
+  console.log('  Status:', receipt.status);
+  console.log('\\nNext: Run npx tsx scripts/deploy-rollup.ts');
+}
+
+main().catch(console.error);
+`;
+
 // --- Helpers ---
 
 function formatAddressArray(addresses: string[]): string {
@@ -400,7 +563,7 @@ function formatAddressArray(addresses: string[]): string {
   return `[${formatted}]`;
 }
 
-function getSetupInstructions(deploymentType: DeploymentType): string[] {
+function getSetupInstructions(deploymentType: DeploymentType, nativeToken?: string): string[] {
   const instructions = [
     "1. Install dependencies: npm install",
     "2. Copy .env.example to .env and configure",
@@ -408,16 +571,30 @@ function getSetupInstructions(deploymentType: DeploymentType): string[] {
   ];
 
   if (deploymentType === "rollup") {
-    instructions.push("4. Run: npx tsx scripts/deploy-rollup.ts");
-    instructions.push("5. Save the output contract addresses for next steps");
+    if (nativeToken) {
+      instructions.push("4. Deploy or obtain your ERC-20 gas token on the parent chain");
+      instructions.push("5. Run: npx tsx scripts/approve-token.ts (approve token for RollupCreator)");
+      instructions.push("6. Run: npx tsx scripts/deploy-rollup.ts");
+      instructions.push("7. Save the output contract addresses for next steps");
+    } else {
+      instructions.push("4. Run: npx tsx scripts/deploy-rollup.ts");
+      instructions.push("5. Save the output contract addresses for next steps");
+    }
   } else if (deploymentType === "token_bridge") {
     instructions.push("4. Update ORBIT_CHAIN_RPC and rollup address in the script");
     instructions.push("5. Run: npx tsx scripts/deploy-token-bridge.ts");
   } else if (deploymentType === "full") {
-    instructions.push("4. Run: npx tsx scripts/deploy-rollup.ts");
-    instructions.push("5. Start the Orbit chain node with the rollup contracts");
-    instructions.push("6. Update ORBIT_CHAIN_RPC and rollup address");
-    instructions.push("7. Run: npx tsx scripts/deploy-token-bridge.ts");
+    if (nativeToken) {
+      instructions.push("4. Deploy or obtain your ERC-20 gas token on the parent chain");
+      instructions.push("5. Run: npx tsx scripts/approve-token.ts (approve token for RollupCreator)");
+      instructions.push("6. Run: npx tsx scripts/deploy-rollup.ts");
+    } else {
+      instructions.push("4. Run: npx tsx scripts/deploy-rollup.ts");
+    }
+    const nextStep = nativeToken ? 7 : 5;
+    instructions.push(`${nextStep}. Start the Orbit chain node with the rollup contracts`);
+    instructions.push(`${nextStep + 1}. Update ORBIT_CHAIN_RPC and rollup address`);
+    instructions.push(`${nextStep + 2}. Run: npx tsx scripts/deploy-token-bridge.ts`);
   }
 
   return instructions;
@@ -461,7 +638,7 @@ function getDeploymentNotes(
  * Generate Orbit chain deployment code.
  *
  * Produces TypeScript scripts for deploying rollup contracts and/or
- * token bridge using the @arbitrum/orbit-sdk.
+ * token bridge using the @arbitrum/chain-sdk.
  */
 export function generateOrbitDeployment(
   input: GenerateOrbitDeploymentInput
@@ -515,6 +692,15 @@ export function generateOrbitDeployment(
     }
 
     files["scripts/deploy-rollup.ts"] = code;
+
+    // Generate token approval script when using custom gas token
+    if (nativeToken) {
+      let approveCode = APPROVE_TOKEN_TEMPLATE;
+      approveCode = approveCode.replace(/\{parentChainId\}/g, String(parentChainId));
+      approveCode = approveCode.replace(/\{parentChainName\}/g, parentChainName);
+      approveCode = approveCode.replace(/\{nativeToken\}/g, nativeToken);
+      files["scripts/approve-token.ts"] = approveCode;
+    }
   }
 
   // Generate token bridge deployment
@@ -556,7 +742,7 @@ export function generateOrbitDeployment(
       validators,
       batchPosters,
     },
-    setupInstructions: getSetupInstructions(deploymentType),
+    setupInstructions: getSetupInstructions(deploymentType, nativeToken),
     notes: getDeploymentNotes(deploymentType, nativeToken, isAnyTrust, rollupVersion),
     disclaimer: TEMPLATE_DISCLAIMER,
   };
