@@ -81,7 +81,9 @@ const DEPLOY_ROLLUP_V3_TEMPLATE = `import 'dotenv/config';
 import * as fs from 'fs';
 import {
   createPublicClient,
+  createWalletClient,
   http,
+  maxUint256,
   Chain,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
@@ -90,7 +92,7 @@ import {
   createRollup,
   createRollupPrepareDeploymentParamsConfig,
 } from '@arbitrum/chain-sdk';
-
+{tokenApprovalConstants}
 /**
  * v3.1 Orbit Rollup Deployment — BoLD Challenge Protocol
  *
@@ -118,7 +120,7 @@ async function main() {
     chain: parentChain,
     transport: http(process.env.PARENT_CHAIN_RPC),
   });
-
+{tokenApprovalBlock}
   const chainConfig = prepareChainConfig({
     chainId: {chainId},
     arbitrum: {
@@ -190,7 +192,9 @@ const DEPLOY_ROLLUP_V2_TEMPLATE = `import 'dotenv/config';
 import * as fs from 'fs';
 import {
   createPublicClient,
+  createWalletClient,
   http,
+  maxUint256,
   Chain,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
@@ -199,7 +203,7 @@ import {
   createRollup,
   createRollupPrepareDeploymentParamsConfig,
 } from '@arbitrum/chain-sdk';
-
+{tokenApprovalConstants}
 /**
  * v2.1 Orbit Rollup Deployment — Classic Challenge Protocol
  *
@@ -228,7 +232,7 @@ async function main() {
     chain: parentChain,
     transport: http(process.env.PARENT_CHAIN_RPC),
   });
-
+{tokenApprovalBlock}
   const chainConfig = prepareChainConfig({
     chainId: {chainId},
     arbitrum: {
@@ -687,8 +691,68 @@ export function generateOrbitDeployment(
         /\{nativeTokenLine\}/g,
         `\n      nativeToken: '${nativeToken}' as \`0x\${string}\`,`
       );
+      // Inline token approval: ABI constant + walletClient + approve() before createRollup
+      code = code.replace(/\{tokenApprovalConstants\}/g, `
+// ERC20 ABI for token approval
+const erc20Abi = [
+  {
+    name: 'approve',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    name: 'allowance',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'spender', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const;
+`);
+      code = code.replace(/\{tokenApprovalBlock\}/g, `
+  // --- Token approval for custom gas token ---
+  const nativeToken = '${nativeToken}' as \\\`0x\\\${string}\\\`;
+  const rollupCreator = '${rollupCreatorAddress}' as \\\`0x\\\${string}\\\`;
+
+  const walletClient = createWalletClient({
+    account,
+    chain: parentChain,
+    transport: http(process.env.PARENT_CHAIN_RPC),
+  });
+
+  const currentAllowance = await parentChainPublicClient.readContract({
+    address: nativeToken,
+    abi: erc20Abi,
+    functionName: 'allowance',
+    args: [account.address, rollupCreator],
+  });
+
+  if (currentAllowance === 0n) {
+    console.log('Approving native token for RollupCreator...');
+    const approveTx = await walletClient.writeContract({
+      address: nativeToken,
+      abi: erc20Abi,
+      functionName: 'approve',
+      args: [rollupCreator, maxUint256],
+    });
+    await parentChainPublicClient.waitForTransactionReceipt({ hash: approveTx });
+    console.log('  Token approved');
+  } else {
+    console.log('Native token already approved for RollupCreator');
+  }
+`);
     } else {
       code = code.replace(/\{nativeTokenLine\}/g, "");
+      code = code.replace(/\{tokenApprovalConstants\}/g, "");
+      code = code.replace(/\{tokenApprovalBlock\}/g, "");
     }
 
     files["scripts/deploy-rollup.ts"] = code;

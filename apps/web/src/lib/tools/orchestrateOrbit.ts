@@ -528,6 +528,93 @@ function generateDevelopmentWorkflow(isAnyTrust: boolean) {
   };
 }
 
+function generateTestTokenSol(chainName: string): string {
+  const tokenName = chainName
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .replace(/\s+/g, "");
+  return `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+/**
+ * Minimal ERC-20 for testing as a custom gas token on an Orbit chain.
+ *
+ * Deploy with Foundry:
+ *   forge create contracts/TestToken.sol:${tokenName}Token \\
+ *     --rpc-url $PARENT_CHAIN_RPC \\
+ *     --private-key $DEPLOYER_PRIVATE_KEY \\
+ *     --constructor-args "$(cast address $DEPLOYER_PRIVATE_KEY)"
+ *
+ * Or use the deploy script:
+ *   bash scripts/deploy-test-token.sh
+ */
+contract ${tokenName}Token is ERC20 {
+    constructor(address initialHolder) ERC20("${tokenName} Gas Token", "${tokenName.substring(0, 4).toUpperCase()}") {
+        // Mint 1 billion tokens to the deployer for testing
+        _mint(initialHolder, 1_000_000_000 * 10 ** decimals());
+    }
+}
+`;
+}
+
+function generateDeployTokenSh(): string {
+  return `#!/usr/bin/env bash
+set -euo pipefail
+
+# Load environment variables
+if [ -f .env ]; then
+  set -a
+  source .env
+  set +a
+fi
+
+echo "=== Deploy Test ERC-20 Gas Token ==="
+
+# Check for Foundry
+if ! command -v forge &> /dev/null; then
+  echo "Error: Foundry not installed."
+  echo "Install: curl -L https://foundry.paradigm.xyz | bash && foundryup"
+  exit 1
+fi
+
+# Install OpenZeppelin (if not already)
+if [ ! -d "lib/openzeppelin-contracts" ]; then
+  echo "Installing OpenZeppelin contracts..."
+  forge install OpenZeppelin/openzeppelin-contracts --no-commit
+fi
+
+# Get deployer address from private key
+DEPLOYER_ADDRESS=$(cast wallet address "$DEPLOYER_PRIVATE_KEY")
+
+echo "Deploying test token..."
+echo "  Deployer: $DEPLOYER_ADDRESS"
+echo "  RPC: $PARENT_CHAIN_RPC"
+
+# Deploy
+DEPLOY_OUTPUT=$(forge create contracts/TestToken.sol:*Token \\
+  --rpc-url "$PARENT_CHAIN_RPC" \\
+  --private-key "$DEPLOYER_PRIVATE_KEY" \\
+  --constructor-args "$DEPLOYER_ADDRESS" \\
+  --json)
+
+TOKEN_ADDRESS=$(echo "$DEPLOY_OUTPUT" | jq -r '.deployedTo')
+
+echo ""
+echo "Token deployed!"
+echo "  Address: $TOKEN_ADDRESS"
+echo ""
+echo "Add to your .env:"
+echo "  NATIVE_TOKEN=$TOKEN_ADDRESS"
+echo ""
+echo "Next steps:"
+echo "  1. Set NATIVE_TOKEN=$TOKEN_ADDRESS in .env"
+echo "  2. Run: npx tsx scripts/approve-token.ts"
+echo "  3. Run: npm run deploy:rollup"
+`;
+}
+
 /**
  * Orchestrate generation of a complete Orbit chain deployment project.
  *
@@ -638,6 +725,12 @@ export function orchestrateOrbit(
     }
   }
 
+  // 6b. ERC-20 test token for custom gas token chains
+  if (nativeToken) {
+    files["contracts/TestToken.sol"] = generateTestTokenSol(chainName);
+    files["scripts/deploy-test-token.sh"] = generateDeployTokenSh();
+  }
+
   // 7. Scaffold files
   files["package.json"] = generatePackageJson(chainName);
   files["tsconfig.json"] = generateTsconfig();
@@ -683,6 +776,8 @@ export function orchestrateOrbit(
   };
   if (nativeToken) {
     projectStructure["scripts/"].push("approve-token.ts");
+    projectStructure["scripts/"].push("deploy-test-token.sh");
+    projectStructure["contracts/"] = ["TestToken.sol"];
   }
   if (isAnyTrust) {
     projectStructure["scripts/"].push("configure-anytrust.ts");

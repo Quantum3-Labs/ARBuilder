@@ -153,6 +153,7 @@ main().catch(console.error);
 `;
 
 const ANYTRUST_KEYSET_TEMPLATE = `import 'dotenv/config';
+import * as fs from 'fs';
 import {
   createPublicClient,
   createWalletClient,
@@ -188,6 +189,15 @@ const parentChain: Chain = {
   },
 };
 
+/**
+ * Configure AnyTrust DAC keyset on the SequencerInbox.
+ *
+ * Prerequisites:
+ *   1. Deploy rollup (deploy-rollup.ts) — creates deployment.json
+ *   2. Generate BLS keys for each DAC member:
+ *      docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.7-75e084e datool keygen --dir /keys
+ *   3. Add each member's BLS public key to the dacMembers array below
+ */
 async function main() {
   const account = privateKeyToAccount(
     process.env.DEPLOYER_PRIVATE_KEY! as \`0x\${string}\`
@@ -204,18 +214,39 @@ async function main() {
     transport: http(process.env.PARENT_CHAIN_RPC),
   });
 
-  const sequencerInboxAddress = '{sequencerInbox}' as \`0x\${string}\`;
+  // Read SequencerInbox from deployment.json if available
+  let sequencerInboxAddress: \`0x\${string}\` = '{sequencerInbox}' as \`0x\${string}\`;
+
+  if (fs.existsSync('deployment.json')) {
+    const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));
+    sequencerInboxAddress = deployment.coreContracts.sequencerInbox as \`0x\${string}\`;
+    console.log('Loaded SequencerInbox from deployment.json:', sequencerInboxAddress);
+  } else {
+    console.log('Warning: deployment.json not found. Using placeholder address.');
+    console.log('Run deploy-rollup.ts first, or set sequencerInboxAddress manually.');
+  }
 
   // DAC member public keys (BLS keys)
+  // Generate with: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.7-75e084e datool keygen --dir /keys
   const dacMembers: string[] = [];
 
+  if (dacMembers.length === 0) {
+    console.error('\\nError: No DAC members configured.');
+    console.error('Add BLS public keys to the dacMembers array in this script.');
+    console.error('Generate keys: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.7-75e084e datool keygen --dir /keys');
+    process.exit(1);
+  }
+
   // Construct keyset bytes
+  // Format: [assumedHonest (uint64), numMembers (uint64), ...member BLS pubkeys (48 bytes each)]
   const keysetBytes = '0x' as \`0x\${string}\`;
 
   console.log('Setting valid keyset on SequencerInbox...');
   console.log('  SequencerInbox:', sequencerInboxAddress);
   console.log('  DAC members:', dacMembers.length);
 
+  // Note: setValidKeyset must be called through the UpgradeExecutor
+  // if access is restricted (which it is by default after deployment)
   const txHash = await walletClient.writeContract({
     address: sequencerInboxAddress,
     abi: sequencerInboxAbi,
