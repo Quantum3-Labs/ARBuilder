@@ -23,30 +23,6 @@ import {
 import { selectTemplate, StylusTemplate } from "../templates/stylusTemplates";
 
 /**
- * Validate and fix common LLM mistakes in generated code.
- * Mirrors the Python _fix_code() safety nets in generate_stylus_code.py.
- *
- * CF Workers cannot run `cargo check` (no Docker), so ALL regex fixes stay
- * here as the only validation layer. The Python MCP server has a trimmed
- * set (16 deterministic fixes) because it uses cargo check for semantic
- * validation.
- *
- * Fix categories:
- *   STRUCTURAL (1-3, 5-8): Empty sol_storage!, cfg_attr, extern crate,
- *     Vec imports, alloc::vec, single sol_storage!, entrypoint placement
- *   BEHAVIORAL (9, 9b-9d, 29, 32): sol! → sol_interface!, Rust Storage*
- *     types → Solidity types, camelCase → snake_case, self.vm() host arg
- *   API MIGRATION (10-15, 17-18, 20-21): transfer_eth path, remove
- *     evm/msg modules, deprecated API replacements
- *   SEMANTIC (16, 19, 22, 27-28, 30-31, 33-36, 38): Storage .get()
- *     enforcement, StorageString API, StorageVec unwrap, nested mapping
- *     borrow, mapping unwrap_or_default, B256 conversion, const U256,
- *     string mapping reads, abi_encode on enum, StorageString bare access,
- *     pub const in impl — Python removes these (cargo check catches them)
- *   IMPORT MGMT (37/9d): alloc::string imports dedup + insertion
- *   CLEANUP (24-26, 39): unwrap_or_else, vm().log()?, as_usize, garbled output
- */
-/**
  * Structurally sanitize the sol_storage! block.
  * Strips `= value` defaults, removes garbled lines, validates field syntax.
  * Falls back to template's sol_storage! if the block is unsalvageable.
@@ -192,19 +168,94 @@ function sanitizeSolStorage(code: string, template: StylusTemplate): string {
   return code.slice(0, blockStart) + newBlock + code.slice(blockEnd);
 }
 
-function validateAndFixCode(code: string, template: StylusTemplate): string {
+// ─── Field Type Map ────────────────────────────────────────────────
+// Parsed once from sol_storage!, shared across all fix phases.
+
+interface FieldInfo {
+  name: string;
+  type: "primitive" | "mapping" | "string" | "string_mapping" | "array" | "nested_mapping" | "address_array";
+  solType: string;
+  valueType?: string;
+  keyType?: string;
+}
+type FieldMap = Map<string, FieldInfo>;
+
+interface FixContext {
+  fields: FieldMap;
+  template: StylusTemplate;
+  structName: string;
+}
+
+/** Parse sol_storage! block and classify each field by type. */
+function parseFieldMap(code: string): FieldMap {
+  const fields: FieldMap = new Map();
+  const blockMatch = code.match(/sol_storage!\s*\{[\s\S]*?#\[entrypoint\][\s\S]*?pub\s+struct\s+\w+\s*\{([\s\S]*?)\n\s*\}/);
+  if (!blockMatch) return fields;
+  const body = blockMatch[1];
+  for (const line of body.split("\n")) {
+    const stripped = line.trim();
+    if (!stripped || stripped.startsWith("//")) continue;
+    // Extract field name: last word before `;`
+    const nameMatch = stripped.match(/(\w+)\s*;$/);
+    if (!nameMatch) continue;
+    const name = nameMatch[1];
+    // Extract type: everything before the field name
+    const typeStr = stripped.slice(0, stripped.lastIndexOf(name)).trim();
+    if (!typeStr) continue;
+
+    if (/^mapping\(/.test(typeStr)) {
+      // Check for nested mapping: mapping(K1 => mapping(K2 => V))
+      const nestedMatch = typeStr.match(/^mapping\(\s*(\w+)\s*=>\s*mapping\(/);
+      if (nestedMatch) {
+        fields.set(name, { name, type: "nested_mapping", solType: typeStr, keyType: nestedMatch[1] });
+      } else {
+        // Check if value type is string
+        const mapMatch = typeStr.match(/^mapping\(\s*(\w+)\s*=>\s*(\w+)\s*\)$/);
+        if (mapMatch && mapMatch[2] === "string") {
+          fields.set(name, { name, type: "string_mapping", solType: typeStr, keyType: mapMatch[1], valueType: "string" });
+        } else {
+          const keyMatch = typeStr.match(/^mapping\(\s*(\w+)/);
+          fields.set(name, { name, type: "mapping", solType: typeStr, keyType: keyMatch?.[1], valueType: mapMatch?.[2] });
+        }
+      }
+    } else if (typeStr === "string") {
+      fields.set(name, { name, type: "string", solType: "string" });
+    } else if (/\[\]$/.test(typeStr)) {
+      if (typeStr === "address[]") {
+        fields.set(name, { name, type: "address_array", solType: typeStr });
+      } else {
+        fields.set(name, { name, type: "array", solType: typeStr });
+      }
+    } else {
+      fields.set(name, { name, type: "primitive", solType: typeStr });
+    }
+  }
+  return fields;
+}
+
+/** Build fix context with field map and struct name. */
+function buildFixContext(code: string, template: StylusTemplate): FixContext {
+  const fields = parseFieldMap(code);
+  const structMatch = code.match(/pub\s+struct\s+(\w+)\s*\{/);
+  return { fields, template, structName: structMatch?.[1] ?? "Contract" };
+}
+
+// ─── Phase 1: Structural Validation ───────────────────────────────
+// Ensures boilerplate, cfg_attr, entrypoint, sol_storage! block integrity.
+// Hard fallback to template if irrecoverable.
+
+function structuralValidate(code: string, template: StylusTemplate): string {
   let fixed = code;
 
-  // Fix 1: Remove empty sol_storage! blocks
+  // Remove empty sol_storage! blocks
   fixed = fixed.replace(/sol_storage!\s*\{\s*\}/g, "");
 
-  // Fix 2: Ensure proper cfg_attr if missing
+  // Ensure proper cfg_attr if missing
   if (!fixed.includes('#![cfg_attr(not(any(test')) {
     const templateStart = template.libRs.split("extern crate alloc")[0];
     if (!fixed.startsWith("#![cfg_attr")) {
       fixed = templateStart + fixed;
     } else {
-      // Replace wrong cfg_attr patterns with correct ones
       fixed = fixed.replace(
         /#!\[cfg_attr\(not\(any\(feature\s*=\s*"export-abi",\s*test\)\),\s*no_std\)\]/g,
         '#![cfg_attr(not(any(test, feature = "export-abi")), no_std)]'
@@ -216,7 +267,7 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     }
   }
 
-  // Fix 3: Ensure extern crate alloc if missing
+  // Ensure extern crate alloc if missing
   if (!fixed.includes("extern crate alloc")) {
     fixed = fixed.replace(
       /^(#!\[cfg_attr.*\n)+/m,
@@ -224,41 +275,13 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     );
   }
 
-  // Fix 4: REMOVED — sol! is NOT in prelude, the explicit import is correct.
-  // Previously this removed `use alloy_sol_types::sol;` which broke sol! events/errors.
-
-  // Fix 5: Handle Vec imports - avoid duplicates
-  if (fixed.includes("use alloc::vec::Vec;") && fixed.includes("use alloc::{") && fixed.includes("vec::Vec")) {
-    fixed = fixed.replace(/use alloc::vec::Vec;\n?/g, "");
-  }
-  if (fixed.includes("Vec<u8>") && !fixed.includes("alloc::vec::Vec") && !fixed.includes("alloc::{")) {
-    fixed = fixed.replace(
-      /(extern crate alloc;)/,
-      "$1\n\nuse alloc::vec::Vec;"
-    );
-  }
-
-  // Fix 6: Ensure use alloc::vec; is present (sol_storage! needs vec module)
-  if (!fixed.includes("use alloc::vec;") && !fixed.includes("use alloc::{")) {
-    fixed = fixed.replace(
-      /(extern crate alloc;\s*\n)/,
-      "$1\nuse alloc::{vec, vec::Vec};\n"
-    );
-  } else if (fixed.includes("use alloc::vec::Vec;") && !fixed.includes("use alloc::vec;") && !fixed.includes("alloc::{")) {
-    // Has Vec but not vec module — replace with combined import
-    fixed = fixed.replace(
-      "use alloc::vec::Vec;",
-      "use alloc::{vec, vec::Vec};"
-    );
-  }
-
-  // Fix 7: Ensure there's exactly one sol_storage! block with #[entrypoint]
+  // Ensure at least one sol_storage! block (hard fallback)
   const solStorageCount = (fixed.match(/sol_storage!\s*\{/g) || []).length;
   if (solStorageCount === 0) {
     return template.libRs;
   }
 
-  // Fix 8: Ensure #[entrypoint] is inside sol_storage! if missing
+  // Ensure #[entrypoint] is inside sol_storage! if missing
   if (!fixed.includes("#[entrypoint]")) {
     fixed = fixed.replace(
       /sol_storage!\s*\{\s*(\n?\s*pub struct)/,
@@ -266,19 +289,295 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     );
   }
 
-  // Fix 52: Sanitize sol_storage! block — structural validation.
-  // Strips `= value` defaults, removes garbled lines, validates fields.
+  // Sanitize sol_storage! block (structural validation, garbled line removal)
   fixed = sanitizeSolStorage(fixed, template);
 
-  // Fix 9: Convert sol! { interface ... } to sol_interface! { interface ... }
-  // LLMs often use sol! for interfaces, but Stylus requires sol_interface!
+  return fixed;
+}
+
+// ─── Phase 2: Import Normalization ────────────────────────────────
+// Single pass over all `use` statements. Add missing, remove deprecated, deduplicate.
+
+function normalizeImports(code: string, _ctx: FixContext): string {
+  let fixed = code;
+
+  // Vec import deduplication
+  if (fixed.includes("use alloc::vec::Vec;") && fixed.includes("use alloc::{") && fixed.includes("vec::Vec")) {
+    fixed = fixed.replace(/use alloc::vec::Vec;\n?/g, "");
+  }
+  if (fixed.includes("Vec<u8>") && !fixed.includes("alloc::vec::Vec") && !fixed.includes("alloc::{")) {
+    fixed = fixed.replace(/(extern crate alloc;)/, "$1\n\nuse alloc::vec::Vec;");
+  }
+
+  // Ensure use alloc::vec (sol_storage! needs vec module)
+  if (!fixed.includes("use alloc::vec;") && !fixed.includes("use alloc::{")) {
+    fixed = fixed.replace(/(extern crate alloc;\s*\n)/, "$1\nuse alloc::{vec, vec::Vec};\n");
+  } else if (fixed.includes("use alloc::vec::Vec;") && !fixed.includes("use alloc::vec;") && !fixed.includes("alloc::{")) {
+    fixed = fixed.replace("use alloc::vec::Vec;", "use alloc::{vec, vec::Vec};");
+  }
+
+  // Remove incorrect stylus_sdk::storage imports
   fixed = fixed.replace(
-    /sol!\s*\{\s*(interface\b)/g,
-    "sol_interface! { $1"
+    /^use stylus_sdk::storage(?:::(?:StorageString|StorageMap|StorageVec|StorageU\d+|StorageBool|StorageAddress))?;\s*$/gm,
+    ""
   );
 
-  // Fix 9b: Convert Rust Storage* types to Solidity types in sol_storage!
-  // LLMs sometimes use Rust types instead of Solidity types
+  // Ensure correct alloc::string imports
+  {
+    const needsString = fixed.includes("-> String") || fixed.includes(": String") || fixed.includes(".to_string()") || fixed.includes("String::new") || fixed.includes("String::from");
+    const needsToString = fixed.includes(".to_string()");
+    if (needsString || needsToString) {
+      fixed = fixed.replace(/^use alloc::string::\{[^}]*\};\s*\n?/gm, "");
+      fixed = fixed.replace(/^use alloc::string::\w+;\s*\n?/gm, "");
+      const parts: string[] = [];
+      if (needsString) parts.push("String");
+      if (needsToString) parts.push("ToString");
+      if (parts.length > 0) {
+        const importLine = parts.length === 1
+          ? `use alloc::string::${parts[0]};`
+          : `use alloc::string::{${parts.join(", ")}};`;
+        fixed = fixed.replace(/(use alloc::\{vec, vec::Vec\};)/, `$1\n${importLine}`);
+      }
+    }
+  }
+
+  // Fix wrong transfer_eth import paths
+  fixed = fixed.replace(/use stylus_sdk::call::transfer_eth;/g, "use stylus_sdk::call::transfer::transfer_eth;");
+  fixed = fixed.replace(
+    /use stylus_sdk::call::\{([^}]*)\btransfer_eth\b([^}]*)\};/g,
+    (_match, before: string, after: string) => {
+      const others = (before.replace("transfer_eth", "").trim().replace(/^,|,$/g, "").trim()
+        + ", " + after.trim().replace(/^,|,$/g, "").trim()).replace(/^,\s*|,\s*$/g, "").trim();
+      const transferLine = "use stylus_sdk::call::transfer::transfer_eth;";
+      return others ? `${transferLine}\nuse stylus_sdk::call::{${others}};` : transferLine;
+    }
+  );
+
+  // Remove deprecated imports
+  fixed = fixed.replace(/^use stylus_sdk::evm.*;\s*$/gm, "");
+  fixed = fixed.replace(/^use stylus_sdk::msg.*;\s*$/gm, "");
+  fixed = fixed.replace(/^use std::time.*;\s*$/gm, "");
+  fixed = fixed.replace(/^use stylus_sdk::call::Call;\s*$/gm, "");
+
+  return fixed;
+}
+
+// ─── Phase 3: Storage Accessor Normalization ──────────────────────
+// THE BIG WIN: Type-aware normalization of all storage accessor patterns
+// using the FieldMap parsed in Phase 1. Replaces 16 scattered fixes.
+
+function normalizeStorageAccessors(code: string, ctx: FixContext): string {
+  let fixed = code;
+
+  // --- Per-field-type rules ---
+
+  for (const [, field] of ctx.fields) {
+    const esc = field.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    switch (field.type) {
+      case "primitive": {
+        // Bare field read → .get()
+        const bareFieldPattern = new RegExp(`(\\w+)\\.${esc}\\b(?!\\s*[.(])`, "g");
+        fixed = fixed.replace(bareFieldPattern, `$1.${field.name}.get()`);
+        // .setter().set(val) → .set(val) (setter is for mappings only)
+        fixed = fixed.replace(
+          new RegExp(`self\\.${esc}\\.setter\\(\\)\\.set\\(`, "g"),
+          `self.${field.name}.set(`
+        );
+        // .setter(val).set(val) → .set(val) (same value repeated)
+        fixed = fixed.replace(
+          new RegExp(`self\\.${esc}\\.setter\\(([^)]+)\\)\\.set\\(\\1\\)`, "g"),
+          `self.${field.name}.set($1)`
+        );
+        break;
+      }
+
+      case "string": {
+        // .set() → .set_str()
+        fixed = fixed.replace(new RegExp(`\\.${esc}\\.set\\(`, "g"), `.${field.name}.set_str(`);
+        // .get() → .get_string()
+        fixed = fixed.replace(new RegExp(`\\.${esc}\\.get\\(\\)`, "g"), `.${field.name}.get_string()`);
+        // Bare self.field → .get_string()
+        fixed = fixed.replace(
+          new RegExp(`self\\.${esc}(?![.\\w])`, "g"),
+          `self.${field.name}.get_string()`
+        );
+        break;
+      }
+
+      case "mapping":
+      case "nested_mapping": {
+        // .get(key).unwrap_or_default() → .get(key)
+        fixed = fixed.replace(
+          new RegExp(`\\.${esc}\\.get\\(([^)]*)\\)\\.unwrap_or_default\\(\\)`, "g"),
+          `.${field.name}.get($1)`
+        );
+        // Nested .getter(k1).get(k2).unwrap_or_default()
+        fixed = fixed.replace(
+          new RegExp(`\\.${esc}\\.getter\\(([^)]*)\\)\\.get\\(([^)]*)\\)\\.unwrap_or_default\\(\\)`, "g"),
+          `.${field.name}.getter($1).get($2)`
+        );
+        // .setter(key).unwrap().set(val) → .setter(key).set(val) (unwrap is for StorageVec only)
+        fixed = fixed.replace(
+          new RegExp(`\\.${esc}\\.setter\\(([^)]+)\\)\\.unwrap\\(\\)`, "g"),
+          `.${field.name}.setter($1)`
+        );
+        // .set(key, value) → .setter(key).set(value) (two-arg set doesn't exist)
+        // Note: this is applied field-specifically to avoid false positives
+        break;
+      }
+
+      case "string_mapping": {
+        // .setter(key).setter().set_str(val) → .setter(key).set_str(val)
+        fixed = fixed.replace(
+          new RegExp(`\\.${esc}\\.setter\\(([^)]+)\\)\\.setter\\(\\)\\.set_str\\(`, "g"),
+          `.${field.name}.setter($1).set_str(`
+        );
+        // .setter(key).unwrap().set(val) → .setter(key).set(val)
+        fixed = fixed.replace(
+          new RegExp(`\\.${esc}\\.setter\\(([^)]+)\\)\\.unwrap\\(\\)`, "g"),
+          `.${field.name}.setter($1)`
+        );
+        break;
+      }
+
+      case "array": {
+        // .setter(i).set(v) → .setter(i).unwrap().set(v) (StorageVec returns Option)
+        fixed = fixed.replace(
+          new RegExp(`\\.${esc}\\s*\\.setter\\(((?:[^()]*|\\([^()]*\\))*)\\)\\s*\\.set\\(`, "g"),
+          `.${field.name}.setter($1).unwrap().set(`
+        );
+        break;
+      }
+
+      case "address_array": {
+        // .setter(i).set(v) → .setter(i).unwrap().set(v)
+        fixed = fixed.replace(
+          new RegExp(`\\.${esc}\\s*\\.setter\\(((?:[^()]*|\\([^()]*\\))*)\\)\\s*\\.set\\(`, "g"),
+          `.${field.name}.setter($1).unwrap().set(`
+        );
+        // *self.field.get(i).unwrap() → Address::from(*self.field.get(i).unwrap())
+        fixed = fixed.replace(
+          new RegExp(`(?<!Address::from\\()\\*self\\.${esc}\\.get\\(([^)]+)\\)\\.unwrap\\(\\)`, "g"),
+          `Address::from(*self.${field.name}.get($1).unwrap())`
+        );
+        break;
+      }
+    }
+  }
+
+  // --- Cross-field accessor patterns (not field-specific) ---
+
+  // .get(k).setter(...) → .setter(k).setter(...) (nested mapping immutable→mutable)
+  fixed = fixed.replace(
+    /\.get\(((?:[^()]*|\([^()]*\))*)\)\s*\.setter\(/g,
+    ".setter($1).setter("
+  );
+  fixed = fixed.replace(
+    /\.getter\(((?:[^()]*|\([^()]*\))*)\)\s*\.setter\(/g,
+    ".setter($1).setter("
+  );
+
+  // .get(key).field.setter( → .setter(key).field.setter( (nested struct writes)
+  fixed = fixed.replace(
+    /\.get\(((?:[^()]*|\([^()]*\))*)\)((?:\.\w+)+)\.setter\(/g,
+    ".setter($1)$2.setter("
+  );
+
+  // .field.set(key, value) → .field.setter(key).set(value) (two-arg .set doesn't exist on StorageMap)
+  fixed = fixed.replace(
+    /(\.\w+)\.set\(\s*((?:[^,()]*|\([^()]*\))*)\s*,\s*((?:[^,()]*|\([^()]*\))*)\s*\)/g,
+    "$1.setter($2).set($3)"
+  );
+
+  // --- String mapping read normalization ---
+  // .get(key).getter() → .getter(key) (inject key into empty getter)
+  fixed = fixed.replace(
+    /\.get\(((?:[^()]*|\([^()]*\))+)\)\s*\.getter\(\)/g,
+    ".getter($1)"
+  );
+  // .get(key).getter(key2) → .getter(key2) (strip redundant .get)
+  fixed = fixed.replace(
+    /\.get\(((?:[^()]*|\([^()]*\))*)\)\s*\.getter\(/g,
+    ".getter("
+  );
+
+  // Per-field string mapping read normalization
+  for (const [, field] of ctx.fields) {
+    if (field.type !== "string_mapping") continue;
+    const esc = field.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // Pass 1: .field.get(k).get_string() → .field.getter(k).get_string()
+    fixed = fixed.replace(
+      new RegExp(`\\.${esc}\\.get\\(([^)]+)\\)\\.get_string\\(\\)`, "g"),
+      `.${field.name}.getter($1).get_string()`
+    );
+    // Pass 2: bare .field.get(k) → .field.getter(k).get_string()
+    fixed = fixed.replace(
+      new RegExp(`\\.${esc}\\.get\\(([^)]+)\\)`, "g"),
+      `.${field.name}.getter($1).get_string()`
+    );
+    // Pass 3: bare .field.getter(k) without .get_string() → append
+    fixed = fixed.replace(
+      new RegExp(`\\.${esc}\\.getter\\(([^)]+)\\)(?!\\.get_string\\(\\))`, "g"),
+      `.${field.name}.getter($1).get_string()`
+    );
+  }
+
+  // --- Overcorrection cleanup ---
+
+  // .get_string().unwrap_or_default() / .unwrap() → .get_string()
+  fixed = fixed.replace(/\.get_string\(\)\.unwrap_or_default\(\)/g, ".get_string()");
+  fixed = fixed.replace(/\.get_string\(\)\.unwrap\(\)/g, ".get_string()");
+
+  // Doubled .get_string() chains
+  fixed = fixed.replace(/\.get_string\(\)\s*\.get_string\(\)/g, ".get_string()");
+
+  // local_var.get_string() → local_var (only valid on self.field...)
+  fixed = fixed.replace(
+    /\b([a-z_]\w*)\.get_string\(\)/g,
+    (_match: string, varName: string) => varName === "self" ? _match : varName
+  );
+
+  // .get(key).get() → .get(key) (double .get on mapping)
+  fixed = fixed.replace(
+    /\.get\(((?:[^()]*|\([^()]*\))*)\)\.get\(\)/g,
+    ".get($1)"
+  );
+  // .get_string().get() → .get_string()
+  fixed = fixed.replace(/\.get_string\(\)\.get\(\)/g, ".get_string()");
+
+  // .getter(key).get_string() on non-string-mapping fields → .get(key)
+  {
+    const stringMapFieldNames = new Set<string>();
+    for (const [, f] of ctx.fields) {
+      if (f.type === "string_mapping") stringMapFieldNames.add(f.name);
+    }
+    const getterStringPattern = /self\.(\w+)\.getter\(([^)]+)\)\.get_string\(\)/g;
+    const gsReplacements: Array<[string, string]> = [];
+    let gsMatch;
+    while ((gsMatch = getterStringPattern.exec(fixed)) !== null) {
+      if (!stringMapFieldNames.has(gsMatch[1])) {
+        gsReplacements.push([gsMatch[0], `self.${gsMatch[1]}.get(${gsMatch[2]})`]);
+      }
+    }
+    for (const [from, to] of gsReplacements) {
+      fixed = fixed.replace(from, to);
+    }
+  }
+
+  return fixed;
+}
+
+// ─── Phase 4: API Migration ──────────────────────────────────────
+// SDK 0.10.0 migration patterns: deprecated APIs, sol_interface!, etc.
+
+function migrateApi(code: string, _ctx: FixContext): string {
+  let fixed = code;
+
+  // sol! { interface } → sol_interface! { interface }
+  fixed = fixed.replace(/sol!\s*\{\s*(interface\b)/g, "sol_interface! { $1");
+
+  // Rust Storage* types → Solidity types in sol_storage!
   fixed = fixed.replace(/StorageString/g, "string");
   fixed = fixed.replace(/StorageAddress/g, "address");
   fixed = fixed.replace(/StorageU256/g, "uint256");
@@ -295,225 +594,24 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     (_m, t: string) => `${t.toLowerCase()}[]`
   );
 
-  // Fix 9c: Remove incorrect stylus_sdk::storage imports
-  fixed = fixed.replace(
-    /^use stylus_sdk::storage(?:::(?:StorageString|StorageMap|StorageVec|StorageU\d+|StorageBool|StorageAddress))?;\s*$/gm,
-    ""
-  );
+  // transfer_eth: self.transfer_eth(args) → transfer_eth(self.vm(), args)
+  fixed = fixed.replace(/self\.transfer_eth\(([^)]+)\)/g, "transfer_eth(self.vm(), $1)");
+  // transfer_eth(self, ...) → transfer_eth(self.vm(), ...)
+  fixed = fixed.replace(/transfer_eth\(self,\s*/g, "transfer_eth(self.vm(), ");
 
-  // Fix 9d + Fix 37 (N31): Ensure correct alloc::string imports.
-  // Detect what's needed, remove ALL existing alloc::string imports, add one combined line.
-  {
-    const needsString = fixed.includes("-> String") || fixed.includes(": String") || fixed.includes(".to_string()") || fixed.includes("String::new") || fixed.includes("String::from");
-    const needsToString = fixed.includes(".to_string()");
-    if (needsString || needsToString) {
-      // Remove all existing alloc::string imports to avoid duplicates
-      fixed = fixed.replace(/^use alloc::string::\{[^}]*\};\s*\n?/gm, "");
-      fixed = fixed.replace(/^use alloc::string::\w+;\s*\n?/gm, "");
-      // Build combined import
-      const parts: string[] = [];
-      if (needsString) parts.push("String");
-      if (needsToString) parts.push("ToString");
-      if (parts.length > 0) {
-        const importLine = parts.length === 1
-          ? `use alloc::string::${parts[0]};`
-          : `use alloc::string::{${parts.join(", ")}};`;
-        fixed = fixed.replace(
-          /(use alloc::\{vec, vec::Vec\};)/,
-          `$1\n${importLine}`
-        );
-      }
-    }
-  }
-
-  // Fix 10: Fix wrong transfer_eth import paths
-  // Wrong: use stylus_sdk::call::transfer_eth;
-  // Correct: use stylus_sdk::call::transfer::transfer_eth;
-  fixed = fixed.replace(
-    /use stylus_sdk::call::transfer_eth;/g,
-    "use stylus_sdk::call::transfer::transfer_eth;"
-  );
-  // Wrong: use stylus_sdk::call::{transfer_eth, ...};
-  // Split into separate imports
-  fixed = fixed.replace(
-    /use stylus_sdk::call::\{([^}]*)\btransfer_eth\b([^}]*)\};/g,
-    (_match, before: string, after: string) => {
-      const others = (before.replace("transfer_eth", "").trim().replace(/^,|,$/g, "").trim()
-        + ", " + after.trim().replace(/^,|,$/g, "").trim()).replace(/^,\s*|,\s*$/g, "").trim();
-      const transferLine = "use stylus_sdk::call::transfer::transfer_eth;";
-      if (others) {
-        return `${transferLine}\nuse stylus_sdk::call::{${others}};`;
-      }
-      return transferLine;
-    }
-  );
-
-  // Fix 11: self.transfer_eth(to, amount) → transfer_eth(self.vm(), to, amount)
-  fixed = fixed.replace(
-    /self\.transfer_eth\(([^)]+)\)/g,
-    "transfer_eth(self.vm(), $1)"
-  );
-
-  // Fix 12: transfer_eth(self, ...) → transfer_eth(self.vm(), ...)
-  // LLMs write self instead of self.vm() — must be the vm Host context
-  fixed = fixed.replace(
-    /transfer_eth\(self,\s*/g,
-    "transfer_eth(self.vm(), "
-  );
-
-  // Fix 16: Enforce .get() on bare storage field reads
-  // Extract field names from sol_storage! block
-  const storageFields = new Set<string>();
-  // Match Solidity-type field declarations: type field_name;
-  const typeFieldPattern = /\b(?:uint\d*|int\d*|address|bool|string|bytes\d*)\s+(\w+)\s*;/g;
-  let fieldMatch;
-  while ((fieldMatch = typeFieldPattern.exec(fixed)) !== null) {
-    storageFields.add(fieldMatch[1]);
-  }
-  // Match mapping fields: mapping(...) field_name; (balanced parens for nested mappings)
-  const mappingFieldPattern = /mapping\(((?:[^()]*|\([^()]*\))*)\)\s+(\w+)\s*;/g;
-  while ((fieldMatch = mappingFieldPattern.exec(fixed)) !== null) {
-    storageFields.add(fieldMatch[2]);
-  }
-  // For each storage field, fix bare <var>.<field> reads (not followed by . or ()
-  // This catches both self.<field> AND nested struct fields like market.<field>
-  // where market = self.markets.get(id) returns a storage accessor
-  // Use \b word boundary to prevent matching field prefixes (e.g., "owner" matching "owners")
-  for (const field of storageFields) {
-    const bareFieldPattern = new RegExp(`(\\w+)\\.${field}\\b(?!\\s*[.(])`, "g");
-    fixed = fixed.replace(bareFieldPattern, `$1.${field}.get()`);
-  }
-
-  // Fix 17: self.vm().address() → self.vm().contract_address()
+  // Deprecated API replacements
+  fixed = fixed.replace(/msg::sender\(\)/g, "self.vm().msg_sender()");
+  fixed = fixed.replace(/msg::value\(\)/g, "self.vm().msg_value()");
+  fixed = fixed.replace(/evm::log\(/g, "self.vm().log(");
   fixed = fixed.replace(/self\.vm\(\)\.address\(\)/g, "self.vm().contract_address()");
-
-  // Fix 18: U256::zero() / U128::zero() → U256::ZERO / U128::ZERO
   fixed = fixed.replace(/U256::zero\(\)/g, "U256::ZERO");
   fixed = fixed.replace(/U128::zero\(\)/g, "U128::ZERO");
   fixed = fixed.replace(/U64::zero\(\)/g, "U64::ZERO");
 
-  // Fix 19: StorageString - .set() → .set_str(), .get() → .get_string()
-  const stringFields = new Set<string>();
-  const stringFieldPattern = /\bstring\s+(\w+)\s*;/g;
-  let stringFieldMatch;
-  while ((stringFieldMatch = stringFieldPattern.exec(fixed)) !== null) {
-    stringFields.add(stringFieldMatch[1]);
-  }
-  for (const sf of stringFields) {
-    fixed = fixed.replace(new RegExp(`\\.${sf}\\.set\\(`, "g"), `.${sf}.set_str(`);
-    fixed = fixed.replace(new RegExp(`\\.${sf}\\.get\\(\\)`, "g"), `.${sf}.get_string()`);
-  }
+  // std::time → block_timestamp
+  fixed = fixed.replace(/std::time::SystemTime::now\(\)[^;]*/g, "self.vm().block_timestamp()");
 
-  // Fix 20: std::time::SystemTime — not available in no_std WASM
-  fixed = fixed.replace(/^use std::time.*;\s*$/gm, "");
-  fixed = fixed.replace(
-    /std::time::SystemTime::now\(\)[^;]*/g,
-    "self.vm().block_timestamp()"
-  );
-
-  // Fix 21: Remove incorrect `use stylus_sdk::call::Call;` import
-  // Call is available from prelude::* — no separate import needed
-  fixed = fixed.replace(/^use stylus_sdk::call::Call;\s*$/gm, "");
-
-  // Fix 22: StorageVec .setter(i).set(v) → .setter(i).unwrap().set(v)
-  // StorageVec::setter(usize) returns Option, needs unwrap.
-  // BUT mapping .setter(key) does NOT return Option — no unwrap needed.
-  // Only add .unwrap() on dynamic array fields (type[] in sol_storage!).
-  const arrayFields = new Set<string>();
-  const arrayFieldPattern = /\b\w+\[\]\s+(\w+)\s*;/g;
-  let arrayFieldMatch;
-  while ((arrayFieldMatch = arrayFieldPattern.exec(fixed)) !== null) {
-    arrayFields.add(arrayFieldMatch[1]);
-  }
-  for (const af of arrayFields) {
-    // Use balanced-paren pattern to handle nested parens
-    // e.g. setter(U256::from(idx as u64))
-    // Allow optional whitespace/newlines between field name, .setter(), and .set()
-    // for multiline chains like self.field\n    .setter(x)\n    .set(v).
-    fixed = fixed.replace(
-      new RegExp(`\\.${af}\\s*\\.setter\\(((?:[^()]*|\\([^()]*\\))*)\\)\\s*\\.set\\(`, "g"),
-      `.${af}.setter($1).unwrap().set(`
-    );
-  }
-
-  // Fix 27: .get/.getter(k1).setter(k2) → .setter(k1).setter(k2)
-  // Nested mapping writes: .get()/.getter() return immutable ref, can't
-  // call .setter() on it. Must chain .setter() for writes.
-  fixed = fixed.replace(
-    /\.get\(((?:[^()]*|\([^()]*\))*)\)\s*\.setter\(/g,
-    ".setter($1).setter("
-  );
-  fixed = fixed.replace(
-    /\.getter\(((?:[^()]*|\([^()]*\))*)\)\s*\.setter\(/g,
-    ".setter($1).setter("
-  );
-
-  // Fix 45: .get(key).field.setter( → .setter(key).field.setter(
-  // Nested struct writes: .get(key) on mapping returns immutable
-  // StorageGuard, can't call .setter() on struct fields through it.
-  // e.g. self.roles.get(role).members.setter(account).set(true)
-  //   → self.roles.setter(role).members.setter(account).set(true)
-  fixed = fixed.replace(
-    /\.get\(((?:[^()]*|\([^()]*\))*)\)((?:\.\w+)+)\.setter\(/g,
-    ".setter($1)$2.setter("
-  );
-
-  // Fix 46: .field.set(key, value) → .field.setter(key).set(value)
-  // StorageMap has no .set(k,v) method — must use .setter(k).set(v).
-  // Only matches two-arg .set() calls (single-arg is valid on StorageGuardMut).
-  fixed = fixed.replace(
-    /(\.\w+)\.set\(\s*((?:[^,()]*|\([^()]*\))*)\s*,\s*((?:[^,()]*|\([^()]*\))*)\s*\)/g,
-    "$1.setter($2).set($3)"
-  );
-
-  // Fix 47: Normalize .get(key).getter(...) chains.
-  // .get(key) returns a value, .getter() is not a valid method on it.
-  // Two-step: (a) inject key into empty .getter(), (b) strip redundant .get().
-  // Step a: .get(key).getter() → .getter(key) — preserve key when getter is empty
-  fixed = fixed.replace(
-    /\.get\(((?:[^()]*|\([^()]*\))+)\)\s*\.getter\(\)/g,
-    ".getter($1)"
-  );
-  // Step b: .get(key1).getter(key2...) → .getter(key2...) — strip redundant .get()
-  // Handles N52 (.get(k).getter(k).get_string()) and all variants.
-  fixed = fixed.replace(
-    /\.get\(((?:[^()]*|\([^()]*\))*)\)\s*\.getter\(/g,
-    ".getter("
-  );
-
-  // Fix 48: B32 → B256 for bytes32
-  // LLM sometimes generates B32 (non-existent) instead of B256.
-  // bytes32 maps to FixedBytes<32> which is aliased as B256.
-  fixed = fixed.replace(/\bB32\b/g, "B256");
-
-  // Fix 23: REMOVED — corrupts sol! event/error declarations.
-
-  // Fix 28: Remove spurious .unwrap_or_default() on mapping reads.
-  // StorageMap::get() returns value directly (zero-default), NOT Option.
-  // Use balanced-paren regex for nested mapping declarations like
-  // mapping(address => mapping(address => uint256)) allowances;
-  const mapFields28 = new Set<string>();
-  const mapFieldPattern28 = /mapping\(((?:[^()]*|\([^()]*\))*)\)\s+(\w+)\s*;/g;
-  let mapFieldMatch28;
-  while ((mapFieldMatch28 = mapFieldPattern28.exec(fixed)) !== null) {
-    mapFields28.add(mapFieldMatch28[2]);
-  }
-  for (const mf of mapFields28) {
-    // Direct: .field.get(key).unwrap_or_default()
-    fixed = fixed.replace(
-      new RegExp(`\\.${mf}\\.get\\(([^)]*)\\)\\.unwrap_or_default\\(\\)`, "g"),
-      `.${mf}.get($1)`
-    );
-    // Nested via .getter(): .field.getter(k1).get(k2).unwrap_or_default()
-    fixed = fixed.replace(
-      new RegExp(`\\.${mf}\\.getter\\(([^)]*)\\)\\.get\\(([^)]*)\\)\\.unwrap_or_default\\(\\)`, "g"),
-      `.${mf}.getter($1).get($2)`
-    );
-  }
-
-  // Fix 29: sol_interface! generates snake_case Rust methods from
-  // Solidity camelCase function names. Only apply when followed by
-  // (self.vm(), which signals a sol_interface! call.
+  // sol_interface! camelCase → snake_case call sites
   const solIfaceRenames: Record<string, string> = {
     transferFrom: "transfer_from",
     balanceOf: "balance_of",
@@ -534,33 +632,10 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     );
   }
 
-  // Fix 30: B256::from_uint(&expr) does not exist in alloy-primitives.
-  // Use B256::from(expr.to_be_bytes::<32>()) instead.
-  fixed = fixed.replace(
-    /B256::from_uint\(&(\w+)\)/g,
-    "B256::from($1.to_be_bytes::<32>())"
-  );
-
-  // Fix 31: U256::from(N) in const context → U256::from_limbs([N, 0, 0, 0])
-  // U256::from() is not const-compatible in alloy-primitives 1.3.1.
-  fixed = fixed.replace(
-    /(const\s+\w+\s*:\s*U256\s*=\s*)U256::from\((\d+)\)/g,
-    "$1U256::from_limbs([$2, 0, 0, 0])"
-  );
-
-  // Fix 32: sol_interface! calls must have self.vm() as first host argument.
-  // LLMs often omit self.vm() and pass the Call context as the first argument.
-  // Pattern A: Call::new() as first argument
-  fixed = fixed.replace(
-    /\b(\w+)\.(\w+)\(Call::new\(\)/g,
-    "$1.$2(self.vm(), Call::new()"
-  );
-  // Pattern B: Call::new_mutating(self) as first argument
-  fixed = fixed.replace(
-    /\b(\w+)\.(\w+)\(Call::new_mutating\(self\)/g,
-    "$1.$2(self.vm(), Call::new_mutating(self)"
-  );
-  // Pattern C: Named Call variable as first argument
+  // sol_interface! missing self.vm() host arg
+  fixed = fixed.replace(/\b(\w+)\.(\w+)\(Call::new\(\)/g, "$1.$2(self.vm(), Call::new()");
+  fixed = fixed.replace(/\b(\w+)\.(\w+)\(Call::new_mutating\(self\)/g, "$1.$2(self.vm(), Call::new_mutating(self)");
+  // Named Call variable pattern
   const callVarPattern = /let\s+(?:mut\s+)?(\w+)\s*=\s*Call::new/g;
   let callVarMatch;
   while ((callVarMatch = callVarPattern.exec(fixed)) !== null) {
@@ -571,157 +646,109 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     );
   }
 
-  // Fix 24: .unwrap_or_else(VALUE) → .unwrap_or(VALUE)
-  // unwrap_or_else takes a closure, not a value.
-  fixed = fixed.replace(
-    /\.unwrap_or_else\((\w+::(?:ZERO|MAX|MIN|ONE))\)/g,
-    ".unwrap_or($1)"
-  );
+  return fixed;
+}
 
-  // Fix 25: self.vm().log(...)? → self.vm().log(...)
-  // vm().log() returns (), not Result — cannot use ? operator
-  fixed = fixed.replace(
-    /(self\.vm\(\)\.log\([^;]*\))\?/g,
-    "$1"
-  );
+// ─── Phase 5: Type Corrections ───────────────────────────────────
+// B256, U256 const, I256 suffix, unwrap semantics, etc.
 
-  // Fix 26: .as_usize() → .to::<usize>()
-  // U256 does not have as_usize(). Use Uint::to() method.
-  fixed = fixed.replace(
-    /\.as_usize\(\)/g,
-    ".to::<usize>()"
-  );
+function correctTypes(code: string, _ctx: FixContext): string {
+  let fixed = code;
 
-  // Fix 33: B256::from_limbs([...]) → B256::from(U256::from_limbs([...]).to_be_bytes::<32>())
-  // B256 is FixedBytes<32>, NOT Uint. from_limbs is a Uint method.
+  // B256::from_uint(&x) → B256::from(x.to_be_bytes::<32>())
+  fixed = fixed.replace(/B256::from_uint\(&(\w+)\)/g, "B256::from($1.to_be_bytes::<32>())");
+
+  // B256::from_limbs([...]) → B256::from(U256::from_limbs([...]).to_be_bytes::<32>())
   fixed = fixed.replace(
     /B256::from_limbs\((\[[^\]]*\])\)/g,
     "B256::from(U256::from_limbs($1).to_be_bytes::<32>())"
   );
 
-  // Fix 34: Unified string mapping accessor normalization.
-  // mapping(... => string) fields require .getter(key).get_string() for reads.
-  // Handles all malformed patterns in order (most specific → least specific).
-  const stringMapFields = new Set<string>();
-  const stringMapPattern = /mapping\([^=]+=>\s*string\)\s+(\w+)\s*;/g;
-  let stringMapMatch;
-  while ((stringMapMatch = stringMapPattern.exec(fixed)) !== null) {
-    stringMapFields.add(stringMapMatch[1]);
-  }
-  for (const smf of stringMapFields) {
-    const esc = smf.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    // Pass 1: .field.get(k).get_string() → .field.getter(k).get_string()
-    fixed = fixed.replace(
-      new RegExp(`\\.${esc}\\.get\\(([^)]+)\\)\\.get_string\\(\\)`, "g"),
-      `.${smf}.getter($1).get_string()`
-    );
-    // Pass 2: bare .field.get(k) → .field.getter(k).get_string()
-    fixed = fixed.replace(
-      new RegExp(`\\.${esc}\\.get\\(([^)]+)\\)`, "g"),
-      `.${smf}.getter($1).get_string()`
-    );
-    // Pass 3: bare .field.getter(k) without .get_string() → append .get_string()
-    // After Fix 47 strips .get(k) from .get(k).getter(k), this ensures
-    // the remaining .getter(k) gets .get_string() appended.
-    fixed = fixed.replace(
-      new RegExp(`\\.${esc}\\.getter\\(([^)]+)\\)(?!\\.get_string\\(\\))`, "g"),
-      `.${smf}.getter($1).get_string()`
-    );
-  }
-  // Cleanup: doubled .get_string() chains (LLM garbage or fix interactions)
+  // B32 → B256
+  fixed = fixed.replace(/\bB32\b/g, "B256");
+
+  // const U256 = U256::from(N) → U256::from_limbs([N, 0, 0, 0]) (merged Fix 31+54)
   fixed = fixed.replace(
-    /\.get_string\(\)\s*\.get_string\(\)/g,
-    ".get_string()"
+    /(const\s+\w+\s*:\s*U256\s*=\s*)U256::from\((\d+)\)/g,
+    "$1U256::from_limbs([$2, 0, 0, 0])"
   );
-  // Cleanup: local_var.get_string() is always wrong.
-  // .get_string() is only valid on StorageString (self.field...).
+  // Second pass: catch full statements the prefix-capture missed
   fixed = fixed.replace(
-    /\b([a-z_]\w*)\.get_string\(\)/g,
-    (_match: string, varName: string) => varName === "self" ? _match : varName
+    /const\s+(\w+)\s*:\s*U256\s*=\s*U256::from\((\d+)\)\s*;/g,
+    "const $1: U256 = U256::from_limbs([$2, 0, 0, 0]);"
   );
 
-  // Fix 35: .abi_encode() on SolidityError enum wrapper.
-  // Enum::Variant(Inner{..}).abi_encode() → Inner{..}.abi_encode()
+  // I256::from(N_i128) and other suffixes → I256::from(N)
+  fixed = fixed.replace(/I256::from\((-?\d+)_i128\)/g, "I256::from($1)");
+  fixed = fixed.replace(/I256::from\((-?\d+)_[iu]\d+\)/g, "I256::from($1)");
+
+  // .unwrap_or_else(VALUE) → .unwrap_or(VALUE)
+  fixed = fixed.replace(/\.unwrap_or_else\((\w+::(?:ZERO|MAX|MIN|ONE))\)/g, ".unwrap_or($1)");
+
+  // self.vm().log(...)? → self.vm().log(...) (returns (), not Result)
+  fixed = fixed.replace(/(self\.vm\(\)\.log\([^;]*\))\?/g, "$1");
+
+  // .as_usize() → .to::<usize>()
+  fixed = fixed.replace(/\.as_usize\(\)/g, ".to::<usize>()");
+
+  // N57: .as_u64() → .to::<u64>(), .as_u32() → .to::<u32>(), .as_u128() → .to::<u128>()
+  // alloy-primitives 1.x Uint does not have .as_T() methods. Use .to::<T>().
+  fixed = fixed.replace(/\.as_u64\(\)/g, ".to::<u64>()");
+  fixed = fixed.replace(/\.as_u32\(\)/g, ".to::<u32>()");
+  fixed = fixed.replace(/\.as_u128\(\)/g, ".to::<u128>()");
+
+  // Errors::Variant(Inner{..}).abi_encode() → Inner{..}.abi_encode()
   fixed = fixed.replace(
     /(\w+)::(\w+)\((\2\s*\{[^}]*\})\)\.abi_encode\(\)/g,
     "$3.abi_encode()"
   );
 
-  // Fix 36: StorageString returned directly without .get_string().
-  // `string name;` in sol_storage! → self.name is StorageString.
-  // self.name (not followed by . or word char) → self.name.get_string()
-  const strFields = new Set<string>();
-  const strFieldPattern = /\bstring\s+(\w+)\s*;/g;
-  let strFieldMatch;
-  while ((strFieldMatch = strFieldPattern.exec(fixed)) !== null) {
-    strFields.add(strFieldMatch[1]);
-  }
-  for (const sf of strFields) {
-    fixed = fixed.replace(
-      new RegExp(`self\\.${sf}(?![.\\w])`, "g"),
-      `self.${sf}.get_string()`
-    );
-  }
+  return fixed;
+}
 
-  // Fix 38 (N32): Move `pub const` out of #[public] impl blocks.
-  // The #[public] proc macro doesn't support associated constants.
-  // Extract them to module-level constants above the impl block.
+// ─── Phase 6: Output Sanitization ────────────────────────────────
+// Clean up LLM output artifacts: garbled text, duplicate functions,
+// proc macro conflicts, phantom variables.
+
+function sanitizeOutput(code: string, _ctx: FixContext): string {
+  let fixed = code;
+
+  // Move pub const out of #[public] impl blocks
   {
     const constInImplPattern = /^([ \t]*)pub const\s+(\w+)\s*:\s*(\w+)\s*=\s*([^;]+);/gm;
     const consts: Array<{ full: string; name: string; ty: string; val: string }> = [];
     let constMatch;
     while ((constMatch = constInImplPattern.exec(fixed)) !== null) {
-      // Only if inside a #[public] impl block (check if preceded by #[public])
       const beforeMatch = fixed.slice(0, constMatch.index);
       const lastPublicImpl = beforeMatch.lastIndexOf("#[public]");
       const lastClosingBrace = beforeMatch.lastIndexOf("\n}\n");
       if (lastPublicImpl > -1 && lastPublicImpl > lastClosingBrace) {
-        consts.push({
-          full: constMatch[0],
-          name: constMatch[2],
-          ty: constMatch[3],
-          val: constMatch[4].trim(),
-        });
+        consts.push({ full: constMatch[0], name: constMatch[2], ty: constMatch[3], val: constMatch[4].trim() });
       }
     }
     for (const c of consts) {
-      // Remove from impl block
       fixed = fixed.replace(c.full + "\n", "");
       fixed = fixed.replace(c.full, "");
-      // Add as module-level const before #[public]
       const moduleConst = `const ${c.name}: ${c.ty} = ${c.val};`;
-      fixed = fixed.replace(
-        /(\n#\[public\])/,
-        `\n${moduleConst}\n$1`
-      );
+      fixed = fixed.replace(/(\n#\[public\])/, `\n${moduleConst}\n$1`);
     }
   }
 
-  // Fix 39 (N36): Clean up garbled LLM output — natural language mid-code
-  // and repeated return type fragments like `-> U256) -> U256) -> U256)`.
-  {
-    // Remove lines that contain natural language markers inside code
-    fixed = fixed.replace(
-      /^.*(?:<<\s*\?\?\?|Wait,\s+we\s+need|Correction:|should be:|Let me (?:re)?write|I'll fix|Actually,|Hmm,|Oops).*$/gm,
-      ""
-    );
+  // Strip garbled natural language from code
+  fixed = fixed.replace(
+    /^.*(?:<<\s*\?\?\?|Wait,\s+we\s+need|Correction:|should be:|Let me (?:re)?write|I'll fix|Actually,|Hmm,|Oops).*$/gm,
+    ""
+  );
+  // Fix garbled function signatures: -> Type) -> Type) → -> Type
+  fixed = fixed.replace(
+    /(->\s*\w+(?:<[^>]*>)?)\s*\)\s*(?:->\s*\w+(?:<[^>]*>)?\s*\)\s*)+/g,
+    "$1"
+  );
+  // Clean up stray `>?` fragments
+  fixed = fixed.replace(/\s*<+\s*\?\?\?\s*>+\s*\??\s*/g, "");
+  fixed = fixed.replace(/\n{3,}/g, "\n\n");
 
-    // Fix garbled function signatures: `-> Type) -> Type) -> Type)` → `-> Type`
-    // This pattern catches repeated `) -> Type)` fragments
-    fixed = fixed.replace(
-      /(->\s*\w+(?:<[^>]*>)?)\s*\)\s*(?:->\s*\w+(?:<[^>]*>)?\s*\)\s*)+/g,
-      "$1"
-    );
-
-    // Clean up stray `>?` or `?>` fragments (LLM thinking markers)
-    fixed = fixed.replace(/\s*<+\s*\?\?\?\s*>+\s*\??\s*/g, "");
-
-    // Remove empty lines left by the above cleanups
-    fixed = fixed.replace(/\n{3,}/g, "\n\n");
-  }
-
-  // Fix 40: Remove Debug from derives containing SolidityError.
-  // sol! types don't implement Debug.
+  // Remove Debug from #[derive(SolidityError, Debug)]
   fixed = fixed.replace(
     /#\[derive\(([^)]+)\)\]/g,
     (match, content: string) => {
@@ -733,9 +760,7 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     }
   );
 
-  // Fix 41: Rename underscore-prefixed methods conflicting with public methods.
-  // #[public] macro strips leading underscores for ABI selectors, so
-  // fn _grant_role and fn grant_role produce the same selector.
+  // Rename underscore-prefixed methods conflicting with public methods
   {
     const allFnDefs = [...fixed.matchAll(/\bfn\s+([a-z_]\w+)\s*\(/g)].map(m => m[1]);
     const publicFns = new Set(allFnDefs.filter(n => !n.startsWith("_")));
@@ -751,75 +776,35 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     }
   }
 
-  // Fix 42: address[] array deref returns FixedBytes<20>, not Address.
-  // Wrap with Address::from(...) for correct type.
-  {
-    const addrArrayFields = [...fixed.matchAll(/\baddress\[\]\s+(\w+)/g)].map(m => m[1]);
-    for (const field of addrArrayFields) {
-      fixed = fixed.replace(
-        new RegExp(`(?<!Address::from\\()\\*self\\.${field}\\.get\\(([^)]+)\\)\\.unwrap\\(\\)`, "g"),
-        `Address::from(*self.${field}.get($1).unwrap())`
-      );
-    }
-  }
-
-  // Fix 43: Remove extra .setter() on string mapping writes.
-  // .setter(key).setter().set_str(val) → .setter(key).set_str(val)
-  fixed = fixed.replace(
-    /\.setter\(([^)]+)\)\.setter\(\)\.set_str\(/g,
-    ".setter($1).set_str("
-  );
-
-  // Fix 53: .get_string().unwrap_or_default() → .get_string()
-  // get_string() returns String (not Option<String>), unwrap is wrong.
-  fixed = fixed.replace(/\.get_string\(\)\.unwrap_or_default\(\)/g, ".get_string()");
-  // Also: .get_string().unwrap() — same issue
-  fixed = fixed.replace(/\.get_string\(\)\.unwrap\(\)/g, ".get_string()");
-
-  // Fix 56: I256::from(N_i128) → I256::from(N)
-  // alloy-primitives 1.0.1 I256 (Signed<256,4>) implements From<i64> but NOT
-  // From<i128>. LLM generates _i128 suffix which has no matching impl.
-  // Strip the suffix so Rust infers i64 (which has From impl).
-  fixed = fixed.replace(/I256::from\((-?\d+)_i128\)/g, "I256::from($1)");
-  // Also handle I256::from(N_i32) and I256::from(N_u64) etc — normalize to bare literal
-  fixed = fixed.replace(/I256::from\((-?\d+)_[iu]\d+\)/g, "I256::from($1)");
-
-  // Fix 54: const X: U256 = U256::from(N) → const X: U256 = U256::from_limbs([N, 0, 0, 0])
-  // From::from() is not a const fn. U256::from_limbs is the const-compatible alternative.
-  fixed = fixed.replace(
-    /const\s+(\w+)\s*:\s*U256\s*=\s*U256::from\((\d+)\)\s*;/g,
-    "const $1: U256 = U256::from_limbs([$2, 0, 0, 0]);"
-  );
-
-  // Fix 55: .setter(key).unwrap().set(val) → .setter(key).set(val)
-  // StorageMap .setter(key) returns StorageGuardMut (NOT Option).
-  // Only StorageVec .setter(idx) returns Option needing .unwrap().
-  {
-    const mapFields55 = new Set<string>();
-    const mfPattern55 = /mapping\([^)]*\)\s+(\w+)\s*;/g;
-    let mfMatch55;
-    while ((mfMatch55 = mfPattern55.exec(fixed)) !== null) {
-      mapFields55.add(mfMatch55[1]);
-    }
-    for (const mf of mapFields55) {
-      const esc = mf.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      fixed = fixed.replace(
-        new RegExp(`\\.${esc}\\.setter\\(([^)]+)\\)\\.unwrap\\(\\)`, "g"),
-        `.${mf}.setter($1)`
-      );
-    }
-  }
-
-  // Fix 44: Remove phantom variable self-assignments (let x = x;).
-  // LLM sometimes generates `let role = role;` in helpers where `role` is not
-  // a parameter — always a compile error. Even if it IS a parameter, it's a
-  // redundant shadow. Safe to remove.
+  // Remove phantom self-assignments (let x = x;)
   fixed = fixed.replace(/^\s*let\s+(mut\s+)?([a-z_]\w*)\s*=\s*\2\s*;\s*$/gm, "");
 
-  // Fix 49: Remove duplicate function definitions.
-  // Rust doesn't support overloading — two `fn foo(...)` in the same impl is
-  // a compile error. LLM sometimes re-defines a helper with a different
-  // signature. Keep the LAST definition (LLM refines on second attempt).
+  // N58: camelCase shorthand in struct initializers → explicit field: snake_case
+  // sol! event/error structs have camelCase fields (Solidity convention), but Rust
+  // variables are snake_case. LLM uses shorthand `MyError { newCap }` which fails
+  // because no local `newCap` exists — should be `MyError { newCap: new_cap }`.
+  // Match: ident { ... camelField ... } where camelField has no `:` after it.
+  fixed = fixed.replace(
+    /\b([A-Z]\w*)\s*\{([^}]*)\}/g,
+    (match, _structName: string, fields: string) => {
+      // Skip sol! blocks (they define types, not initialize them)
+      if (/^\s*(?:event|error|interface|function)\s/.test(fields)) return match;
+      let changed = false;
+      const fixedFields = fields.replace(
+        /\b([a-z][a-zA-Z]*[A-Z]\w*)\s*(?=[,}\n])/g,
+        (fieldMatch: string, camelName: string) => {
+          // Skip if already has `:` assignment (check preceding context)
+          // Convert camelCase to snake_case
+          const snakeName = camelName.replace(/([A-Z])/g, "_$1").toLowerCase();
+          changed = true;
+          return `${camelName}: ${snakeName}`;
+        }
+      );
+      return changed ? `${_structName} { ${fixedFields.trim()} }` : match;
+    }
+  );
+
+  // Remove duplicate function definitions (keep last)
   {
     const fnDefPattern = /(\n[ \t]*)(pub\s+)?fn\s+(\w+)\s*\(/g;
     const fnPositions: Array<{ name: string; pos: number }> = [];
@@ -827,14 +812,12 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
     while ((fnMatch = fnDefPattern.exec(fixed)) !== null) {
       fnPositions.push({ name: fnMatch[3], pos: fnMatch.index });
     }
-    // Group positions by name
     const seenFns = new Map<string, number[]>();
     for (const { name, pos } of fnPositions) {
       const arr = seenFns.get(name) ?? [];
       arr.push(pos);
       seenFns.set(name, arr);
     }
-    // Collect earlier duplicate spans to remove
     const toRemove: Array<[number, number]> = [];
     for (const [, positions] of seenFns) {
       if (positions.length < 2) continue;
@@ -845,10 +828,7 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
         let i = braceStart;
         while (i < fixed.length) {
           if (fixed[i] === "{") depth++;
-          else if (fixed[i] === "}") {
-            depth--;
-            if (depth === 0) break;
-          }
+          else if (fixed[i] === "}") { depth--; if (depth === 0) break; }
           i++;
         }
         if (depth === 0) {
@@ -858,85 +838,38 @@ function validateAndFixCode(code: string, template: StylusTemplate): string {
         }
       }
     }
-    // Remove in reverse order to preserve indices
     toRemove.sort((a, b) => b[0] - a[0]);
     for (const [start, end] of toRemove) {
       fixed = fixed.slice(0, start) + fixed.slice(end);
     }
   }
 
-  // Fix 50: .setter().set() on simple (non-mapping) fields.
-  // StorageUint/StorageAddress/StorageBool have .set(val) directly.
-  // .setter(key) is ONLY for StorageMap.
-  {
-    const simpleFieldTypes = [
-      "uint256", "uint128", "uint64", "uint32", "uint16", "uint8",
-      "int256", "int128", "int64", "int32", "int16", "int8",
-      "address", "bool", "bytes32",
-    ];
-    const sfPattern = new RegExp(
-      `(?:${simpleFieldTypes.join("|")})\\s+(\\w+)\\s*;`, "g"
-    );
-    const simpleFields = new Set<string>();
-    let sfMatch;
-    while ((sfMatch = sfPattern.exec(fixed)) !== null) {
-      simpleFields.add(sfMatch[1]);
-    }
-    for (const sf of simpleFields) {
-      const esc = sf.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      // self.field.setter().set(val) → self.field.set(val)
-      fixed = fixed.replace(
-        new RegExp(`self\\.${esc}\\.setter\\(\\)\\.set\\(`, "g"),
-        `self.${sf}.set(`
-      );
-      // self.field.setter(val).set(val) → self.field.set(val)
-      fixed = fixed.replace(
-        new RegExp(`self\\.${esc}\\.setter\\(([^)]+)\\)\\.set\\(\\1\\)`, "g"),
-        `self.${sf}.set($1)`
-      );
-    }
-  }
+  return fixed;
+}
 
-  // Fix 51: Spurious .get() / .get_string() on mapping reads.
-  // (a) .get(key).get() → .get(key) — mapping .get(key) returns value directly
-  fixed = fixed.replace(
-    /\.get\(((?:[^()]*|\([^()]*\))*)\)\.get\(\)/g,
-    ".get($1)"
-  );
-  // (b) .get_string().get() → .get_string()
-  fixed = fixed.replace(/\.get_string\(\)\.get\(\)/g, ".get_string()");
-  // (c) .getter(key).get_string() on non-string mappings → .get(key)
-  {
-    const stringMapFields = new Set<string>();
-    const smfPattern = /mapping\([^)]*=>\s*string\)\s+(\w+)\s*;/g;
-    let smfMatch;
-    while ((smfMatch = smfPattern.exec(fixed)) !== null) {
-      stringMapFields.add(smfMatch[1]);
-    }
-    const getterStringPattern = /self\.(\w+)\.getter\(([^)]+)\)\.get_string\(\)/g;
-    let gsMatch;
-    // Collect replacements first to avoid modifying during iteration
-    const gsReplacements: Array<[string, string]> = [];
-    while ((gsMatch = getterStringPattern.exec(fixed)) !== null) {
-      if (!stringMapFields.has(gsMatch[1])) {
-        gsReplacements.push([gsMatch[0], `self.${gsMatch[1]}.get(${gsMatch[2]})`]);
-      }
-    }
-    for (const [from, to] of gsReplacements) {
-      fixed = fixed.replace(from, to);
-    }
-  }
+// ─── Main Entry Point ────────────────────────────────────────────
 
-  // Fix 13: Remove deprecated stylus_sdk::evm and stylus_sdk::msg imports
-  fixed = fixed.replace(/^use stylus_sdk::evm.*;\s*$/gm, "");
-  fixed = fixed.replace(/^use stylus_sdk::msg.*;\s*$/gm, "");
+function validateAndFixCode(code: string, template: StylusTemplate): string {
+  // Phase 1: Structural validation (may fallback to template)
+  let fixed = structuralValidate(code, template);
 
-  // Fix 14: Fix deprecated msg::sender() → self.vm().msg_sender()
-  fixed = fixed.replace(/msg::sender\(\)/g, "self.vm().msg_sender()");
-  fixed = fixed.replace(/msg::value\(\)/g, "self.vm().msg_value()");
+  // Parse field type map from cleaned sol_storage! block
+  const ctx = buildFixContext(fixed, template);
 
-  // Fix 15: Fix deprecated evm::log(...) → self.vm().log(...)
-  fixed = fixed.replace(/evm::log\(/g, "self.vm().log(");
+  // Phase 2: Import normalization
+  fixed = normalizeImports(fixed, ctx);
+
+  // Phase 3: Storage accessor normalization (type-aware, replaces 16 scattered fixes)
+  fixed = normalizeStorageAccessors(fixed, ctx);
+
+  // Phase 4: SDK 0.10.0 API migration
+  fixed = migrateApi(fixed, ctx);
+
+  // Phase 5: Type corrections
+  fixed = correctTypes(fixed, ctx);
+
+  // Phase 6: Output sanitization
+  fixed = sanitizeOutput(fixed, ctx);
 
   return fixed;
 }

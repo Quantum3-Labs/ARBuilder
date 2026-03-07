@@ -23,6 +23,12 @@ import { generateFrontend } from "@/lib/tools/generateFrontend";
 import { generateIndexer } from "@/lib/tools/generateIndexer";
 import { generateOracle } from "@/lib/tools/generateOracle";
 import { orchestrateDapp } from "@/lib/tools/orchestrateDapp";
+// M4: Orbit Chain Tools
+import { generateOrbitConfig } from "@/lib/tools/generateOrbitConfig";
+import { generateOrbitDeployment } from "@/lib/tools/generateOrbitDeployment";
+import { generateValidatorSetup } from "@/lib/tools/generateValidatorSetup";
+import { askOrbit } from "@/lib/tools/askOrbit";
+import { orchestrateOrbit } from "@/lib/tools/orchestrateOrbit";
 
 // MCP Protocol Types
 interface JsonRpcRequest {
@@ -417,12 +423,230 @@ const TOOLS = [
       required: ["prompt"],
     },
   },
+  // M4: Orbit Chain Tools
+  {
+    name: "generate_orbit_config",
+    description:
+      "Generate configuration code for Orbit chain deployment. Supports chain config, AnyTrust DAC setup, and custom gas token configuration using @arbitrum/orbit-sdk.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        prompt: {
+          type: "string",
+          description: "Description of the configuration needed",
+        },
+        chainId: {
+          type: "number",
+          description: "Chain ID for the new Orbit chain",
+          default: 412346,
+        },
+        owner: {
+          type: "string",
+          description: "Initial chain owner address (0x...)",
+        },
+        isAnyTrust: {
+          type: "boolean",
+          description: "Whether this is an AnyTrust chain (vs Rollup)",
+          default: false,
+        },
+        nativeToken: {
+          type: "string",
+          description: "Custom gas token address (ERC20)",
+        },
+        parentChain: {
+          type: "string",
+          enum: ["arbitrum-one", "arbitrum-sepolia", "ethereum-mainnet", "ethereum-sepolia"],
+          description: "Parent chain for the Orbit chain",
+          default: "arbitrum-sepolia",
+        },
+      },
+      required: ["prompt"],
+    },
+  },
+  {
+    name: "generate_orbit_deployment",
+    description:
+      "Generate deployment code for Orbit chains. Supports rollup deployment (createRollup), token bridge deployment (createTokenBridge), or full deployment with both.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        prompt: {
+          type: "string",
+          description: "Description of the deployment needed",
+        },
+        deploymentType: {
+          type: "string",
+          enum: ["rollup", "token_bridge", "full"],
+          description: "Type of deployment to generate",
+          default: "rollup",
+        },
+        validators: {
+          type: "array",
+          items: { type: "string" },
+          description: "Validator addresses for the chain",
+        },
+        batchPosters: {
+          type: "array",
+          items: { type: "string" },
+          description: "Batch poster addresses for the chain",
+        },
+        nativeToken: {
+          type: "string",
+          description: "Custom gas token address (ERC20)",
+        },
+        parentChain: {
+          type: "string",
+          enum: ["arbitrum-one", "arbitrum-sepolia", "ethereum-mainnet", "ethereum-sepolia"],
+          description: "Parent chain for the Orbit chain",
+          default: "arbitrum-sepolia",
+        },
+        rollupVersion: {
+          type: "string",
+          enum: ["v2.1", "v3.1"],
+          description: "RollupCreator version to use",
+          default: "v3.1",
+        },
+        chainId: {
+          type: "number",
+          description: "Chain ID for the new Orbit chain",
+          default: 412346,
+        },
+        isAnyTrust: {
+          type: "boolean",
+          description: "Whether this is an AnyTrust chain",
+          default: false,
+        },
+        rollupAddress: {
+          type: "string",
+          description: "Existing rollup contract address (for token bridge deployment)",
+        },
+      },
+      required: ["prompt"],
+    },
+  },
+  {
+    name: "generate_validator_setup",
+    description:
+      "Generate code for managing Orbit chain validators, batch posters, and AnyTrust DAC keysets. Supports listing, adding, and removing validators.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        prompt: {
+          type: "string",
+          description: "Description of the validator management needed",
+        },
+        action: {
+          type: "string",
+          enum: ["list", "add", "remove"],
+          description: "Action to perform",
+          default: "list",
+        },
+        target: {
+          type: "string",
+          enum: ["validator", "batch_poster", "keyset"],
+          description: "Target to manage",
+          default: "validator",
+        },
+        addresses: {
+          type: "array",
+          items: { type: "string" },
+          description: "Addresses to add/remove",
+        },
+        rollupAddress: {
+          type: "string",
+          description: "Rollup contract address",
+        },
+        sequencerInbox: {
+          type: "string",
+          description: "SequencerInbox contract address",
+        },
+        parentChain: {
+          type: "string",
+          enum: ["arbitrum-one", "arbitrum-sepolia", "ethereum-mainnet", "ethereum-sepolia"],
+          description: "Parent chain",
+          default: "arbitrum-sepolia",
+        },
+      },
+      required: ["prompt"],
+    },
+  },
+  {
+    name: "ask_orbit",
+    description:
+      "Answer questions about Arbitrum Orbit chain deployment, configuration, and management. Covers chain config, deployment, validators, gas tokens, AnyTrust, node setup, governance, and token bridges.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        question: {
+          type: "string",
+          description: "Question about Orbit chain deployment or management",
+        },
+        questionType: {
+          type: "string",
+          enum: ["general", "deployment", "config", "validator", "troubleshooting"],
+          description: "Type of question for better context",
+          default: "general",
+        },
+      },
+      required: ["question"],
+    },
+  },
+  {
+    name: "orchestrate_orbit",
+    description:
+      "Scaffold a complete Orbit chain deployment project with all scripts, configuration, and documentation. Generates deploy-rollup, deploy-token-bridge, manage-validators, and node config scripts.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        prompt: {
+          type: "string",
+          description: "Description of the Orbit chain project",
+        },
+        chainName: {
+          type: "string",
+          description: "Name for the Orbit chain",
+          default: "my-orbit-chain",
+        },
+        chainId: {
+          type: "number",
+          description: "Chain ID for the new Orbit chain",
+          default: 412346,
+        },
+        isAnyTrust: {
+          type: "boolean",
+          description: "Whether this is an AnyTrust chain",
+          default: false,
+        },
+        nativeToken: {
+          type: "string",
+          description: "Custom gas token address (ERC20)",
+        },
+        parentChain: {
+          type: "string",
+          enum: ["arbitrum-one", "arbitrum-sepolia", "ethereum-mainnet", "ethereum-sepolia"],
+          description: "Parent chain for the Orbit chain",
+          default: "arbitrum-sepolia",
+        },
+        validators: {
+          type: "array",
+          items: { type: "string" },
+          description: "Validator addresses",
+        },
+        batchPosters: {
+          type: "array",
+          items: { type: "string" },
+          description: "Batch poster addresses",
+        },
+      },
+      required: ["prompt"],
+    },
+  },
 ];
 
 // Server info for MCP
 const SERVER_INFO = {
   name: "arbbuilder",
-  version: "1.2.0", // M3: Added Full dApp Builder tools
+  version: "1.3.0", // M4: Added Orbit Chain tools
   protocolVersion: "2024-11-05",
 };
 
@@ -677,6 +901,73 @@ async function handleToolCall(
         network: (args.network as "arbitrum-sepolia" | "arbitrum-one") ?? "arbitrum-sepolia",
         contractAddress: args.contractAddress as string | undefined,
         contractAbi: args.contractAbi as string | undefined,
+      });
+      return { data: result, tokensUsed: 0 };
+    }
+
+    // M4: Orbit Chain Tools
+    case "generate_orbit_config": {
+      const result = generateOrbitConfig({
+        prompt: args.prompt as string,
+        chainId: args.chainId as number | undefined,
+        owner: args.owner as string | undefined,
+        isAnyTrust: args.isAnyTrust as boolean | undefined,
+        nativeToken: args.nativeToken as string | undefined,
+        parentChain: args.parentChain as "arbitrum-one" | "arbitrum-sepolia" | "ethereum-mainnet" | "ethereum-sepolia" | undefined,
+      });
+      return { data: result, tokensUsed: 0 };
+    }
+
+    case "generate_orbit_deployment": {
+      const result = generateOrbitDeployment({
+        prompt: args.prompt as string,
+        deploymentType: (args.deploymentType as "rollup" | "token_bridge" | "full") ?? "rollup",
+        validators: args.validators as string[] | undefined,
+        batchPosters: args.batchPosters as string[] | undefined,
+        nativeToken: args.nativeToken as string | undefined,
+        parentChain: args.parentChain as "arbitrum-one" | "arbitrum-sepolia" | "ethereum-mainnet" | "ethereum-sepolia" | undefined,
+        rollupVersion: (args.rollupVersion as "v2.1" | "v3.1") ?? "v3.1",
+        chainId: args.chainId as number | undefined,
+        isAnyTrust: args.isAnyTrust as boolean | undefined,
+        rollupAddress: args.rollupAddress as string | undefined,
+      });
+      return { data: result, tokensUsed: 0 };
+    }
+
+    case "generate_validator_setup": {
+      const result = generateValidatorSetup({
+        prompt: args.prompt as string,
+        action: (args.action as "list" | "add" | "remove") ?? "list",
+        target: (args.target as "validator" | "batch_poster" | "keyset") ?? "validator",
+        addresses: args.addresses as string[] | undefined,
+        rollupAddress: args.rollupAddress as string | undefined,
+        sequencerInbox: args.sequencerInbox as string | undefined,
+        parentChain: args.parentChain as "arbitrum-one" | "arbitrum-sepolia" | "ethereum-mainnet" | "ethereum-sepolia" | undefined,
+      });
+      return { data: result, tokensUsed: 0 };
+    }
+
+    case "ask_orbit": {
+      if (!OPENROUTER_API_KEY) {
+        throw new Error("OpenRouter API key not configured");
+      }
+      const result = await askOrbit(VECTORIZE, AI, OPENROUTER_API_KEY, {
+        question: args.question as string,
+        questionType: (args.questionType as "general" | "deployment" | "config" | "validator" | "troubleshooting") ?? "general",
+      });
+      return { data: result, tokensUsed: result.tokensUsed || 0 };
+    }
+
+    case "orchestrate_orbit": {
+      const result = orchestrateOrbit({
+        prompt: args.prompt as string,
+        chainName: args.chainName as string | undefined,
+        chainId: args.chainId as number | undefined,
+        isAnyTrust: args.isAnyTrust as boolean | undefined,
+        nativeToken: args.nativeToken as string | undefined,
+        parentChain: args.parentChain as "arbitrum-one" | "arbitrum-sepolia" | "ethereum-mainnet" | "ethereum-sepolia" | undefined,
+        validators: args.validators as string[] | undefined,
+        batchPosters: args.batchPosters as string[] | undefined,
       });
       return { data: result, tokensUsed: 0 };
     }

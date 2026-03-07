@@ -140,6 +140,40 @@ Generates TypeScript scripts using @arbitrum/orbit-sdk."""
                     batch_posters_str=batch_posters_str,
                     native_token=native_token,
                 )
+                # Apply version-specific modifications
+                if rollup_version == "v2.1":
+                    code = code.replace(
+                        "console.log('Deploying Orbit chain...');",
+                        "console.log('Deploying Orbit chain (v2.1 / classic)...');",
+                    )
+                    code = code.replace(
+                        "  // Deploy rollup\n",
+                        "  // Deploy rollup using v2.1 RollupCreator (classic challenge protocol)\n"
+                        "  // v2.1 defaults: baseStake = 0.1 ETH, stakeToken = zeroAddress (ETH)\n",
+                    )
+                    code = code.replace(
+                        "    walletClient,\n  }});",
+                        "    walletClient,\n"
+                        "    // Use v2.1 RollupCreator (classic challenge, not BoLD)\n"
+                        "    rollupCreatorAddressOverride: process.env.ROLLUP_CREATOR_V2_ADDRESS as `0x${{string}}` | undefined,\n"
+                        "  }});",
+                    )
+                    code = code.replace(
+                        "console.log('\\nRollup deployed successfully!');",
+                        "console.log('\\nRollup deployed successfully! (v2.1 classic)');\n"
+                        "  console.log('\\nv2.1 validator config:');\n"
+                        "  console.log('  Base stake: 0.1 ETH (default)');\n"
+                        "  console.log('  Stake token: ETH (zeroAddress)');",
+                    )
+                else:
+                    code = code.replace(
+                        "console.log('Deploying Orbit chain...');",
+                        "console.log('Deploying Orbit chain (v3.1 / BoLD)...');",
+                    )
+                    code = code.replace(
+                        "  // Deploy rollup\n",
+                        "  // Deploy rollup using v3.1 RollupCreator (BoLD)\n",
+                    )
                 files["scripts/deploy-rollup.ts"] = code
 
         # Generate token bridge deployment
@@ -159,6 +193,9 @@ Generates TypeScript scripts using @arbitrum/orbit-sdk."""
             "DEPLOYER_PRIVATE_KEY=0x...",
             f"PARENT_CHAIN_RPC={parent_rpc}",
         ]
+        if rollup_version == "v2.1":
+            env_vars.append("# Optional: override v2.1 RollupCreator address (defaults to SDK builtin)")
+            env_vars.append("# ROLLUP_CREATOR_V2_ADDRESS=0x...")
         if deployment_type in ("token_bridge", "full"):
             env_vars.append("ORBIT_CHAIN_RPC=http://localhost:8449")
         files[".env.example"] = "\n".join(env_vars) + "\n"
@@ -183,7 +220,7 @@ Generates TypeScript scripts using @arbitrum/orbit-sdk."""
                 "batch_posters": batch_posters,
             },
             "setup_instructions": self._get_setup_instructions(deployment_type),
-            "notes": self._get_notes(deployment_type, native_token, is_anytrust),
+            "notes": self._get_notes(deployment_type, native_token, is_anytrust, rollup_version),
             "disclaimer": TEMPLATE_DISCLAIMER,
         }
 
@@ -262,13 +299,20 @@ Generates TypeScript scripts using @arbitrum/orbit-sdk."""
 
     @staticmethod
     def _get_notes(
-        deployment_type: str, native_token: str | None, is_anytrust: bool
+        deployment_type: str, native_token: str | None, is_anytrust: bool,
+        rollup_version: str = "v3.1",
     ) -> list[str]:
         """Get deployment notes."""
         notes = [
             "Deployment requires significant gas — ensure sufficient funds",
             "Save all contract addresses from deployment output",
         ]
+
+        if rollup_version == "v2.1":
+            notes.append("v2.1 (classic): baseStake = 0.1 ETH, classic challenge protocol")
+            notes.append("v2.1 uses the legacy RollupCreator — set ROLLUP_CREATOR_V2_ADDRESS if needed")
+        else:
+            notes.append("v3.1 (BoLD): uses assertion staking with bounded liquidity delay challenge protocol")
 
         if native_token:
             notes.append(

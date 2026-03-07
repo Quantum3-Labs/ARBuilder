@@ -61,7 +61,7 @@ interface GenerateOrbitDeploymentOutput {
 
 // --- Templates ---
 
-const DEPLOY_ROLLUP_TEMPLATE = `import 'dotenv/config';
+const DEPLOY_ROLLUP_V3_TEMPLATE = `import 'dotenv/config';
 import {
   createPublicClient,
   createWalletClient,
@@ -76,6 +76,7 @@ import {
   createRollupPrepareDeploymentParamsConfig,
 } from '@arbitrum/orbit-sdk';
 
+// v3.1 RollupCreator (BoLD challenge protocol)
 // Parent chain configuration
 const parentChain: Chain = {
   id: {parentChainId},
@@ -111,12 +112,12 @@ async function main() {
     },
   });
 
-  console.log('Deploying Orbit chain...');
+  console.log('Deploying Orbit chain (v3.1 / BoLD)...');
   console.log('  Chain ID:', {chainId});
   console.log('  Owner:', account.address);
   console.log('  AnyTrust:', {isAnyTrust});
 
-  // Deploy rollup
+  // Deploy rollup using v3.1 RollupCreator (BoLD)
   const deployResult = await createRollup({
     params: {
       config: createRollupPrepareDeploymentParamsConfig(publicClient, {
@@ -126,7 +127,8 @@ async function main() {
       }),
       validators: {validatorsArray},
       batchPosters: {batchPostersArray},
-      batchPosterManager: account.address,{nativeTokenLine}
+      batchPosterManager: account.address,
+      deployFactoriesToL2: true,{nativeTokenLine}
     },
     account,
     publicClient,
@@ -143,6 +145,105 @@ async function main() {
   console.log('  SequencerInbox:', deployResult.coreContracts.sequencerInbox);
   console.log('  RollupEventInbox:', deployResult.coreContracts.rollupEventInbox);
   console.log('  UpgradeExecutor:', deployResult.coreContracts.upgradeExecutor);
+}
+
+main().catch(console.error);
+`;
+
+const DEPLOY_ROLLUP_V2_TEMPLATE = `import 'dotenv/config';
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  parseEther,
+  Chain,
+  zeroAddress,
+} from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import {
+  prepareChainConfig,
+  createRollup,
+  createRollupPrepareDeploymentParamsConfig,
+} from '@arbitrum/orbit-sdk';
+
+// v2.1 RollupCreator (classic challenge protocol)
+// Parent chain configuration
+const parentChain: Chain = {
+  id: {parentChainId},
+  name: '{parentChainName}',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: {
+    default: { http: [process.env.PARENT_CHAIN_RPC!] },
+  },
+};
+
+async function main() {
+  const account = privateKeyToAccount(
+    process.env.DEPLOYER_PRIVATE_KEY! as \`0x\${string}\`
+  );
+
+  const publicClient = createPublicClient({
+    chain: parentChain,
+    transport: http(process.env.PARENT_CHAIN_RPC),
+  });
+
+  const walletClient = createWalletClient({
+    account,
+    chain: parentChain,
+    transport: http(process.env.PARENT_CHAIN_RPC),
+  });
+
+  // Prepare chain config (v2.1 classic)
+  const chainConfig = prepareChainConfig({
+    chainId: {chainId},
+    arbitrum: {
+      InitialChainOwner: account.address,
+      DataAvailabilityCommittee: {isAnyTrust},
+    },
+  });
+
+  console.log('Deploying Orbit chain (v2.1 / classic)...');
+  console.log('  Chain ID:', {chainId});
+  console.log('  Owner:', account.address);
+  console.log('  AnyTrust:', {isAnyTrust});
+
+  // Deploy rollup using v2.1 RollupCreator (classic challenge protocol)
+  // v2.1 defaults: baseStake = 0.1 ETH, stakeToken = zeroAddress (ETH)
+  const deployResult = await createRollup({
+    params: {
+      config: createRollupPrepareDeploymentParamsConfig(publicClient, {
+        chainId: BigInt({chainId}),
+        owner: account.address,
+        chainConfig,
+      }),
+      validators: {validatorsArray},
+      batchPosters: {batchPostersArray},
+      batchPosterManager: account.address,
+      deployFactoriesToL2: true,{nativeTokenLine}
+    },
+    account,
+    publicClient,
+    walletClient,
+    // Use v2.1 RollupCreator (classic challenge, not BoLD)
+    rollupCreatorAddressOverride: process.env.ROLLUP_CREATOR_V2_ADDRESS as \`0x\${string}\` | undefined,
+  });
+
+  console.log('\\nRollup deployed successfully! (v2.1 classic)');
+  console.log('Transaction hash:', deployResult.transactionHash);
+  console.log('\\nCore contracts:');
+  console.log('  Rollup:', deployResult.coreContracts.rollup);
+  console.log('  Inbox:', deployResult.coreContracts.inbox);
+  console.log('  Outbox:', deployResult.coreContracts.outbox);
+  console.log('  Bridge:', deployResult.coreContracts.bridge);
+  console.log('  SequencerInbox:', deployResult.coreContracts.sequencerInbox);
+  console.log('  RollupEventInbox:', deployResult.coreContracts.rollupEventInbox);
+  console.log('  UpgradeExecutor:', deployResult.coreContracts.upgradeExecutor);
+
+  // v2.1 note: baseStake is 0.1 ETH by default
+  // Validators must stake this amount on the parent chain
+  console.log('\\nv2.1 validator config:');
+  console.log('  Base stake: 0.1 ETH (default)');
+  console.log('  Stake token: ETH (zeroAddress)');
 }
 
 main().catch(console.error);
@@ -261,12 +362,20 @@ function getSetupInstructions(deploymentType: DeploymentType): string[] {
 function getDeploymentNotes(
   deploymentType: DeploymentType,
   nativeToken: string | undefined,
-  isAnyTrust: boolean
+  isAnyTrust: boolean,
+  rollupVersion: string = "v3.1"
 ): string[] {
   const notes = [
     "Deployment requires significant gas - ensure sufficient funds",
     "Save all contract addresses from deployment output",
   ];
+
+  if (rollupVersion === "v2.1") {
+    notes.push("v2.1 (classic): baseStake = 0.1 ETH, classic challenge protocol");
+    notes.push("v2.1 uses the legacy RollupCreator — set ROLLUP_CREATOR_V2_ADDRESS if needed");
+  } else {
+    notes.push("v3.1 (BoLD): uses assertion staking with bounded liquidity delay challenge protocol");
+  }
 
   if (nativeToken) {
     notes.push("Custom gas token requires ERC20 approval before deployment");
@@ -318,7 +427,7 @@ export function generateOrbitDeployment(
 
   // Generate rollup deployment
   if (deploymentType === "rollup" || deploymentType === "full") {
-    let code = DEPLOY_ROLLUP_TEMPLATE;
+    let code = rollupVersion === "v2.1" ? DEPLOY_ROLLUP_V2_TEMPLATE : DEPLOY_ROLLUP_V3_TEMPLATE;
     code = code.replace(/\{chainId\}/g, String(chainId));
     code = code.replace(/\{parentChainId\}/g, String(parentChainId));
     code = code.replace(/\{parentChainName\}/g, parentChainName);
@@ -351,6 +460,10 @@ export function generateOrbitDeployment(
 
   // Add .env.example
   const envVars = [`DEPLOYER_PRIVATE_KEY=0x...`, `PARENT_CHAIN_RPC=${parentRpc}`];
+  if (rollupVersion === "v2.1") {
+    envVars.push("# Optional: override v2.1 RollupCreator address (defaults to SDK builtin)");
+    envVars.push("# ROLLUP_CREATOR_V2_ADDRESS=0x...");
+  }
   if (deploymentType === "token_bridge" || deploymentType === "full") {
     envVars.push("ORBIT_CHAIN_RPC=http://localhost:8449");
   }
@@ -375,7 +488,7 @@ export function generateOrbitDeployment(
       batchPosters,
     },
     setupInstructions: getSetupInstructions(deploymentType),
-    notes: getDeploymentNotes(deploymentType, nativeToken, isAnyTrust),
+    notes: getDeploymentNotes(deploymentType, nativeToken, isAnyTrust, rollupVersion),
     disclaimer: TEMPLATE_DISCLAIMER,
   };
 }
