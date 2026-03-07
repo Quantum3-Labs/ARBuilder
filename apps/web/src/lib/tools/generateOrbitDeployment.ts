@@ -61,6 +61,22 @@ interface GenerateOrbitDeploymentOutput {
 
 // --- Templates ---
 
+// Known RollupCreator contract addresses from @arbitrum/orbit-sdk
+const ROLLUP_CREATOR_ADDRESSES = {
+  'v2.1': {
+    1: '0x8c88430658a03497D13cDff7684D37b15aA2F3e1',       // Ethereum Mainnet
+    42161: '0x79607f00e61E6d7C0E6330bd7E9c4AC320D50FC9',   // Arbitrum One
+    421614: '0xd2Ec8376B1dF436fAb18120E416d3F2BeC61275b',  // Arbitrum Sepolia
+    11155111: '0xfb774eA8A92ae528A596c8D90CBCF1bdBC4Cee79', // Ethereum Sepolia
+  },
+  'v3.1': {
+    1: '0x43698080f40dB54DEE6871540037b8AB8fD0AB44',       // Ethereum Mainnet
+    42161: '0xB90e53fd945Cd28Ec4728cBfB566981dD571eB8b',   // Arbitrum One
+    421614: '0x5F45675AC8DDF7d45713b2c7D191B287475C16cF',  // Arbitrum Sepolia
+    11155111: '0x687Bc1D23390875a868Db158DA1cDC8998E31640', // Ethereum Sepolia
+  },
+} as const;
+
 const DEPLOY_ROLLUP_V3_TEMPLATE = `import 'dotenv/config';
 import {
   createPublicClient,
@@ -74,7 +90,15 @@ import {
   createRollupPrepareDeploymentParamsConfig,
 } from '@arbitrum/orbit-sdk';
 
-// v3.1 RollupCreator — BoLD (Bounded Liquidity Delay) challenge protocol
+/**
+ * v3.1 Orbit Rollup Deployment — BoLD Challenge Protocol
+ *
+ * Uses the v3.1 RollupCreator at {rollupCreatorAddress}
+ * BoLD (Bounded Liquidity Delay) features:
+ *   - Assertion staking with configurable buffer
+ *   - Multi-level challenge resolution
+ *   - Permissionless validation support
+ */
 const parentChain: Chain = {
   id: {parentChainId},
   name: '{parentChainName}',
@@ -89,12 +113,11 @@ async function main() {
     process.env.DEPLOYER_PRIVATE_KEY! as \`0x\${string}\`
   );
 
-  const publicClient = createPublicClient({
+  const parentChainPublicClient = createPublicClient({
     chain: parentChain,
     transport: http(process.env.PARENT_CHAIN_RPC),
   });
 
-  // Prepare chain config
   const chainConfig = prepareChainConfig({
     chainId: {chainId},
     arbitrum: {
@@ -103,15 +126,15 @@ async function main() {
     },
   });
 
-  console.log('Deploying Orbit chain (v3.1 / BoLD)...');
+  console.log('Deploying Orbit chain...');
+  console.log('  Version: v3.1 (BoLD challenge protocol)');
+  console.log('  RollupCreator: {rollupCreatorAddress}');
   console.log('  Chain ID:', {chainId});
-  console.log('  Owner:', account.address);
   console.log('  AnyTrust:', {isAnyTrust});
 
-  // Deploy rollup — v3.1 uses BoLD challenge protocol
   const deployResult = await createRollup({
     params: {
-      config: createRollupPrepareDeploymentParamsConfig(publicClient, {
+      config: createRollupPrepareDeploymentParamsConfig(parentChainPublicClient, {
         chainId: BigInt({chainId}),
         owner: account.address,
         chainConfig,
@@ -122,12 +145,11 @@ async function main() {
       deployFactoriesToL2: true,{nativeTokenLine}
     },
     account,
-    parentChainPublicClient: publicClient,
-    // v3.1: BoLD challenge protocol (default)
+    parentChainPublicClient,
     rollupCreatorVersion: 'v3.1',
   });
 
-  console.log('\\nRollup deployed successfully! (v3.1 BoLD)');
+  console.log('\\nRollup deployed successfully!');
   console.log('Transaction hash:', deployResult.transactionHash);
   console.log('\\nCore contracts:');
   console.log('  Rollup:', deployResult.coreContracts.rollup);
@@ -155,7 +177,16 @@ import {
   createRollupPrepareDeploymentParamsConfig,
 } from '@arbitrum/orbit-sdk';
 
-// v2.1 RollupCreator — classic challenge protocol (stable)
+/**
+ * v2.1 Orbit Rollup Deployment — Classic Challenge Protocol
+ *
+ * Uses the v2.1 RollupCreator at {rollupCreatorAddress}
+ * Classic challenge features:
+ *   - Fixed base stake: 0.1 ETH (validators must lock on parent chain)
+ *   - Stake token: ETH (zeroAddress)
+ *   - Single-round interactive challenge
+ *   - extraChallengeTimeBlocks: 0
+ */
 const parentChain: Chain = {
   id: {parentChainId},
   name: '{parentChainName}',
@@ -170,12 +201,11 @@ async function main() {
     process.env.DEPLOYER_PRIVATE_KEY! as \`0x\${string}\`
   );
 
-  const publicClient = createPublicClient({
+  const parentChainPublicClient = createPublicClient({
     chain: parentChain,
     transport: http(process.env.PARENT_CHAIN_RPC),
   });
 
-  // Prepare chain config
   const chainConfig = prepareChainConfig({
     chainId: {chainId},
     arbitrum: {
@@ -184,16 +214,16 @@ async function main() {
     },
   });
 
-  console.log('Deploying Orbit chain (v2.1 / classic)...');
+  console.log('Deploying Orbit chain...');
+  console.log('  Version: v2.1 (classic challenge protocol)');
+  console.log('  RollupCreator: {rollupCreatorAddress}');
   console.log('  Chain ID:', {chainId});
-  console.log('  Owner:', account.address);
   console.log('  AnyTrust:', {isAnyTrust});
+  console.log('  Validator base stake: 0.1 ETH');
 
-  // Deploy rollup — v2.1 uses classic challenge protocol
-  // baseStake = 0.1 ETH, stakeToken = ETH (default)
   const deployResult = await createRollup({
     params: {
-      config: createRollupPrepareDeploymentParamsConfig(publicClient, {
+      config: createRollupPrepareDeploymentParamsConfig(parentChainPublicClient, {
         chainId: BigInt({chainId}),
         owner: account.address,
         chainConfig,
@@ -204,12 +234,11 @@ async function main() {
       deployFactoriesToL2: true,{nativeTokenLine}
     },
     account,
-    parentChainPublicClient: publicClient,
-    // v2.1: classic challenge protocol (stable, non-BoLD)
+    parentChainPublicClient,
     rollupCreatorVersion: 'v2.1',
   });
 
-  console.log('\\nRollup deployed successfully! (v2.1 classic)');
+  console.log('\\nRollup deployed successfully!');
   console.log('Transaction hash:', deployResult.transactionHash);
   console.log('\\nCore contracts:');
   console.log('  Rollup:', deployResult.coreContracts.rollup);
@@ -219,14 +248,10 @@ async function main() {
   console.log('  SequencerInbox:', deployResult.coreContracts.sequencerInbox);
   console.log('  RollupEventInbox:', deployResult.coreContracts.rollupEventInbox);
   console.log('  UpgradeExecutor:', deployResult.coreContracts.upgradeExecutor);
-
-  // v2.1 validator staking:
-  //   baseStake: 0.1 ETH (validators must stake this on the parent chain)
-  //   stakeToken: ETH (zeroAddress)
-  //   extraChallengeTimeBlocks: 0
-  console.log('\\nv2.1 validator config:');
-  console.log('  Base stake: 0.1 ETH (default)');
-  console.log('  Stake token: ETH');
+  console.log('\\nv2.1 staking config:');
+  console.log('  Base stake: 0.1 ETH');
+  console.log('  Stake token: ETH (zeroAddress)');
+  console.log('  Extra challenge time blocks: 0');
 }
 
 main().catch(console.error);
@@ -417,6 +442,12 @@ export function generateOrbitDeployment(
     code = code.replace(/\{isAnyTrust\}/g, isAnyTrust ? "true" : "false");
     code = code.replace(/\{validatorsArray\}/g, validatorsStr);
     code = code.replace(/\{batchPostersArray\}/g, batchPostersStr);
+
+    // Look up the known RollupCreator address for this version + parent chain
+    const versionAddresses = ROLLUP_CREATOR_ADDRESSES[rollupVersion === "v2.1" ? "v2.1" : "v3.1"];
+    const rollupCreatorAddress = versionAddresses[parentChainId as keyof typeof versionAddresses]
+      ?? "0x0000000000000000000000000000000000000000";
+    code = code.replace(/\{rollupCreatorAddress\}/g, rollupCreatorAddress);
 
     if (nativeToken) {
       code = code.replace(

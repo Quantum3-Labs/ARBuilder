@@ -17,6 +17,22 @@ from ...templates.orbit_templates import (
 from .base import BaseTool
 from .generate_stylus_code import TEMPLATE_DISCLAIMER
 
+# Known RollupCreator contract addresses from @arbitrum/orbit-sdk
+ROLLUP_CREATOR_ADDRESSES = {
+    "v2.1": {
+        1: "0x8c88430658a03497D13cDff7684D37b15aA2F3e1",       # Ethereum Mainnet
+        42161: "0x79607f00e61E6d7C0E6330bd7E9c4AC320D50FC9",   # Arbitrum One
+        421614: "0xd2Ec8376B1dF436fAb18120E416d3F2BeC61275b",  # Arbitrum Sepolia
+        11155111: "0xfb774eA8A92ae528A596c8D90CBCF1bdBC4Cee79", # Ethereum Sepolia
+    },
+    "v3.1": {
+        1: "0x43698080f40dB54DEE6871540037b8AB8fD0AB44",       # Ethereum Mainnet
+        42161: "0xB90e53fd945Cd28Ec4728cBfB566981dD571eB8b",   # Arbitrum One
+        421614: "0x5F45675AC8DDF7d45713b2c7D191B287475C16cF",  # Arbitrum Sepolia
+        11155111: "0x687Bc1D23390875a868Db158DA1cDC8998E31640", # Ethereum Sepolia
+    },
+}
+
 
 class GenerateOrbitDeploymentTool(BaseTool):
     """Generate Orbit chain deployment scripts."""
@@ -140,16 +156,26 @@ Generates TypeScript scripts using @arbitrum/orbit-sdk."""
                     batch_posters_str=batch_posters_str,
                     native_token=native_token,
                 )
+                # Look up the known RollupCreator address for this version + parent chain
+                version_addresses = ROLLUP_CREATOR_ADDRESSES.get(
+                    rollup_version, ROLLUP_CREATOR_ADDRESSES["v3.1"]
+                )
+                rollup_creator_address = version_addresses.get(
+                    parent_chain_id, "0x0000000000000000000000000000000000000000"
+                )
+
                 # Apply version-specific modifications
                 version_label = "v2.1 / classic" if rollup_version == "v2.1" else "v3.1 / BoLD"
                 code = code.replace(
                     "console.log('Deploying Orbit chain...');",
-                    f"console.log('Deploying Orbit chain ({version_label})...');",
+                    f"console.log('Deploying Orbit chain ({version_label})...');\n"
+                    f"  console.log('  RollupCreator: {rollup_creator_address}');",
                 )
                 if rollup_version == "v2.1":
                     code = code.replace(
                         "  // Deploy rollup\n",
-                        "  // Deploy rollup — v2.1 uses classic challenge protocol\n"
+                        f"  // Deploy rollup — v2.1 uses classic challenge protocol\n"
+                        f"  // RollupCreator: {rollup_creator_address}\n"
                         "  // baseStake = 0.1 ETH, stakeToken = ETH (default)\n",
                     )
                     code = code.replace(
@@ -169,7 +195,8 @@ Generates TypeScript scripts using @arbitrum/orbit-sdk."""
                 else:
                     code = code.replace(
                         "  // Deploy rollup\n",
-                        "  // Deploy rollup — v3.1 uses BoLD challenge protocol\n",
+                        f"  // Deploy rollup — v3.1 uses BoLD challenge protocol\n"
+                        f"  // RollupCreator: {rollup_creator_address}\n",
                     )
                     code = code.replace(
                         "    walletClient,\n  }});",
