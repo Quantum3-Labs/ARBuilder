@@ -163,18 +163,13 @@ async function main() {
   console.log('  RollupEventInbox:', deployResult.coreContracts.rollupEventInbox);
   console.log('  UpgradeExecutor:', deployResult.coreContracts.upgradeExecutor);
 
-  // Get deployment block number (needed for node config deployed-at)
-  const receipt = await parentChainPublicClient.getTransactionReceipt({
-    hash: deployResult.transactionHash,
-  });
-
-  // Save deployment output for downstream scripts
-  const deployment = {
+  // Save deployment output IMMEDIATELY — ensures deployment.json exists
+  // even if the receipt fetch below fails or times out
+  const deployment: Record<string, unknown> = {
     chainId: {chainId},
     parentChainId: {parentChainId},
     rollupVersion: 'v3.1',
     transactionHash: deployResult.transactionHash,
-    deployedAtBlock: Number(receipt.blockNumber),
     chainConfig,
     coreContracts: deployResult.coreContracts,
     deployer: account.address,
@@ -182,7 +177,21 @@ async function main() {
   };
   fs.writeFileSync('deployment.json', JSON.stringify(deployment, null, 2));
   console.log('\\nDeployment saved to deployment.json');
-  console.log('  Deployed at block:', deployment.deployedAtBlock);
+
+  // Fetch deployment block number and update deployment.json
+  if (deployResult.transactionHash) {
+    try {
+      const receipt = await parentChainPublicClient.getTransactionReceipt({
+        hash: deployResult.transactionHash,
+      });
+      deployment.deployedAtBlock = Number(receipt.blockNumber);
+      fs.writeFileSync('deployment.json', JSON.stringify(deployment, null, 2));
+      console.log('  Deployed at block:', deployment.deployedAtBlock);
+    } catch (err) {
+      console.warn('  Could not fetch receipt:', (err as Error).message);
+      console.warn('  deployment.json saved without deployedAtBlock.');
+    }
+  }
 }
 
 main().catch(console.error);
@@ -280,18 +289,13 @@ async function main() {
   console.log('  Stake token: ETH (zeroAddress)');
   console.log('  Extra challenge time blocks: 0');
 
-  // Get deployment block number (needed for node config deployed-at)
-  const receipt = await parentChainPublicClient.getTransactionReceipt({
-    hash: deployResult.transactionHash,
-  });
-
-  // Save deployment output for downstream scripts
-  const deployment = {
+  // Save deployment output IMMEDIATELY — ensures deployment.json exists
+  // even if the receipt fetch below fails or times out
+  const deployment: Record<string, unknown> = {
     chainId: {chainId},
     parentChainId: {parentChainId},
     rollupVersion: 'v2.1',
     transactionHash: deployResult.transactionHash,
-    deployedAtBlock: Number(receipt.blockNumber),
     chainConfig,
     coreContracts: deployResult.coreContracts,
     deployer: account.address,
@@ -299,7 +303,21 @@ async function main() {
   };
   fs.writeFileSync('deployment.json', JSON.stringify(deployment, null, 2));
   console.log('\\nDeployment saved to deployment.json');
-  console.log('  Deployed at block:', deployment.deployedAtBlock);
+
+  // Fetch deployment block number and update deployment.json
+  if (deployResult.transactionHash) {
+    try {
+      const receipt = await parentChainPublicClient.getTransactionReceipt({
+        hash: deployResult.transactionHash,
+      });
+      deployment.deployedAtBlock = Number(receipt.blockNumber);
+      fs.writeFileSync('deployment.json', JSON.stringify(deployment, null, 2));
+      console.log('  Deployed at block:', deployment.deployedAtBlock);
+    } catch (err) {
+      console.warn('  Could not fetch receipt:', (err as Error).message);
+      console.warn('  deployment.json saved without deployedAtBlock.');
+    }
+  }
 }
 
 main().catch(console.error);

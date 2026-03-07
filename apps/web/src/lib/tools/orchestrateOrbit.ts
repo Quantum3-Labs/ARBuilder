@@ -119,8 +119,10 @@ DEPLOYER_PRIVATE_KEY=0x...
 
 # Separate keys for batch poster and validator (recommended for production)
 # If not set, DEPLOYER_PRIVATE_KEY is used for both
-BATCH_POSTER_PRIVATE_KEY=0x...
-VALIDATOR_PRIVATE_KEY=0x...
+# IMPORTANT: Uncomment ONLY if you have separate keys — placeholder values
+# will override the DEPLOYER_PRIVATE_KEY fallback and cause errors
+# BATCH_POSTER_PRIVATE_KEY=0x...
+# VALIDATOR_PRIVATE_KEY=0x...
 
 # Parent chain RPC URL
 # Ethereum Sepolia: https://rpc.sepolia.org
@@ -165,6 +167,9 @@ echo "=== Orbit Chain Setup ==="
 echo "Installing dependencies..."
 npm install
 
+# Create data directories for Docker bind mounts
+mkdir -p data/arbitrum data/das
+
 # Copy env template if .env doesn't exist
 if [ ! -f .env ]; then
   cp .env.example .env
@@ -177,8 +182,9 @@ echo "Next steps:"
 echo "  1. Edit .env with your DEPLOYER_PRIVATE_KEY and PARENT_CHAIN_RPC"
 echo "  2. Run: npm run config:chain   (prepare chain config)"
 echo "  3. Run: npm run deploy:rollup  (deploy rollup contracts)"
-echo "  4. Run: npm run deploy:token-bridge (deploy token bridge)"
-echo "  5. Run: npm run config:node    (generate node config)"
+echo "  4. Run: npm run config:node    (generate node config)"
+echo "  5. Run: docker-compose up -d   (start Nitro node)"
+echo "  6. Run: npm run deploy:token-bridge (deploy token bridge)"
 `;
 }
 
@@ -246,17 +252,18 @@ services:
     image: ${nitroImage}
     container_name: ${chainName}-node
     restart: unless-stopped
-    user: root
     ports:
       - "8449:8449"   # L3 RPC
       - "8548:8548"   # L3 WebSocket
       - "9642:9642"   # Metrics
     volumes:
       - ./nodeConfig.json:/config/nodeConfig.json
-      - nitro-data:/home/user/.arbitrum
+      - ./data/arbitrum:/home/user/.arbitrum
     command:
       - --conf.file=/config/nodeConfig.json
       - --node.dangerous.no-sequencer-coordinator
+      - --validation.wasm.allowed-wasm-module-roots=/home/user/nitro-legacy/machines,/home/user/target/machines
+      # Do NOT use --init.dev-init — that flag is for local devnodes only, not Orbit chains
     environment:
       - NITRO_NODE_CONFIG=/config/nodeConfig.json
 `;
@@ -269,11 +276,10 @@ services:
     image: ${nitroImage}
     container_name: ${chainName}-das
     restart: unless-stopped
-    user: root
     ports:
       - "9877:9877"   # DAS REST API
     volumes:
-      - das-data:/home/user/das-data
+      - ./data/das:/home/user/das-data
     entrypoint: /usr/local/bin/daserver
     command:
       - --data-availability.local-file-storage.enable
@@ -286,13 +292,9 @@ services:
   }
 
   compose += `
-volumes:
-  nitro-data:
+# Using bind mounts (./data/) instead of named volumes for easier inspection.
+# Create data directories before starting: mkdir -p data/arbitrum${isAnyTrust ? ' data/das' : ''}
 `;
-
-  if (isAnyTrust) {
-    compose += `  das-data:\n`;
-  }
 
   return compose;
 }
@@ -341,8 +343,14 @@ async function main() {
   console.log('  Rollup:', deployment.coreContracts.rollup);
 
   // Private keys for batch poster and validator (strip 0x prefix for Nitro)
-  const batchPosterKey = (process.env.BATCH_POSTER_PRIVATE_KEY ?? process.env.DEPLOYER_PRIVATE_KEY!).replace(/^0x/, '');
-  const validatorKey = (process.env.VALIDATOR_PRIVATE_KEY ?? process.env.DEPLOYER_PRIVATE_KEY!).replace(/^0x/, '');
+  // IMPORTANT: Only use env vars that are actually set (not placeholder "0x...")
+  function resolveKey(envName: string): string {
+    const val = process.env[envName];
+    if (val && val.length > 10) return val.replace(/^0x/, '');
+    return process.env.DEPLOYER_PRIVATE_KEY!.replace(/^0x/, '');
+  }
+  const batchPosterKey = resolveKey('BATCH_POSTER_PRIVATE_KEY');
+  const validatorKey = resolveKey('VALIDATOR_PRIVATE_KEY');
 
   // Generate node configuration using the actual SDK API
   const nodeConfig = prepareNodeConfig({
@@ -357,13 +365,40 @@ async function main() {
     parentChainRpcUrl: process.env.PARENT_CHAIN_RPC!,${dasLine}
   });
 
-  console.log('\\nNode Configuration:');
-  console.log(JSON.stringify(nodeConfig, null, 2));
+  // --- Post-process nodeConfig ---
 
-  fs.writeFileSync('nodeConfig.json', JSON.stringify(nodeConfig, null, 2));
+  // 1. prepareNodeConfig() masks private keys with "..." — restore actual keys
+  function deepSet(obj: any, path: string[], val: string | boolean) {
+    let current = obj;
+    for (let i = 0; i < path.length - 1; i++) {
+      if (!current?.[path[i]]) return;
+      current = current[path[i]];
+    }
+    if (current) current[path[path.length - 1]] = val;
+  }
+  deepSet(nodeConfig, ['node', 'batch-poster', 'parent-chain-wallet', 'private-key'], batchPosterKey);
+  deepSet(nodeConfig, ['node', 'staker', 'parent-chain-wallet', 'private-key'], validatorKey);
+
+  // 2. Nitro v3.9+ rejects same address for batch poster and staker.
+  //    For single-key testnet setups, disable the staker to avoid startup error.
+  if (batchPosterKey === validatorKey) {
+    console.warn('Warning: Batch poster and staker share the same key.');
+    console.warn('  Disabling staker (set separate BATCH_POSTER_PRIVATE_KEY and VALIDATOR_PRIVATE_KEY for production).');
+    deepSet(nodeConfig, ['node', 'staker', 'enable'], false);
+  }
+
+  // 3. Fix malformed DAS URLs — SDK may produce double-port like http://host:9877:9877
+  let configJson = JSON.stringify(nodeConfig, null, 2);
+  configJson = configJson.replace(/:(\\d+):\\1/g, ':$1');
+
+  console.log('\\nNode Configuration:');
+  console.log(configJson);
+
+  fs.writeFileSync('nodeConfig.json', configJson);
   console.log('\\nSaved to nodeConfig.json');
-  console.log('\\nNext: Start the Nitro node with this config.');
-  console.log('  docker-compose up -d  (if using docker-compose.yml)');
+  console.log('\\nNext steps:');
+  console.log('  1. Create data directory: mkdir -p data/arbitrum');
+  console.log('  2. Start Nitro node: docker-compose up -d');
 }
 
 main().catch(console.error);

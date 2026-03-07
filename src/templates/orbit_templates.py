@@ -188,17 +188,12 @@ async function main() {{
   console.log('  RollupEventInbox:', deployResult.coreContracts.rollupEventInbox);
   console.log('  UpgradeExecutor:', deployResult.coreContracts.upgradeExecutor);
 
-  // Get deployment block number (needed for node config deployed-at)
-  const receipt = await publicClient.getTransactionReceipt({{
-    hash: deployResult.transactionHash,
-  }});
-
-  // Save deployment output for downstream scripts
-  const deployment = {{
+  // Save deployment output IMMEDIATELY — ensures deployment.json exists
+  // even if the receipt fetch below fails or times out
+  const deployment: Record<string, unknown> = {{
     chainId: {chain_id},
     parentChainId: {parent_chain_id},
     transactionHash: deployResult.transactionHash,
-    deployedAtBlock: Number(receipt.blockNumber),
     chainConfig,
     coreContracts: deployResult.coreContracts,
     deployer: account.address,
@@ -206,7 +201,21 @@ async function main() {{
   }};
   fs.writeFileSync('deployment.json', JSON.stringify(deployment, null, 2));
   console.log('\\nDeployment saved to deployment.json');
-  console.log('  Deployed at block:', deployment.deployedAtBlock);
+
+  // Fetch deployment block number and update deployment.json
+  if (deployResult.transactionHash) {{
+    try {{
+      const receipt = await publicClient.getTransactionReceipt({{
+        hash: deployResult.transactionHash,
+      }});
+      deployment.deployedAtBlock = Number(receipt.blockNumber);
+      fs.writeFileSync('deployment.json', JSON.stringify(deployment, null, 2));
+      console.log('  Deployed at block:', deployment.deployedAtBlock);
+    }} catch (err) {{
+      console.warn('  Could not fetch receipt:', (err as Error).message);
+      console.warn('  deployment.json saved without deployedAtBlock.');
+    }}
+  }}
 }}
 
 main().catch(console.error);
@@ -749,8 +758,14 @@ async function main() {
   console.log('  Rollup:', deployment.coreContracts.rollup);
 
   // Private keys for batch poster and validator (strip 0x prefix for Nitro)
-  const batchPosterKey = (process.env.BATCH_POSTER_PRIVATE_KEY ?? process.env.DEPLOYER_PRIVATE_KEY!).replace(/^0x/, '');
-  const validatorKey = (process.env.VALIDATOR_PRIVATE_KEY ?? process.env.DEPLOYER_PRIVATE_KEY!).replace(/^0x/, '');
+  // IMPORTANT: Only use env vars that are actually set (not placeholder "0x...")
+  function resolveKey(envName: string): string {
+    const val = process.env[envName];
+    if (val && val.length > 10) return val.replace(/^0x/, '');
+    return process.env.DEPLOYER_PRIVATE_KEY!.replace(/^0x/, '');
+  }
+  const batchPosterKey = resolveKey('BATCH_POSTER_PRIVATE_KEY');
+  const validatorKey = resolveKey('VALIDATOR_PRIVATE_KEY');
 
   // Generate node configuration using the actual SDK API
   const nodeConfig = prepareNodeConfig({
@@ -765,13 +780,40 @@ async function main() {
     parentChainRpcUrl: process.env.PARENT_CHAIN_RPC!,
   });
 
-  console.log('\\nNode Configuration:');
-  console.log(JSON.stringify(nodeConfig, null, 2));
+  // --- Post-process nodeConfig ---
 
-  fs.writeFileSync('nodeConfig.json', JSON.stringify(nodeConfig, null, 2));
+  // 1. prepareNodeConfig() masks private keys with "..." — restore actual keys
+  function deepSet(obj: any, path: string[], val: string | boolean) {
+    let current = obj;
+    for (let i = 0; i < path.length - 1; i++) {
+      if (!current?.[path[i]]) return;
+      current = current[path[i]];
+    }
+    if (current) current[path[path.length - 1]] = val;
+  }
+  deepSet(nodeConfig, ['node', 'batch-poster', 'parent-chain-wallet', 'private-key'], batchPosterKey);
+  deepSet(nodeConfig, ['node', 'staker', 'parent-chain-wallet', 'private-key'], validatorKey);
+
+  // 2. Nitro v3.9+ rejects same address for batch poster and staker.
+  //    For single-key testnet setups, disable the staker to avoid startup error.
+  if (batchPosterKey === validatorKey) {
+    console.warn('Warning: Batch poster and staker share the same key.');
+    console.warn('  Disabling staker (set separate BATCH_POSTER_PRIVATE_KEY and VALIDATOR_PRIVATE_KEY for production).');
+    deepSet(nodeConfig, ['node', 'staker', 'enable'], false);
+  }
+
+  // 3. Fix malformed DAS URLs — SDK may produce double-port like http://host:9877:9877
+  let configJson = JSON.stringify(nodeConfig, null, 2);
+  configJson = configJson.replace(/:(\\d+):\\1/g, ':$1');
+
+  console.log('\\nNode Configuration:');
+  console.log(configJson);
+
+  fs.writeFileSync('nodeConfig.json', configJson);
   console.log('\\nSaved to nodeConfig.json');
-  console.log('\\nNext: Start the Nitro node with this config.');
-  console.log('  docker-compose up -d  (if using docker-compose.yml)');
+  console.log('\\nNext steps:');
+  console.log('  1. Create data directory: mkdir -p data/arbitrum');
+  console.log('  2. Start Nitro node: docker-compose up -d');
 }
 
 main().catch(console.error);
@@ -973,6 +1015,13 @@ ORCHESTRATION_TEMPLATE = OrbitTemplate(
 ''',
         ".env.example": '''# Deployer private key (with 0x prefix)
 DEPLOYER_PRIVATE_KEY=0x...
+
+# Separate keys for batch poster and validator (recommended for production)
+# If not set, DEPLOYER_PRIVATE_KEY is used for both
+# IMPORTANT: Uncomment ONLY if you have separate keys — placeholder values
+# will override the DEPLOYER_PRIVATE_KEY fallback and cause errors
+# BATCH_POSTER_PRIVATE_KEY=0x...
+# VALIDATOR_PRIVATE_KEY=0x...
 
 # Parent chain RPC URL
 # Ethereum Sepolia: https://rpc.sepolia.org
