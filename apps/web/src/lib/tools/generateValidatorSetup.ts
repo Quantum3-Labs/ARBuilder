@@ -195,7 +195,7 @@ const parentChain: Chain = {
  * Prerequisites:
  *   1. Deploy rollup (deploy-rollup.ts) — creates deployment.json
  *   2. Generate BLS keys for each DAC member:
- *      docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.7-75e084e datool keygen --dir /keys
+ *      docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.4-7f582c3 datool keygen --dir /keys
  *   3. Add each member's BLS public key to the dacMembers array below
  */
 async function main() {
@@ -227,13 +227,13 @@ async function main() {
   }
 
   // DAC member public keys (BLS keys)
-  // Generate with: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.7-75e084e datool keygen --dir /keys
+  // Generate with: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.4-7f582c3 datool keygen --dir /keys
   const dacMembers: string[] = [];
 
   if (dacMembers.length === 0) {
     console.error('\\nError: No DAC members configured.');
     console.error('Add BLS public keys to the dacMembers array in this script.');
-    console.error('Generate keys: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.7-75e084e datool keygen --dir /keys');
+    console.error('Generate keys: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.4-7f582c3 datool keygen --dir /keys');
     process.exit(1);
   }
 

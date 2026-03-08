@@ -98,7 +98,7 @@ const ORBIT_KNOWLEDGE: Record<string, Record<string, string | string[]>> = {
     ],
     keyset: [
       "DAC members have BLS public keys",
-      "Generate BLS keys with: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.7-75e084e datool keygen --dir /keys",
+      "Generate BLS keys with: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.4-7f582c3 datool keygen --dir /keys",
       "Keyset is registered via setValidKeyset() on SequencerInbox",
       "Keyset changes require UpgradeExecutor access",
     ],
@@ -126,7 +126,7 @@ const ORBIT_KNOWLEDGE: Record<string, Record<string, string | string[]>> = {
       "dasServerUrl - DAS endpoint (AnyTrust only)",
     ],
     docker: [
-      "Image: offchainlabs/nitro-node:v3.9.7-75e084e (pinned stable)",
+      "Image: offchainlabs/nitro-node:v3.9.4-7f582c3 (pinned stable)",
       "DAS uses same image with entrypoint /usr/local/bin/daserver (NOT offchainlabs/das)",
       "For single-node testnet: add --node.dangerous.no-sequencer-coordinator flag",
       "Do NOT use 'user: root' — Nitro runs as UID 1000 by default; use bind mounts (./data/arbitrum:/home/user/.arbitrum) and mkdir -p data/arbitrum",
@@ -158,7 +158,7 @@ const ORBIT_KNOWLEDGE: Record<string, Record<string, string | string[]>> = {
       "Missing coreContracts fields — nodeConfig needs ALL addresses from createRollup output (rollup, inbox, outbox, bridge, sequencerInbox, rollupEventInbox, upgradeExecutor)",
     ],
     docker_tips: [
-      "Use pinned image tag: offchainlabs/nitro-node:v3.9.7-75e084e (not :latest)",
+      "Use pinned image tag: offchainlabs/nitro-node:v3.9.4-7f582c3 (not :latest)",
       "Mount nodeConfig.json as read-only: ./nodeConfig.json:/config/nodeConfig.json:ro",
       "Check node health: curl -s http://localhost:8449 -X POST -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[],\"id\":1}'",
       "View logs: docker logs -f <container-name>",

@@ -448,7 +448,7 @@ Built with [ARBuilder](https://github.com/arbbuilder)
                 "step": 5,
                 "component": "AnyTrust DAC Setup",
                 "actions": [
-                    "Generate BLS keys: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.7-75e084e datool keygen --dir /keys",
+                    "Generate BLS keys: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.4-7f582c3 datool keygen --dir /keys",
                     "Configure DAC member BLS keys in the keyset script",
                     "Run npm run configure:anytrust",
                     "Verify keyset is active on SequencerInbox",

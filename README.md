@@ -522,7 +522,7 @@ ARBBUILDER_ADMIN_SECRET=xxx npx tsx scripts/sync_sources.ts --remove-stale
 - Deployment output persisted to `deployment.json` — downstream scripts (token bridge, node config) chain automatically
 - Crash-proof deployment: saves `deployment.json` BEFORE receipt fetch, with try/catch for block number
 - Custom gas tokens: generates `approve-token.ts` with correct RollupCreator addresses, ERC-20 deploy guidance
-- Docker: `offchainlabs/nitro-node:v3.9.7-75e084e`, bind mounts (`./data/arbitrum`), no `user: root`
+- Docker: `offchainlabs/nitro-node:v3.9.4-7f582c3`, bind mounts (`./data/arbitrum`), no `user: root`
 - Node config post-processing: restores masked private keys, disables staker for single-key setups, fixes DAS URL double-port
 - Wasm root check: `--validation.wasm.allowed-wasm-module-roots` prevents crash-loops on startup
 - AnyTrust: BLS keygen via `datool keygen` from nitro-node image

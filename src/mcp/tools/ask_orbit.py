@@ -86,7 +86,7 @@ ORBIT_KNOWLEDGE = {
         ],
         "keyset": [
             "DAC members have BLS public keys",
-            "Generate BLS keys with: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.7-75e084e datool keygen --dir /keys",
+            "Generate BLS keys with: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.4-7f582c3 datool keygen --dir /keys",
             "Keyset is registered via setValidKeyset() on SequencerInbox",
             "Keyset changes require UpgradeExecutor access",
         ],
@@ -116,7 +116,7 @@ ORBIT_KNOWLEDGE = {
             "dasServerUrl — DAS endpoint (AnyTrust only)",
         ],
         "docker": {
-            "image": "offchainlabs/nitro-node:v3.9.7-75e084e (pinned stable)",
+            "image": "offchainlabs/nitro-node:v3.9.4-7f582c3 (pinned stable)",
             "das": "DAS uses same image with entrypoint /usr/local/bin/daserver (NOT offchainlabs/das)",
             "testnet_flag": "For single-node testnet: --node.dangerous.no-sequencer-coordinator",
             "permissions": "Do NOT use 'user: root' — use bind mounts (./data/arbitrum:/home/user/.arbitrum) with mkdir -p data/arbitrum",
@@ -148,7 +148,7 @@ ORBIT_KNOWLEDGE = {
             "Missing coreContracts — nodeConfig needs ALL addresses from createRollup output",
         ],
         "docker_tips": [
-            "Use pinned image: offchainlabs/nitro-node:v3.9.7-75e084e (not :latest)",
+            "Use pinned image: offchainlabs/nitro-node:v3.9.4-7f582c3 (not :latest)",
             "Use bind mounts, not named volumes: ./data/arbitrum:/home/user/.arbitrum",
             "Check node health: curl -s http://localhost:8449 -X POST -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[],\"id\":1}'",
             "View logs: docker logs -f <container-name>",

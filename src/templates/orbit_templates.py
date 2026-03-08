@@ -802,7 +802,41 @@ async function main() {
     deepSet(nodeConfig, ['node', 'staker', 'enable'], false);
   }
 
-  // 3. Fix malformed DAS URLs — SDK may produce double-port like http://host:9877:9877
+  // 3. Inject deployed-at block number into chain info-json.
+  //    Without this, the node can't find the rollup genesis on L1.
+  if (deployment.deployedAtBlock) {
+    if (!nodeConfig.chain) nodeConfig.chain = {};
+    if (!nodeConfig.chain['info-json']) {
+      nodeConfig.chain['info-json'] = JSON.stringify([{
+        'chain-id': deployment.chainId,
+        'chain-name': '{chain_name}',
+        'parent-chain-id': {parent_chain_id},
+        'chain-config': deployment.chainConfig,
+        'rollup': {
+          ...deployment.coreContracts,
+          'deployed-at': deployment.deployedAtBlock,
+        },
+      }]);
+    } else {
+      try {
+        let infoJson = typeof nodeConfig.chain['info-json'] === 'string'
+          ? JSON.parse(nodeConfig.chain['info-json'])
+          : nodeConfig.chain['info-json'];
+        if (Array.isArray(infoJson) && infoJson[0]?.rollup) {
+          infoJson[0].rollup['deployed-at'] = deployment.deployedAtBlock;
+        }
+        nodeConfig.chain['info-json'] = JSON.stringify(infoJson);
+      } catch {
+        console.warn('  Could not patch deployed-at into existing info-json');
+      }
+    }
+    console.log('  Injected deployed-at block:', deployment.deployedAtBlock);
+  } else {
+    console.warn('Warning: deployment.json has no deployedAtBlock.');
+    console.warn('  Node may fail with "failed to get init message". Re-run deploy-rollup.ts to fix.');
+  }
+
+  // 4. Fix malformed DAS URLs — SDK may produce double-port like http://host:9877:9877
   let configJson = JSON.stringify(nodeConfig, null, 2);
   configJson = configJson.replace(/:(\\d+):\\1/g, ':$1');
 
@@ -878,7 +912,7 @@ const parentChain: Chain = {
  * Prerequisites:
  *   1. Deploy rollup (deploy-rollup.ts) — creates deployment.json
  *   2. Generate BLS keys for each DAC member:
- *      docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.7-75e084e datool keygen --dir /keys
+ *      docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.4-7f582c3 datool keygen --dir /keys
  *   3. Add each member's BLS public key to the dacMembers array below
  */
 async function main() {
@@ -910,13 +944,13 @@ async function main() {
   }
 
   // DAC member public keys (BLS keys)
-  // Generate with: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.7-75e084e datool keygen --dir /keys
+  // Generate with: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.4-7f582c3 datool keygen --dir /keys
   const dacMembers = {dac_members_array};
 
   if (dacMembers.length === 0) {
     console.error('\\nError: No DAC members configured.');
     console.error('Add BLS public keys to the dacMembers array in this script.');
-    console.error('Generate keys: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.7-75e084e datool keygen --dir /keys');
+    console.error('Generate keys: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.4-7f582c3 datool keygen --dir /keys');
     process.exit(1);
   }
 

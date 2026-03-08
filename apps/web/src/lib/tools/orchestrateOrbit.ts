@@ -242,12 +242,9 @@ function generateDockerCompose(
   parentChainId: number,
   isAnyTrust: boolean
 ): string {
-  // Use a specific known-good Nitro image tag
-  const nitroImage = 'offchainlabs/nitro-node:v3.9.7-75e084e';
+  const nitroImage = 'offchainlabs/nitro-node:v3.9.4-7f582c3';
 
-  let compose = `version: '3.8'
-
-services:
+  let compose = `services:
   nitro-node:
     image: ${nitroImage}
     container_name: ${chainName}-node
@@ -259,11 +256,16 @@ services:
     volumes:
       - ./nodeConfig.json:/config/nodeConfig.json
       - ./data/arbitrum:/home/user/.arbitrum
+    entrypoint: /bin/bash
     command:
-      - --conf.file=/config/nodeConfig.json
-      - --node.dangerous.no-sequencer-coordinator
-      - --validation.wasm.allowed-wasm-module-roots=/home/user/nitro-legacy/machines,/home/user/target/machines
-      # Do NOT use --init.dev-init — that flag is for local devnodes only, not Orbit chains
+      - -c
+      - |
+        rm -rf /home/user/.arbitrum/*/nitro/wasm
+        exec /usr/local/bin/nitro \\
+          --conf.file=/config/nodeConfig.json \\
+          --node.dangerous.no-sequencer-coordinator \\
+          --validation.wasm.allowed-wasm-module-roots=/home/user/nitro-legacy/machines,/home/user/target/machines
+    # Do NOT use --init.dev-init — that flag is for local devnodes only, not Orbit chains
     environment:
       - NITRO_NODE_CONFIG=/config/nodeConfig.json
 `;
@@ -387,7 +389,44 @@ async function main() {
     deepSet(nodeConfig, ['node', 'staker', 'enable'], false);
   }
 
-  // 3. Fix malformed DAS URLs — SDK may produce double-port like http://host:9877:9877
+  // 3. Inject deployed-at block number into chain info-json.
+  //    Without this, the node can't find the rollup genesis on L1.
+  if (deployment.deployedAtBlock) {
+    // The chain info-json is typically at chain.info-json[0].rollup
+    if (!nodeConfig.chain) nodeConfig.chain = {};
+    if (!nodeConfig.chain['info-json']) {
+      // Build the info-json structure that Nitro expects
+      nodeConfig.chain['info-json'] = JSON.stringify([{
+        'chain-id': deployment.chainId,
+        'chain-name': '${chainName}',
+        'parent-chain-id': ${parentChainId},
+        'chain-config': deployment.chainConfig,
+        'rollup': {
+          ...deployment.coreContracts,
+          'deployed-at': deployment.deployedAtBlock,
+        },
+      }]);
+    } else {
+      // info-json already exists (from prepareNodeConfig) — patch deployed-at into it
+      try {
+        let infoJson = typeof nodeConfig.chain['info-json'] === 'string'
+          ? JSON.parse(nodeConfig.chain['info-json'])
+          : nodeConfig.chain['info-json'];
+        if (Array.isArray(infoJson) && infoJson[0]?.rollup) {
+          infoJson[0].rollup['deployed-at'] = deployment.deployedAtBlock;
+        }
+        nodeConfig.chain['info-json'] = JSON.stringify(infoJson);
+      } catch {
+        console.warn('  Could not patch deployed-at into existing info-json');
+      }
+    }
+    console.log('  Injected deployed-at block:', deployment.deployedAtBlock);
+  } else {
+    console.warn('Warning: deployment.json has no deployedAtBlock.');
+    console.warn('  Node may fail with "failed to get init message". Re-run deploy-rollup.ts to fix.');
+  }
+
+  // 4. Fix malformed DAS URLs — SDK may produce double-port like http://host:9877:9877
   let configJson = JSON.stringify(nodeConfig, null, 2);
   configJson = configJson.replace(/:(\\d+):\\1/g, ':$1');
 
@@ -543,7 +582,7 @@ function generateDevelopmentWorkflow(isAnyTrust: boolean) {
       step: 5,
       component: "AnyTrust DAC Setup",
       actions: [
-        "Generate BLS keys: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.7-75e084e datool keygen --dir /keys",
+        "Generate BLS keys: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.4-7f582c3 datool keygen --dir /keys",
         "Configure DAC member BLS keys in the keyset script",
         "Run npm run configure:anytrust",
         "Verify keyset is active on SequencerInbox",
