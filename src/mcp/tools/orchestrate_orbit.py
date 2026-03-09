@@ -267,11 +267,13 @@ Includes package.json, tsconfig.json, .env.example, setup.sh, and deploy.sh."""
             "batch_posters": batch_posters,
             "setup_instructions": [
                 "1. Run: bash setup.sh",
-                "2. Edit .env with DEPLOYER_PRIVATE_KEY (and optionally separate BATCH_POSTER/VALIDATOR keys)",
+                "2. Edit .env with DEPLOYER_PRIVATE_KEY"
+                " (and optionally separate BATCH_POSTER/VALIDATOR keys)",
                 *(
                     [
                         "3. Deploy or obtain your ERC-20 gas token on the parent chain",
-                        "4. Run: npx tsx scripts/approve-token.ts (approve token for RollupCreator)",
+                        "4. Run: npx tsx scripts/approve-token.ts"
+                        " (approve token for RollupCreator)",
                         "5. Run: npm run config:chain",
                         "6. Run: npm run deploy:rollup (output saved to deployment.json)",
                         "7. Run: npm run config:node (reads deployment.json)",
@@ -449,7 +451,10 @@ Built with [ARBuilder](https://github.com/arbbuilder)
                 "step": 5,
                 "component": "AnyTrust DAC Setup",
                 "actions": [
-                    "Generate BLS keys: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.4-7f582c3 datool keygen --dir /keys",
+                    "Generate BLS keys: docker run --rm"
+                    " -v $(pwd)/das-keys:/keys"
+                    " offchainlabs/nitro-node:v3.9.4-7f582c3"
+                    " datool keygen --dir /keys",
                     "Configure DAC member BLS keys in the keyset script",
                     "Run npm run configure:anytrust",
                     "Verify keyset is active on SequencerInbox",
