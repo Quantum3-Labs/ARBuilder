@@ -158,19 +158,14 @@ import {
   createPublicClient,
   createWalletClient,
   http,
+  keccak256,
   Chain,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { prepareKeyset, setValidKeyset } from '@arbitrum/chain-sdk';
 
-// SequencerInbox ABI for keyset management
+// SequencerInbox ABI for keyset verification only
 const sequencerInboxAbi = [
-  {
-    name: 'setValidKeyset',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [{ name: 'keysetBytes', type: 'bytes' }],
-    outputs: [],
-  },
   {
     name: 'isValidKeysetHash',
     type: 'function',
@@ -192,11 +187,12 @@ const parentChain: Chain = {
 /**
  * Configure AnyTrust DAC keyset on the SequencerInbox.
  *
+ * Uses SDK's prepareKeyset() + buildSetValidKeyset() for correct encoding
+ * and UpgradeExecutor routing.
+ *
  * Prerequisites:
- *   1. Deploy rollup (deploy-rollup.ts) — creates deployment.json
- *   2. Generate BLS keys for each DAC member:
- *      docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.4-7f582c3 datool keygen --dir /keys
- *   3. Add each member's BLS public key to the dacMembers array below
+ *   1. Deploy rollup: npm run deploy:rollup (creates deployment.json)
+ *   2. Generate BLS keys: npm run generate:das-keys
  */
 async function main() {
   const account = privateKeyToAccount(
@@ -214,50 +210,48 @@ async function main() {
     transport: http(process.env.PARENT_CHAIN_RPC),
   });
 
-  // Read SequencerInbox from deployment.json if available
-  let sequencerInboxAddress: \`0x\${string}\` = '{sequencerInbox}' as \`0x\${string}\`;
-
-  if (fs.existsSync('deployment.json')) {
-    const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));
-    sequencerInboxAddress = deployment.coreContracts.sequencerInbox as \`0x\${string}\`;
-    console.log('Loaded SequencerInbox from deployment.json:', sequencerInboxAddress);
-  } else {
-    console.log('Warning: deployment.json not found. Using placeholder address.');
-    console.log('Run deploy-rollup.ts first, or set sequencerInboxAddress manually.');
-  }
-
-  // DAC member public keys (BLS keys)
-  // Generate with: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.4-7f582c3 datool keygen --dir /keys
-  const dacMembers: string[] = [];
-
-  if (dacMembers.length === 0) {
-    console.error('\\nError: No DAC members configured.');
-    console.error('Add BLS public keys to the dacMembers array in this script.');
-    console.error('Generate keys: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.4-7f582c3 datool keygen --dir /keys');
+  // Read from deployment.json
+  if (!fs.existsSync('deployment.json')) {
+    console.error('Error: deployment.json not found. Run deploy-rollup.ts first.');
     process.exit(1);
   }
+  const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));
+  const sequencerInboxAddress = deployment.coreContracts.sequencerInbox as \`0x\${string}\`;
+  console.log('SequencerInbox:', sequencerInboxAddress);
+  console.log('UpgradeExecutor:', deployment.coreContracts.upgradeExecutor);
 
-  // Construct keyset bytes
-  // Format: [assumedHonest (uint64), numMembers (uint64), ...member BLS pubkeys (48 bytes each)]
-  const keysetBytes = '0x' as \`0x\${string}\`;
+  // Load BLS key — das_bls.pub is base64-encoded, must decode
+  const dasKeyPath = 'das-keys/das_bls.pub';
+  if (!fs.existsSync(dasKeyPath)) {
+    console.error('Error: No BLS key at', dasKeyPath);
+    console.error('Generate: npm run generate:das-keys');
+    process.exit(1);
+  }
+  const blsPubKeyBase64 = fs.readFileSync(dasKeyPath, 'utf-8').trim();
+  console.log('BLS key (base64):', blsPubKeyBase64.length, 'chars');
 
-  console.log('Setting valid keyset on SequencerInbox...');
-  console.log('  SequencerInbox:', sequencerInboxAddress);
-  console.log('  DAC members:', dacMembers.length);
+  // Encode keyset via SDK — takes base64 strings, handles decoding + encoding internally
+  const keyset = prepareKeyset([blsPubKeyBase64], 1);
 
-  // Note: setValidKeyset must be called through the UpgradeExecutor
-  // if access is restricted (which it is by default after deployment)
-  const txHash = await walletClient.writeContract({
+  // Register via SDK — handles UpgradeExecutor routing, returns receipt directly
+  console.log('\\nRegistering keyset via setValidKeyset()...');
+  const receipt = await setValidKeyset({
+    coreContracts: deployment.coreContracts,
+    keyset,
+    publicClient,
+    walletClient,
+  });
+  console.log('  Tx:', receipt.transactionHash, '- Status:', receipt.status);
+
+  // Verify
+  const keysetHash = keccak256(keyset);
+  const isValid = await publicClient.readContract({
     address: sequencerInboxAddress,
     abi: sequencerInboxAbi,
-    functionName: 'setValidKeyset',
-    args: [keysetBytes],
+    functionName: 'isValidKeysetHash',
+    args: [keysetHash],
   });
-
-  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-  console.log('\\nKeyset set successfully!');
-  console.log('  Transaction:', receipt.transactionHash);
-  console.log('  Status:', receipt.status);
+  console.log('\\nKeyset hash:', keysetHash, isValid ? '(VALID)' : '(NOT FOUND — check UpgradeExecutor role)');
 }
 
 main().catch(console.error);

@@ -874,20 +874,14 @@ import {
   createPublicClient,
   createWalletClient,
   http,
-  encodeAbiParameters,
+  keccak256,
   Chain,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { prepareKeyset, setValidKeyset } from '@arbitrum/chain-sdk';
 
-// SequencerInbox ABI for keyset management
+// SequencerInbox ABI for keyset verification only
 const sequencerInboxAbi = [
-  {
-    name: 'setValidKeyset',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [{ name: 'keysetBytes', type: 'bytes' }],
-    outputs: [],
-  },
   {
     name: 'isValidKeysetHash',
     type: 'function',
@@ -909,11 +903,12 @@ const parentChain: Chain = {
 /**
  * Configure AnyTrust DAC keyset on the SequencerInbox.
  *
+ * Uses SDK's prepareKeyset() + setValidKeyset() for correct encoding
+ * and UpgradeExecutor routing.
+ *
  * Prerequisites:
- *   1. Deploy rollup (deploy-rollup.ts) — creates deployment.json
- *   2. Generate BLS keys for each DAC member:
- *      docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.4-7f582c3 datool keygen --dir /keys
- *   3. Add each member's BLS public key to the dacMembers array below
+ *   1. Deploy rollup: npm run deploy:rollup (creates deployment.json)
+ *   2. Generate BLS keys: npm run generate:das-keys
  */
 async function main() {
   const account = privateKeyToAccount(
@@ -931,50 +926,48 @@ async function main() {
     transport: http(process.env.PARENT_CHAIN_RPC),
   });
 
-  // Read SequencerInbox from deployment.json if available
-  let sequencerInboxAddress: `0x${string}` = '{sequencer_inbox}' as `0x${string}`;
-
-  if (fs.existsSync('deployment.json')) {
-    const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));
-    sequencerInboxAddress = deployment.coreContracts.sequencerInbox as `0x${string}`;
-    console.log('Loaded SequencerInbox from deployment.json:', sequencerInboxAddress);
-  } else {
-    console.log('Warning: deployment.json not found. Using placeholder address.');
-    console.log('Run deploy-rollup.ts first, or set sequencerInboxAddress manually.');
-  }
-
-  // DAC member public keys (BLS keys)
-  // Generate with: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.4-7f582c3 datool keygen --dir /keys
-  const dacMembers = {dac_members_array};
-
-  if (dacMembers.length === 0) {
-    console.error('\\nError: No DAC members configured.');
-    console.error('Add BLS public keys to the dacMembers array in this script.');
-    console.error('Generate keys: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.4-7f582c3 datool keygen --dir /keys');
+  // Read contract addresses from deployment.json
+  if (!fs.existsSync('deployment.json')) {
+    console.error('Error: deployment.json not found. Run deploy-rollup.ts first.');
     process.exit(1);
   }
+  const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));
+  const sequencerInboxAddress = deployment.coreContracts.sequencerInbox as `0x${string}`;
+  console.log('SequencerInbox:', sequencerInboxAddress);
+  console.log('UpgradeExecutor:', deployment.coreContracts.upgradeExecutor);
 
-  // Construct keyset bytes
-  // Format: [assumedHonest (uint64), numMembers (uint64), ...member BLS pubkeys (48 bytes each)]
-  const keysetBytes = '{keyset_bytes}' as `0x${string}`;
+  // Load BLS key — das_bls.pub is base64-encoded, must decode
+  const dasKeyPath = 'das-keys/das_bls.pub';
+  if (!fs.existsSync(dasKeyPath)) {
+    console.error('Error: No BLS key at', dasKeyPath);
+    console.error('Generate: npm run generate:das-keys');
+    process.exit(1);
+  }
+  const blsPubKeyBase64 = fs.readFileSync(dasKeyPath, 'utf-8').trim();
+  console.log('BLS key loaded (base64, SDK decodes internally)');
 
-  console.log('Setting valid keyset on SequencerInbox...');
-  console.log('  SequencerInbox:', sequencerInboxAddress);
-  console.log('  DAC members:', dacMembers.length);
+  // Encode keyset via SDK — pass base64 strings directly (SDK decodes internally)
+  const keyset = prepareKeyset([blsPubKeyBase64], 1);
 
-  // Note: setValidKeyset must be called through the UpgradeExecutor
-  // if access is restricted (which it is by default after deployment)
-  const txHash = await walletClient.writeContract({
+  // Register via SDK (handles UpgradeExecutor routing, returns receipt directly)
+  console.log('\\nRegistering keyset via setValidKeyset()...');
+  const receipt = await setValidKeyset({
+    coreContracts: deployment.coreContracts,
+    keyset,
+    publicClient,
+    walletClient,
+  });
+  console.log('  Tx:', receipt.transactionHash, '- Status:', receipt.status);
+
+  // Verify
+  const keysetHash = keccak256(keyset);
+  const isValid = await publicClient.readContract({
     address: sequencerInboxAddress,
     abi: sequencerInboxAbi,
-    functionName: 'setValidKeyset',
-    args: [keysetBytes],
+    functionName: 'isValidKeysetHash',
+    args: [keysetHash],
   });
-
-  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-  console.log('\\nKeyset set successfully!');
-  console.log('  Transaction:', receipt.transactionHash);
-  console.log('  Status:', receipt.status);
+  console.log('\\nKeyset hash:', keysetHash, isValid ? '(VALID)' : '(NOT FOUND — check UpgradeExecutor role)');
 }
 
 main().catch(console.error);
@@ -1016,6 +1009,8 @@ ORCHESTRATION_TEMPLATE = OrbitTemplate(
     "config:chain": "npx tsx scripts/prepare-chain-config.ts",
     "config:node": "npx tsx scripts/prepare-node-config.ts",
     "manage:validators": "npx tsx scripts/manage-validators.ts",
+    "manage:governance": "npx tsx scripts/manage-governance.ts",
+    "test:chain": "npx tsx scripts/test-chain.ts",
     "deploy": "bash deploy.sh"
   },
   "dependencies": {
@@ -1070,6 +1065,14 @@ ORBIT_CHAIN_RPC=http://localhost:8449
 # Chain configuration
 CHAIN_ID={chain_id}
 CHAIN_NAME={chain_name}
+
+# SequencerInbox address (from deployment.json, needed by DAS server)
+# Set after running deploy-rollup.ts
+SEQUENCER_INBOX_ADDRESS=0x0000000000000000000000000000000000000000
+
+# DAS (Data Availability Server) — required for AnyTrust chains
+# In Docker Compose, use the service name: http://das-server:9877
+DAS_SERVER_URL=http://das-server:9877
 ''',
         "setup.sh": '''#!/usr/bin/env bash
 set -euo pipefail
@@ -1079,6 +1082,9 @@ echo "=== Orbit Chain Setup ==="
 # Install dependencies
 echo "Installing dependencies..."
 npm install
+
+# Create data directories for Docker bind mounts
+mkdir -p data/arbitrum data/das das-keys
 
 # Copy env template if .env doesn't exist
 if [ ! -f .env ]; then
@@ -1092,8 +1098,9 @@ echo "Next steps:"
 echo "  1. Edit .env with your DEPLOYER_PRIVATE_KEY and PARENT_CHAIN_RPC"
 echo "  2. Run: npm run config:chain   (prepare chain config)"
 echo "  3. Run: npm run deploy:rollup  (deploy rollup contracts)"
-echo "  4. Run: npm run deploy:token-bridge (deploy token bridge)"
-echo "  5. Run: npm run config:node    (generate node config)"
+echo "  4. Run: npm run config:node    (generate node config)"
+echo "  5. Run: docker-compose up -d   (start Nitro node)"
+echo "  6. Run: npm run deploy:token-bridge (deploy token bridge)"
 ''',
         "deploy.sh": '''#!/usr/bin/env bash
 set -euo pipefail
@@ -1142,6 +1149,96 @@ echo "Node config saved to nodeConfig.json"
 ''',
     },
 )
+
+
+def generate_docker_compose(
+    chain_name: str,
+    chain_id: int,
+    parent_chain_id: int,
+    is_anytrust: bool,
+) -> str:
+    """Generate docker-compose.yml for Nitro node (+ DAS for AnyTrust)."""
+    nitro_image = "offchainlabs/nitro-node:v3.9.4-7f582c3"
+
+    compose = f"""services:
+  nitro-node:
+    image: {nitro_image}
+    container_name: {chain_name}-node
+    restart: unless-stopped
+    ports:
+      - "8449:8449"   # L3 RPC (HTTP)
+      - "8548:8548"   # L3 WebSocket
+      - "9642:9642"   # Metrics
+    volumes:
+      - ./nodeConfig.json:/config/nodeConfig.json:ro
+      - ./data/arbitrum:/home/user/.arbitrum
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        # Clean stale WASM files that cause checkEmptyDatabaseDir crash-loops
+        rm -rf /home/user/.arbitrum/*/nitro/wasm
+        exec /usr/local/bin/nitro \\
+          --conf.file=/config/nodeConfig.json \\
+          --node.dangerous.no-sequencer-coordinator \\
+          --validation.wasm.allowed-wasm-module-roots=/home/user/nitro-legacy/machines,/home/user/target/machines \\
+          --http.addr=0.0.0.0 \\
+          --http.port=8449 \\
+          --http.vhosts=* \\
+          --http.corsdomain=* \\
+          --http.api=net,web3,eth,debug,txpool,arb \\
+          --ws.addr=0.0.0.0 \\
+          --ws.port=8548 \\
+          --ws.origins=* \\
+          --ws.api=net,web3,eth,debug,txpool,arb \\
+          --metrics \\
+          --metrics-server.addr=0.0.0.0 \\
+          --metrics-server.port=9642
+    # Do NOT use --init.dev-init — that flag is for local devnodes only, not Orbit chains
+    environment:
+      - NITRO_NODE_CONFIG=/config/nodeConfig.json
+"""
+
+    if is_anytrust:
+        compose += f"""
+    depends_on:
+      das-server:
+        condition: service_started
+
+  # DAS (Data Availability Server) — must be running before nitro-node starts batch posting
+  # Generate BLS keys first: npm run generate:das-keys
+  das-server:
+    image: {nitro_image}
+    container_name: {chain_name}-das
+    restart: unless-stopped
+    ports:
+      - "9876:9876"   # DAS RPC (batch poster data submission)
+      - "9877:9877"   # DAS REST API
+    volumes:
+      - ./data/das:/home/user/das-data
+      - ./das-keys:/home/user/das-keys:ro
+    entrypoint: /usr/local/bin/daserver
+    command:
+      - --data-availability.local-file-storage.enable
+      - --data-availability.local-file-storage.data-dir=/home/user/das-data
+      - --data-availability.parent-chain-node-url=${{PARENT_CHAIN_RPC}}
+      - --data-availability.sequencer-inbox-address=${{SEQUENCER_INBOX_ADDRESS:-0x0000000000000000000000000000000000000000}}
+      - --data-availability.key.key-dir=/home/user/das-keys
+      - --enable-rest
+      - --rest-addr=0.0.0.0
+      - --rest-port=9877
+      - --log-level=3
+    env_file:
+      - .env
+"""
+
+    das_dirs = " data/das das-keys" if is_anytrust else ""
+    compose += f"""
+# Using bind mounts (./data/) instead of named volumes for easier inspection.
+# Create data directories before starting: mkdir -p data/arbitrum{das_dirs}
+"""
+
+    return compose
 
 
 # All templates indexed by type

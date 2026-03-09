@@ -16,6 +16,7 @@ from typing import Any
 from ...templates.orbit_templates import (
     ORBIT_DEPENDENCIES,
     PARENT_CHAIN_RPCS,
+    generate_docker_compose,
     get_orbit_template,
 )
 from .base import BaseTool
@@ -203,12 +204,6 @@ Includes package.json, tsconfig.json, .env.example, setup.sh, and deploy.sh."""
                 code = anytrust_template.code
                 code = code.replace("{parent_chain_id}", str(parent_chain_id))
                 code = code.replace("{parent_chain_name}", parent_chain_name)
-                code = code.replace(
-                    "{sequencer_inbox}",
-                    "0x0000000000000000000000000000000000000000",
-                )
-                code = code.replace("{dac_members_array}", "[]")
-                code = code.replace("{keyset_bytes}", "0x")
                 files["scripts/configure-anytrust.ts"] = code
 
         # 7. Orchestration scaffold files
@@ -221,7 +216,12 @@ Includes package.json, tsconfig.json, .env.example, setup.sh, and deploy.sh."""
                 content = content.replace("{parent_chain_rpc}", parent_rpc)
                 files[filename] = content
 
-        # 8. README
+        # 8. Docker compose
+        files["docker-compose.yml"] = generate_docker_compose(
+            chain_name, chain_id, parent_chain_id, is_anytrust
+        )
+
+        # 9. README
         files["README.md"] = self._generate_readme(
             chain_name, chain_id, is_anytrust, native_token, parent_chain
         )
@@ -241,6 +241,7 @@ Includes package.json, tsconfig.json, .env.example, setup.sh, and deploy.sh."""
                 ".env.example",
                 "setup.sh",
                 "deploy.sh",
+                "docker-compose.yml",
                 "README.md",
             ],
         }

@@ -169,7 +169,7 @@ async function main() {
     chainId: {chainId},
     parentChainId: {parentChainId},
     rollupVersion: 'v3.1',
-    transactionHash: deployResult.transactionHash,
+    transactionHash: deployResult.transactionHash,{nativeTokenDeploymentLine}
     chainConfig,
     coreContracts: deployResult.coreContracts,
     deployer: account.address,
@@ -295,7 +295,7 @@ async function main() {
     chainId: {chainId},
     parentChainId: {parentChainId},
     rollupVersion: 'v2.1',
-    transactionHash: deployResult.transactionHash,
+    transactionHash: deployResult.transactionHash,{nativeTokenDeploymentLine}
     chainConfig,
     coreContracts: deployResult.coreContracts,
     deployer: account.address,
@@ -323,17 +323,26 @@ async function main() {
 main().catch(console.error);
 `;
 
+// Known TokenBridgeCreator addresses (for custom gas token approval)
+const TOKEN_BRIDGE_CREATOR_ADDRESSES: Record<number, string> = {
+  421614: '0x56C486D3786fA26cc61473C499A36Eb9CC1FbD8E', // Arbitrum Sepolia
+  42161: '0x2f5624dc8800dfA0A82AC03509Ef8bb8E7Ac000e',  // Arbitrum One
+  11155111: '0xB1CB026025d32bAe5D0A5B3d905a22B31E8aD7Bc', // Ethereum Sepolia
+  1: '0x60D9A46F24D5a35b95A3F6c4f96074d44c1a3f3c',      // Ethereum Mainnet
+};
+
 const DEPLOY_TOKEN_BRIDGE_TEMPLATE = `import 'dotenv/config';
 import * as fs from 'fs';
 import {
   createPublicClient,
   createWalletClient,
   http,
+  maxUint256,
   Chain,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { createTokenBridge } from '@arbitrum/chain-sdk';
-
+{tokenBridgeApprovalConstants}
 // Parent chain configuration
 const parentChain: Chain = {
   id: {parentChainId},
@@ -348,12 +357,15 @@ async function main() {
   // Read rollup address from deployment.json (output of deploy-rollup.ts)
   let rollupAddress: \`0x\${string}\` = '{rollupAddress}' as \`0x\${string}\`;
   let orbitChainId = {chainId};
+  let nativeToken: \`0x\${string}\` | undefined;
 
   if (fs.existsSync('deployment.json')) {
     const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));
     rollupAddress = deployment.coreContracts.rollup as \`0x\${string}\`;
     orbitChainId = deployment.chainId ?? orbitChainId;
+    nativeToken = deployment.nativeToken as \`0x\${string}\` | undefined;
     console.log('Loaded deployment.json — rollup:', rollupAddress);
+    if (nativeToken) console.log('  Native token:', nativeToken);
   } else {
     console.log('Warning: deployment.json not found, using placeholder rollup address.');
     console.log('Run deploy-rollup.ts first, or set rollupAddress manually.');
@@ -388,7 +400,7 @@ async function main() {
     chain: orbitChain,
     transport: http(process.env.ORBIT_CHAIN_RPC),
   });
-
+{tokenBridgeApprovalBlock}
   console.log('Deploying token bridge...');
   console.log('  Rollup address:', rollupAddress);
 
@@ -709,6 +721,10 @@ export function generateOrbitDeployment(
         /\{nativeTokenLine\}/g,
         `\n      nativeToken: '${nativeToken}' as \`0x\${string}\`,`
       );
+      code = code.replace(
+        /\{nativeTokenDeploymentLine\}/g,
+        `\n    nativeToken: '${nativeToken}',`
+      );
       // Inline token approval: ABI constant + walletClient + approve() before createRollup
       code = code.replace(/\{tokenApprovalConstants\}/g, `
 // ERC20 ABI for token approval
@@ -769,6 +785,7 @@ const erc20Abi = [
 `);
     } else {
       code = code.replace(/\{nativeTokenLine\}/g, "");
+      code = code.replace(/\{nativeTokenDeploymentLine\}/g, "");
       code = code.replace(/\{tokenApprovalConstants\}/g, "");
       code = code.replace(/\{tokenApprovalBlock\}/g, "");
     }
@@ -793,6 +810,70 @@ const erc20Abi = [
     code = code.replace(/\{parentChainId\}/g, String(parentChainId));
     code = code.replace(/\{parentChainName\}/g, parentChainName);
     code = code.replace(/\{rollupAddress\}/g, rollupAddress);
+
+    // Inject token approval for TokenBridgeCreator when using custom gas token
+    if (nativeToken) {
+      const tbcAddress = TOKEN_BRIDGE_CREATOR_ADDRESSES[parentChainId] ?? '0x0000000000000000000000000000000000000000';
+      code = code.replace(/\{tokenBridgeApprovalConstants\}/g, `
+// ERC20 ABI for token approval
+const erc20Abi = [
+  {
+    name: 'approve',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    name: 'allowance',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'spender', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const;
+`);
+      code = code.replace(/\{tokenBridgeApprovalBlock\}/g, `
+  // --- Approve native token for TokenBridgeCreator ---
+  // Custom gas token chains require the TokenBridgeCreator to spend the native token
+  if (nativeToken) {
+    const tokenBridgeCreator = '${tbcAddress}' as \\\`0x\\\${string}\\\`;
+    console.log('Approving native token for TokenBridgeCreator...');
+    console.log('  Token:', nativeToken);
+    console.log('  TokenBridgeCreator:', tokenBridgeCreator);
+
+    const currentAllowance = await parentPublicClient.readContract({
+      address: nativeToken,
+      abi: erc20Abi,
+      functionName: 'allowance',
+      args: [account.address, tokenBridgeCreator],
+    });
+
+    if (currentAllowance === 0n) {
+      const approveTx = await parentWalletClient.writeContract({
+        address: nativeToken,
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [tokenBridgeCreator, maxUint256],
+      });
+      await parentPublicClient.waitForTransactionReceipt({ hash: approveTx });
+      console.log('  Token approved for TokenBridgeCreator');
+    } else {
+      console.log('  Token already approved for TokenBridgeCreator');
+    }
+  }
+`);
+    } else {
+      code = code.replace(/\{tokenBridgeApprovalConstants\}/g, "");
+      code = code.replace(/\{tokenBridgeApprovalBlock\}/g, "");
+    }
+
     files["scripts/deploy-token-bridge.ts"] = code;
   }
 

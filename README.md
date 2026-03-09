@@ -856,12 +856,15 @@ echo '{"method": "tools/call", "params": {"name": "generate_frontend", "argument
 Orbit chain deployment and management support:
 
 - **Chain Configuration**: Generate `prepareChainConfig()` scripts for Rollup or AnyTrust chains
-- **Rollup Deployment**: Generate `createRollup()` deployment scripts with validators and batch posters
-- **Token Bridge**: Generate `createTokenBridge()` scripts for bridging support
-- **Custom Gas Tokens**: Configure ERC20 tokens as native gas tokens
-- **AnyTrust DAC**: Manage Data Availability Committee keysets via `setValidKeyset()`
+- **Rollup Deployment**: Generate `createRollup()` scripts with crash-proof `deployment.json` output (saves before receipt fetch)
+- **Token Bridge**: Generate `createTokenBridge()` scripts with automatic ERC-20 approval for custom gas token chains
+- **Custom Gas Tokens**: Full approval flow — RollupCreator + TokenBridgeCreator + Inbox approvals
+- **AnyTrust DAC**: Full keyset lifecycle — BLS key generation (`generate-das-keys.sh`), keyset encoding, UpgradeExecutor-routed `setValidKeyset()`, hash verification
 - **Validator Management**: Add/remove validators and batch posters
-- **Node Configuration**: Generate Nitro node configuration via `prepareNodeConfig()`
+- **Node Configuration**: Generate Nitro node config via `prepareNodeConfig()` with post-processing — private key restoration, staker disable for single-key setups, `deployed-at` injection, DAS URL fix
+- **Docker Compose**: Battle-tested templates with explicit HTTP/WS/metrics CLI flags, WASM cache cleanup entrypoint, DAS server with all required flags
+- **Governance Management**: UpgradeExecutor role checking, granting, and revocation (`manage-governance.ts`)
+- **Chain Verification**: Health check script tests RPC connectivity, balances, transfers, and contract deployment (`test-chain.ts`)
 - **Full Orchestration**: Scaffold complete deployment projects with all scripts, configs, and documentation
 
 ```bash

@@ -129,10 +129,6 @@ Generates TypeScript scripts using viem for contract interaction."""
         code = code.replace("{sequencer_inbox}", sequencer_inbox)
         code = code.replace("{addresses_array}", addresses_str)
 
-        # AnyTrust-specific
-        code = code.replace("{dac_members_array}", "[]")
-        code = code.replace("{keyset_bytes}", "0x")
-
         # Build files
         files = {}
         if target == "keyset":

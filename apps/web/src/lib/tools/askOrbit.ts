@@ -97,10 +97,28 @@ const ORBIT_KNOWLEDGE: Record<string, Record<string, string | string[]>> = {
       "At least 2-of-N DAC members must be honest",
     ],
     keyset: [
-      "DAC members have BLS public keys",
-      "Generate BLS keys with: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.4-7f582c3 datool keygen --dir /keys",
-      "Keyset is registered via setValidKeyset() on SequencerInbox",
-      "Keyset changes require UpgradeExecutor access",
+      "DAC members have BLS public keys (generated via datool keygen)",
+      "Generate BLS keys: docker run --rm --entrypoint /usr/local/bin/datool -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.4-7f582c3 keygen --dir /keys",
+      "das_bls.pub is base64-encoded — read as utf-8 text and decode: Buffer.from(fs.readFileSync(path, 'utf-8').trim(), 'base64')",
+      "prepareKeyset() takes POSITIONAL args: prepareKeyset([base64Str], assumedHonest) — NOT an object like prepareKeyset({ publicKeys, assumedHonest })",
+      "setValidKeyset({ coreContracts, keyset, publicClient, walletClient }) — returns TransactionReceipt directly",
+      "setValidKeyset() handles UpgradeExecutor routing and tx signing internally",
+      "WRONG: prepareKeyset({ assumedHonest, publicKeys }) — this is NOT the SDK API",
+      "Read BLS key file with fs.readFileSync(path, 'utf-8') — ASCII hyphen, NOT unicode dash",
+      "Verify registration: sequencerInbox.isValidKeysetHash(keccak256(keyset)) should return true",
+      "Do NOT manually encode keyset bytes — the SDK handles the correct format (uint16 key lengths, not uint64)",
+    ],
+    das_server: [
+      "DAS runs from the same nitro-node image with entrypoint /usr/local/bin/daserver",
+      "Required flags: --data-availability.parent-chain-node-url, --data-availability.sequencer-inbox-address, --data-availability.key.key-dir",
+      "In Docker Compose, use service names for inter-container URLs (das-server:9877, not localhost:9877)",
+      "DAS must be running and accessible BEFORE the Nitro node starts batch posting",
+    ],
+    binary_format: [
+      "Actual SDK format (interleaved): [uint64 assumedHonest][uint64 numMembers][uint16 keyLen0][key0 bytes][uint16 keyLen1][key1 bytes]... — lengths NOT grouped separately",
+      "BLS keys are BN254 (289 bytes decoded from base64), NOT BLS-12-381 (48 bytes)",
+      "assumedHonest is uint64 at the START (not uint8 at the end), numMembers is uint64 (not uint16)",
+      "Always use prepareKeyset() from @arbitrum/chain-sdk — do NOT implement encoding manually",
     ],
     rollup_comparison: "All data posted on-chain (full Ethereum security)",
     anytrust_comparison: "Data stored by DAC (cheaper, N/2+1 trust assumption)",
@@ -184,10 +202,33 @@ const ORBIT_KNOWLEDGE: Record<string, Record<string, string | string[]>> = {
       "Manage batch posters",
       "Update DAC keyset (AnyTrust)",
     ],
+    api: [
+      "UpgradeExecutor has both execute() and executeCall() — both exist in the contract, neither is deprecated",
+      "The SDK uses executeCall(target, data) — prefer this for consistency",
+      "Do NOT claim execute() was renamed or is deprecated — both have always existed",
+    ],
     security: [
       "UpgradeExecutor is the admin proxy for all chain contracts",
       "Multi-sig recommended for production chains",
       "Role assignments should be carefully managed",
+    ],
+  },
+  code_standards: {
+    description: "Code standards for Orbit chain tooling",
+    libraries: [
+      "Use viem (^1.20.0) for all blockchain interactions — NOT ethers.js",
+      "Use @arbitrum/chain-sdk (^0.25.0, renamed from @arbitrum/orbit-sdk) for Orbit-specific operations",
+      "Use dotenv/config for environment variable loading",
+      "TypeScript with ESNext modules",
+    ],
+    patterns: [
+      "Read contract addresses from deployment.json (created by deploy-rollup.ts)",
+      "Save all deployment outputs to deployment.json for downstream scripts",
+      "Use viem's createPublicClient/createWalletClient, NOT ethers.Provider",
+      "Use encodeFunctionData() for building calldata, NOT ethers.utils.defaultAbiCoder",
+      "Access-controlled operations route through UpgradeExecutor.executeCall(target, calldata)",
+      "Private keys: strip 0x prefix for Nitro nodeConfig (Nitro expects raw hex)",
+      "DAC keyset: use prepareKeyset() + buildSetValidKeyset() from @arbitrum/chain-sdk — do NOT encode keyset bytes manually",
     ],
   },
   token_bridge: {
@@ -358,6 +399,20 @@ export async function askOrbit(
   ) {
     relevantTopics.push("token_bridge");
     enrichments.push(formatKnowledge("token_bridge"));
+  }
+
+  // Always include code standards when the question involves code examples
+  if (
+    qLower.includes("code") ||
+    qLower.includes("script") ||
+    qLower.includes("example") ||
+    qLower.includes("how to") ||
+    qLower.includes("register") ||
+    qLower.includes("keyset") ||
+    qLower.includes("deploy")
+  ) {
+    relevantTopics.push("code_standards");
+    enrichments.push(formatKnowledge("code_standards"));
   }
 
   if (enrichments.length > 0) {

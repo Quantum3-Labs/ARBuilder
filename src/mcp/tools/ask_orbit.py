@@ -85,10 +85,22 @@ ORBIT_KNOWLEDGE = {
             "At least 2-of-N DAC members must be honest",
         ],
         "keyset": [
-            "DAC members have BLS public keys",
-            "Generate BLS keys with: docker run --rm -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.4-7f582c3 datool keygen --dir /keys",
-            "Keyset is registered via setValidKeyset() on SequencerInbox",
-            "Keyset changes require UpgradeExecutor access",
+            "DAC members have BLS public keys (generated via datool keygen) — BLS keys are BN254 (289 bytes), NOT BLS-12-381 (48 bytes)",
+            "Generate BLS keys: docker run --rm --entrypoint /usr/local/bin/datool -v $(pwd)/das-keys:/keys offchainlabs/nitro-node:v3.9.4-7f582c3 keygen --dir /keys",
+            "das_bls.pub is base64-encoded — pass base64 strings directly to the SDK (it decodes internally)",
+            "prepareKeyset() takes POSITIONAL args: prepareKeyset([base64Str], assumedHonest) — NOT an object like prepareKeyset({ publicKeys, assumedHonest })",
+            "setValidKeyset({ coreContracts, keyset, publicClient, walletClient }) — returns TransactionReceipt directly",
+            "setValidKeyset() handles UpgradeExecutor routing automatically",
+            "WRONG: prepareKeyset({ assumedHonest, publicKeys }) — this is NOT the SDK API",
+            "Read BLS key file with fs.readFileSync(path, 'utf-8') — ASCII hyphen, NOT unicode dash",
+            "Verify registration: sequencerInbox.isValidKeysetHash(keccak256(keyset)) should return true",
+            "Keyset binary format: [uint64 assumedHonest BE][uint64 numMembers BE][uint16 keyLen BE][keyBytes]... — do NOT encode manually, use SDK",
+        ],
+        "das_server": [
+            "DAS runs from the same nitro-node image with entrypoint /usr/local/bin/daserver",
+            "Required flags: --data-availability.parent-chain-node-url, --data-availability.sequencer-inbox-address, --data-availability.key.key-dir",
+            "In Docker Compose, use service names for inter-container URLs (das-server:9877, not localhost:9877)",
+            "DAS must be running and accessible BEFORE the Nitro node starts batch posting",
         ],
         "vs_rollup": {
             "Rollup": "All data posted on-chain (full Ethereum security)",
@@ -149,11 +161,17 @@ ORBIT_KNOWLEDGE = {
         ],
         "docker_tips": [
             "Use pinned image: offchainlabs/nitro-node:v3.9.4-7f582c3 (not :latest)",
+            "Mount nodeConfig.json as read-only: ./nodeConfig.json:/config/nodeConfig.json:ro",
             "Use bind mounts, not named volumes: ./data/arbitrum:/home/user/.arbitrum",
             "Check node health: curl -s http://localhost:8449 -X POST -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[],\"id\":1}'",
             "View logs: docker logs -f <container-name>",
-            "For AnyTrust: DAS must be running BEFORE the node starts batch posting",
+            "For AnyTrust: DAS must be running and accessible BEFORE the node starts batch posting",
             "Common ports: 8449 (RPC), 8548 (WS), 9642 (metrics), 9877 (DAS REST)",
+        ],
+        "networking": [
+            "If both parent chain and Orbit node are in Docker, use Docker network (not localhost)",
+            "Rate limits on public RPCs can cause node sync failures — use a dedicated RPC provider for production",
+            "WebSocket endpoint needed for real-time parent chain event monitoring in production",
         ],
     },
     "governance": {
@@ -169,10 +187,33 @@ ORBIT_KNOWLEDGE = {
             "Manage batch posters",
             "Update DAC keyset (AnyTrust)",
         ],
+        "api": [
+            "UpgradeExecutor has both execute() and executeCall() — both exist in the contract, neither is deprecated",
+            "The SDK uses executeCall(target, data) — prefer this for consistency",
+            "Do NOT claim execute() was renamed or is deprecated — both have always existed",
+        ],
         "security": [
             "UpgradeExecutor is the admin proxy for all chain contracts",
             "Multi-sig recommended for production chains",
             "Role assignments should be carefully managed",
+        ],
+    },
+    "code_standards": {
+        "description": "Code standards for Orbit chain tooling",
+        "libraries": [
+            "Use viem (^1.20.0) for all blockchain interactions — NOT ethers.js",
+            "Use @arbitrum/chain-sdk (^0.25.0, renamed from @arbitrum/orbit-sdk) for Orbit-specific operations",
+            "Use dotenv/config for environment variable loading",
+            "TypeScript with ESNext modules",
+        ],
+        "patterns": [
+            "Read contract addresses from deployment.json (created by deploy-rollup.ts)",
+            "Save all deployment outputs to deployment.json for downstream scripts",
+            "Use viem's createPublicClient/createWalletClient, NOT ethers.Provider",
+            "Use encodeFunctionData() for building calldata, NOT ethers.utils.defaultAbiCoder",
+            "Access-controlled operations route through UpgradeExecutor.executeCall(target, calldata)",
+            "Private keys: strip 0x prefix for Nitro nodeConfig (Nitro expects raw hex)",
+            "DAC keyset: use prepareKeyset([base64String], N) + setValidKeyset({ coreContracts, keyset, publicClient, walletClient }) from @arbitrum/chain-sdk — do NOT encode keyset bytes manually",
         ],
     },
     "token_bridge": {
@@ -313,6 +354,13 @@ Uses curated knowledge base and optional LLM for detailed answers."""
             "permission",
         ]):
             relevant_topics.append("governance")
+
+        # Code standards questions (include when question involves code examples)
+        if any(kw in q_lower for kw in [
+            "code", "script", "example", "how to",
+            "register", "keyset", "deploy",
+        ]):
+            relevant_topics.append("code_standards")
 
         # Token bridge questions
         if any(kw in q_lower for kw in [
@@ -468,6 +516,11 @@ For specific questions, try asking about:
         if "validators" in topics:
             refs.append(
                 "https://docs.arbitrum.io/launch-orbit-chain/concepts/chain-ownership"
+            )
+
+        if "code_standards" in topics:
+            refs.append(
+                "https://viem.sh/docs/getting-started"
             )
 
         return refs

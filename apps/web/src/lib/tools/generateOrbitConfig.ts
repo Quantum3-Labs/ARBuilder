@@ -99,23 +99,19 @@ main().catch(console.error);
 `;
 
 const ANYTRUST_CONFIG_TEMPLATE = `import 'dotenv/config';
+import * as fs from 'fs';
 import {
   createPublicClient,
   createWalletClient,
   http,
+  keccak256,
   Chain,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { prepareKeyset, setValidKeyset } from '@arbitrum/chain-sdk';
 
-// SequencerInbox ABI for keyset management
+// SequencerInbox ABI for keyset verification only
 const sequencerInboxAbi = [
-  {
-    name: 'setValidKeyset',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [{ name: 'keysetBytes', type: 'bytes' }],
-    outputs: [],
-  },
   {
     name: 'isValidKeysetHash',
     type: 'function',
@@ -134,9 +130,20 @@ const parentChain: Chain = {
   },
 };
 
+/**
+ * Configure AnyTrust DAC keyset on the SequencerInbox.
+ *
+ * Uses the SDK's prepareKeyset() for correct binary encoding and
+ * buildSetValidKeyset() which handles UpgradeExecutor routing.
+ *
+ * Prerequisites:
+ *   1. Deploy rollup: npm run deploy:rollup (creates deployment.json)
+ *   2. Generate BLS keys: npm run generate:das-keys
+ *   3. Run this script: npm run configure:anytrust
+ */
 async function main() {
   const account = privateKeyToAccount(
-    process.env.DEPLOYER_PRIVATE_KEY! as \`0x\${string}\`
+    process.env.DEPLOYER_PRIVATE_KEY! as \\\`0x\\\${string}\\\`
   );
 
   const publicClient = createPublicClient({
@@ -150,29 +157,75 @@ async function main() {
     transport: http(process.env.PARENT_CHAIN_RPC),
   });
 
-  const sequencerInboxAddress = '{sequencerInbox}' as \`0x\${string}\`;
-
-  // DAC member public keys (BLS keys)
-  const dacMembers: string[] = [];
-
-  // Construct keyset bytes
-  const keysetBytes = '0x' as \`0x\${string}\`;
-
-  console.log('Setting valid keyset on SequencerInbox...');
+  // Read contract addresses from deployment.json
+  if (!fs.existsSync('deployment.json')) {
+    console.error('Error: deployment.json not found. Run deploy-rollup.ts first.');
+    process.exit(1);
+  }
+  const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));
+  const sequencerInboxAddress = deployment.coreContracts.sequencerInbox as \\\`0x\\\${string}\\\`;
+  console.log('Loaded from deployment.json:');
   console.log('  SequencerInbox:', sequencerInboxAddress);
-  console.log('  DAC members:', dacMembers.length);
+  console.log('  UpgradeExecutor:', deployment.coreContracts.upgradeExecutor);
 
-  const txHash = await walletClient.writeContract({
-    address: sequencerInboxAddress,
-    abi: sequencerInboxAbi,
-    functionName: 'setValidKeyset',
-    args: [keysetBytes],
+  // --- Load BLS public key ---
+  // das_bls.pub is base64-encoded text — must read as utf-8 and decode
+  const dasKeyPath = 'das-keys/das_bls.pub';
+  if (!fs.existsSync(dasKeyPath)) {
+    console.error('Error: No BLS public key found at', dasKeyPath);
+    console.error('Generate keys first: npm run generate:das-keys');
+    process.exit(1);
+  }
+  const blsPubKeyBase64 = fs.readFileSync(dasKeyPath, 'utf-8').trim();
+  console.log('Loaded BLS key (base64):', blsPubKeyBase64.length, 'chars');
+
+  // --- Encode keyset using SDK ---
+  // prepareKeyset() takes base64 strings and handles decoding + binary encoding internally
+  const assumedHonest = 1; // N/2+1 for single-member DAC
+  const keyset = prepareKeyset([blsPubKeyBase64], assumedHonest);
+  console.log('\\nKeyset prepared via SDK');
+  console.log('  Assumed honest:', assumedHonest);
+  console.log('  DAC members: 1');
+
+  // --- Register keyset via SDK ---
+  // setValidKeyset() handles UpgradeExecutor routing and returns the receipt directly
+  console.log('\\nRegistering keyset via setValidKeyset()...');
+  const receipt = await setValidKeyset({
+    coreContracts: deployment.coreContracts,
+    keyset,
+    publicClient,
+    walletClient,
   });
-
-  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-  console.log('\\nKeyset set successfully!');
   console.log('  Transaction:', receipt.transactionHash);
   console.log('  Status:', receipt.status);
+
+  // --- Verify keyset registration ---
+  const keysetHash = keccak256(keyset);
+  const isValid = await publicClient.readContract({
+    address: sequencerInboxAddress,
+    abi: sequencerInboxAbi,
+    functionName: 'isValidKeysetHash',
+    args: [keysetHash],
+  });
+
+  if (isValid) {
+    console.log('\\nKeyset registered successfully!');
+    console.log('  Keyset hash:', keysetHash);
+  } else {
+    console.error('\\nWarning: Keyset hash not found after transaction.');
+    console.error('  Expected hash:', keysetHash);
+    console.error('  Check that the deployer has EXECUTOR_ROLE on the UpgradeExecutor.');
+  }
+
+  // Save keyset info to deployment.json
+  deployment.anyTrustConfig = {
+    keysetHash,
+    assumedHonest,
+    dacMembers: 1,
+    keysetTransaction: receipt.transactionHash,
+  };
+  fs.writeFileSync('deployment.json', JSON.stringify(deployment, null, 2));
+  console.log('\\nUpdated deployment.json with AnyTrust keyset config');
 }
 
 main().catch(console.error);

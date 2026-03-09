@@ -64,7 +64,10 @@ interface OrchestrateOrbitOutput {
 
 // --- Scaffold templates ---
 
-function generatePackageJson(chainName: string): string {
+function generatePackageJson(chainName: string, isAnyTrust: boolean): string {
+  const anytrustScripts = isAnyTrust ? `
+    "generate:das-keys": "bash scripts/generate-das-keys.sh",
+    "configure:anytrust": "npx tsx scripts/configure-anytrust.ts",` : '';
   return `{
   "name": "${chainName}",
   "version": "1.0.0",
@@ -77,6 +80,8 @@ function generatePackageJson(chainName: string): string {
     "config:chain": "npx tsx scripts/prepare-chain-config.ts",
     "config:node": "npx tsx scripts/prepare-node-config.ts",
     "manage:validators": "npx tsx scripts/manage-validators.ts",
+    "manage:governance": "npx tsx scripts/manage-governance.ts",
+    "test:chain": "npx tsx scripts/test-chain.ts",${anytrustScripts}
     "deploy": "bash deploy.sh"
   },
   "dependencies": {
@@ -150,14 +155,20 @@ NATIVE_TOKEN=${nativeToken}
   if (isAnyTrust) {
     env += `
 # DAS (Data Availability Server) — required for AnyTrust chains
-DAS_SERVER_URL=http://localhost:9877
+# In Docker Compose, use the service name: http://das-server:9877
+DAS_SERVER_URL=http://das-server:9877
+
+# SequencerInbox address (from deployment.json, needed by DAS server)
+# Set after running deploy-rollup.ts
+SEQUENCER_INBOX_ADDRESS=0x0000000000000000000000000000000000000000
 `;
   }
 
   return env;
 }
 
-function generateSetupSh(): string {
+function generateSetupSh(isAnyTrust: boolean): string {
+  const dirs = isAnyTrust ? 'data/arbitrum data/das das-keys' : 'data/arbitrum';
   return `#!/usr/bin/env bash
 set -euo pipefail
 
@@ -168,7 +179,7 @@ echo "Installing dependencies..."
 npm install
 
 # Create data directories for Docker bind mounts
-mkdir -p data/arbitrum data/das
+mkdir -p ${dirs}
 
 # Copy env template if .env doesn't exist
 if [ ! -f .env ]; then
@@ -243,6 +254,8 @@ function generateDockerCompose(
   isAnyTrust: boolean
 ): string {
   const nitroImage = 'offchainlabs/nitro-node:v3.9.4-7f582c3';
+  // DAS URL: use Docker service name for inter-container communication
+  const dasUrl = isAnyTrust ? 'http://das-server:9877' : '';
 
   let compose = `services:
   nitro-node:
@@ -250,21 +263,34 @@ function generateDockerCompose(
     container_name: ${chainName}-node
     restart: unless-stopped
     ports:
-      - "8449:8449"   # L3 RPC
+      - "8449:8449"   # L3 RPC (HTTP)
       - "8548:8548"   # L3 WebSocket
       - "9642:9642"   # Metrics
     volumes:
-      - ./nodeConfig.json:/config/nodeConfig.json
+      - ./nodeConfig.json:/config/nodeConfig.json:ro
       - ./data/arbitrum:/home/user/.arbitrum
     entrypoint: /bin/bash
     command:
       - -c
       - |
+        # Clean stale WASM files that cause checkEmptyDatabaseDir crash-loops
         rm -rf /home/user/.arbitrum/*/nitro/wasm
         exec /usr/local/bin/nitro \\
           --conf.file=/config/nodeConfig.json \\
           --node.dangerous.no-sequencer-coordinator \\
-          --validation.wasm.allowed-wasm-module-roots=/home/user/nitro-legacy/machines,/home/user/target/machines
+          --validation.wasm.allowed-wasm-module-roots=/home/user/nitro-legacy/machines,/home/user/target/machines \\
+          --http.addr=0.0.0.0 \\
+          --http.port=8449 \\
+          --http.vhosts=* \\
+          --http.corsdomain=* \\
+          --http.api=net,web3,eth,debug,txpool,arb \\
+          --ws.addr=0.0.0.0 \\
+          --ws.port=8548 \\
+          --ws.origins=* \\
+          --ws.api=net,web3,eth,debug,txpool,arb \\
+          --metrics \\
+          --metrics-server.addr=0.0.0.0 \\
+          --metrics-server.port=9642
     # Do NOT use --init.dev-init — that flag is for local devnodes only, not Orbit chains
     environment:
       - NITRO_NODE_CONFIG=/config/nodeConfig.json
@@ -272,30 +298,41 @@ function generateDockerCompose(
 
   if (isAnyTrust) {
     compose += `
-  # Generate BLS keys for DAC members before starting:
-  #   docker run --rm -v $(pwd)/das-keys:/keys ${nitroImage} datool keygen --dir /keys
+    depends_on:
+      das-server:
+        condition: service_started
+
+  # DAS (Data Availability Server) — must be running before nitro-node starts batch posting
+  # Generate BLS keys first: npm run generate:das-keys
   das-server:
     image: ${nitroImage}
     container_name: ${chainName}-das
     restart: unless-stopped
     ports:
+      - "9876:9876"   # DAS RPC (batch poster data submission)
       - "9877:9877"   # DAS REST API
     volumes:
       - ./data/das:/home/user/das-data
+      - ./das-keys:/home/user/das-keys:ro
     entrypoint: /usr/local/bin/daserver
     command:
       - --data-availability.local-file-storage.enable
       - --data-availability.local-file-storage.data-dir=/home/user/das-data
+      - --data-availability.parent-chain-node-url=\${PARENT_CHAIN_RPC}
+      - --data-availability.sequencer-inbox-address=\${SEQUENCER_INBOX_ADDRESS:-0x0000000000000000000000000000000000000000}
+      - --data-availability.key.key-dir=/home/user/das-keys
       - --enable-rest
       - --rest-addr=0.0.0.0
       - --rest-port=9877
       - --log-level=3
+    env_file:
+      - .env
 `;
   }
 
   compose += `
 # Using bind mounts (./data/) instead of named volumes for easier inspection.
-# Create data directories before starting: mkdir -p data/arbitrum${isAnyTrust ? ' data/das' : ''}
+# Create data directories before starting: mkdir -p data/arbitrum${isAnyTrust ? ' data/das das-keys' : ''}
 `;
 
   return compose;
@@ -310,7 +347,8 @@ function generateNodeConfigScript(
 ): string {
   // Determine if parent is an Arbitrum chain (L2 → L3)
   const parentIsArbitrum = parentChainId === 42161 || parentChainId === 421614;
-  const dasLine = isAnyTrust ? `\n    dasServerUrl: process.env.DAS_SERVER_URL ?? 'http://localhost:9877',` : '';
+  // In Docker, DAS runs as a sibling service — use service name, not localhost
+  const dasLine = isAnyTrust ? `\n    dasServerUrl: process.env.DAS_SERVER_URL ?? 'http://das-server:9877',` : '';
 
   return `import 'dotenv/config';
 import * as fs from 'fs';
@@ -689,6 +727,474 @@ echo "  3. Run: npm run deploy:rollup"
 `;
 }
 
+function generateDasKeysScript(): string {
+  const nitroImage = 'offchainlabs/nitro-node:v3.9.4-7f582c3';
+  return `#!/usr/bin/env bash
+set -euo pipefail
+
+echo "=== Generate DAS BLS Keys ==="
+
+# Create output directory
+mkdir -p das-keys
+
+# Generate BLS key pair using the datool from the Nitro image
+docker run --rm \\
+  --entrypoint /usr/local/bin/datool \\
+  -v "$(pwd)/das-keys:/keys" \\
+  ${nitroImage} \\
+  keygen --dir /keys
+
+echo ""
+echo "BLS keys generated in das-keys/"
+echo "  das_bls      — private key (keep secret!)"
+echo "  das_bls.pub  — public key (used for keyset registration)"
+echo ""
+echo "Next steps:"
+echo "  1. Start DAS + Nitro node: docker-compose up -d"
+echo "  2. Register keyset: npm run configure:anytrust"
+`;
+}
+
+function generateTestChainScript(chainId: number, chainName: string, parentChainId: number): string {
+  return `import 'dotenv/config';
+import * as fs from 'fs';
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  parseEther,
+  formatEther,
+  maxUint256,
+  Chain,
+} from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+
+// ERC-20 ABI for custom gas token approval
+const erc20Abi = [
+  {
+    name: 'approve',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    name: 'balanceOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const;
+
+// Inbox ABI for ERC-20 deposit (custom gas token chains)
+const inboxAbi = [
+  {
+    name: 'depositERC20',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'amount', type: 'uint256' }],
+    outputs: [],
+  },
+] as const;
+
+const orbitChain: Chain = {
+  id: ${chainId},
+  name: '${chainName}',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: {
+    default: { http: [process.env.ORBIT_CHAIN_RPC ?? 'http://localhost:8449'] },
+  },
+};
+
+const parentChain: Chain = {
+  id: ${parentChainId},
+  name: 'Parent Chain',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: {
+    default: { http: [process.env.PARENT_CHAIN_RPC!] },
+  },
+};
+
+/**
+ * Test chain connectivity and basic operations.
+ *
+ * Checks:
+ *   1. L3 RPC connectivity and chain ID
+ *   2. Balances on both parent and orbit chain
+ *   3. Test transfer on L3
+ *   4. Simple contract deployment
+ */
+async function main() {
+  const account = privateKeyToAccount(
+    process.env.DEPLOYER_PRIVATE_KEY! as \\\`0x\\\${string}\\\`
+  );
+
+  console.log('=== Orbit Chain Health Check ===');
+  console.log('Account:', account.address);
+
+  // 1. Test L3 RPC connectivity
+  console.log('\\n--- L3 RPC Connectivity ---');
+  const orbitClient = createPublicClient({
+    chain: orbitChain,
+    transport: http(process.env.ORBIT_CHAIN_RPC ?? 'http://localhost:8449'),
+  });
+
+  try {
+    const chainId = await orbitClient.getChainId();
+    console.log('  Chain ID:', chainId, chainId === ${chainId} ? '(correct)' : '(MISMATCH — expected ${chainId})');
+
+    const blockNumber = await orbitClient.getBlockNumber();
+    console.log('  Latest block:', blockNumber.toString());
+  } catch (err) {
+    console.error('  FAILED: Cannot connect to L3 RPC');
+    console.error('  Error:', (err as Error).message);
+    console.error('  Is the Nitro node running? Try: docker-compose up -d');
+    process.exit(1);
+  }
+
+  // 2. Check balances
+  console.log('\\n--- Balances ---');
+  const parentClient = createPublicClient({
+    chain: parentChain,
+    transport: http(process.env.PARENT_CHAIN_RPC),
+  });
+
+  const parentBalance = await parentClient.getBalance({ address: account.address });
+  console.log('  Parent chain:', formatEther(parentBalance), 'ETH');
+
+  const orbitBalance = await orbitClient.getBalance({ address: account.address });
+  console.log('  Orbit chain: ', formatEther(orbitBalance), 'ETH/gas token');
+
+  // 3. Test transfer on L3 (if balance > 0)
+  console.log('\\n--- Test Transfer (L3) ---');
+  if (orbitBalance > 0n) {
+    const walletClient = createWalletClient({
+      account,
+      chain: orbitChain,
+      transport: http(process.env.ORBIT_CHAIN_RPC ?? 'http://localhost:8449'),
+    });
+
+    try {
+      const txHash = await walletClient.sendTransaction({
+        to: account.address,
+        value: 0n,
+      });
+      const receipt = await orbitClient.waitForTransactionReceipt({ hash: txHash });
+      console.log('  Self-transfer:', receipt.status === 'success' ? 'SUCCESS' : 'FAILED');
+      console.log('  Tx:', txHash);
+      console.log('  Gas used:', receipt.gasUsed.toString());
+    } catch (err) {
+      console.error('  FAILED:', (err as Error).message);
+    }
+  } else {
+    console.log('  Skipped — no balance on L3. Deposit funds first.');
+  }
+
+  // 4. Contract deployment test
+  console.log('\\n--- Contract Deployment Test ---');
+  if (orbitBalance > 0n) {
+    const walletClient = createWalletClient({
+      account,
+      chain: orbitChain,
+      transport: http(process.env.ORBIT_CHAIN_RPC ?? 'http://localhost:8449'),
+    });
+
+    try {
+      // Minimal contract: PUSH1 0x00 PUSH1 0x00 RETURN (returns empty)
+      const txHash = await walletClient.deployContract({
+        abi: [],
+        bytecode: '0x60006000f3',
+      });
+      const receipt = await orbitClient.waitForTransactionReceipt({ hash: txHash });
+      console.log('  Deploy:', receipt.status === 'success' ? 'SUCCESS' : 'FAILED');
+      console.log('  Contract:', receipt.contractAddress);
+    } catch (err) {
+      console.error('  FAILED:', (err as Error).message);
+    }
+  } else {
+    console.log('  Skipped — no balance on L3.');
+  }
+
+  // 5. Deposit test (parent chain → L3)
+  console.log('\\n--- Deposit Test (Parent → L3) ---');
+  if (fs.existsSync('deployment.json')) {
+    const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));
+    const inboxAddress = deployment.coreContracts?.inbox as \\\`0x\\\${string}\\\`;
+
+    if (inboxAddress) {
+      const parentWalletClient = createWalletClient({
+        account,
+        chain: parentChain,
+        transport: http(process.env.PARENT_CHAIN_RPC),
+      });
+
+      if (deployment.nativeToken) {
+        // Custom gas token chain: approve Inbox, then depositERC20
+        const nativeToken = deployment.nativeToken as \\\`0x\\\${string}\\\`;
+        console.log('  Custom gas token:', nativeToken);
+
+        const tokenBalance = await parentClient.readContract({
+          address: nativeToken,
+          abi: erc20Abi,
+          functionName: 'balanceOf',
+          args: [account.address],
+        });
+        const depositAmount = tokenBalance / 100n; // 1% of balance
+
+        if (depositAmount > 0n) {
+          try {
+            // Approve Inbox (NOT Bridge) for the token
+            console.log('  Approving Inbox for token spend...');
+            const approveHash = await parentWalletClient.writeContract({
+              address: nativeToken,
+              abi: erc20Abi,
+              functionName: 'approve',
+              args: [inboxAddress, maxUint256],
+            });
+            await parentClient.waitForTransactionReceipt({ hash: approveHash });
+
+            // Deposit via Inbox.depositERC20(amount)
+            console.log('  Depositing', depositAmount.toString(), 'tokens to L3 via Inbox...');
+            const depositHash = await parentWalletClient.writeContract({
+              address: inboxAddress,
+              abi: inboxAbi,
+              functionName: 'depositERC20',
+              args: [depositAmount],
+            });
+            const depositReceipt = await parentClient.waitForTransactionReceipt({ hash: depositHash });
+            console.log('  Deposit:', depositReceipt.status === 'success' ? 'SUCCESS' : 'FAILED');
+            console.log('  Tx:', depositHash);
+            console.log('  Note: L3 balance updates after ~15 min (retryable ticket processing)');
+          } catch (err) {
+            console.error('  FAILED:', (err as Error).message);
+          }
+        } else {
+          console.log('  Skipped — no token balance on parent chain');
+        }
+      } else {
+        // ETH chain: send ETH directly to the Inbox
+        const depositAmount = parseEther('0.001');
+        if (parentBalance >= depositAmount + parseEther('0.01')) {
+          try {
+            console.log('  Depositing 0.001 ETH to L3 via Inbox...');
+            const txHash = await parentWalletClient.sendTransaction({
+              to: inboxAddress,
+              value: depositAmount,
+            });
+            const receipt = await parentClient.waitForTransactionReceipt({ hash: txHash });
+            console.log('  Deposit:', receipt.status === 'success' ? 'SUCCESS' : 'FAILED');
+            console.log('  Tx:', txHash);
+            console.log('  Note: L3 balance updates after ~15 min (retryable ticket processing)');
+          } catch (err) {
+            console.error('  FAILED:', (err as Error).message);
+          }
+        } else {
+          console.log('  Skipped — insufficient parent chain balance (need 0.011 ETH)');
+        }
+      }
+    } else {
+      console.log('  Skipped — no Inbox address in deployment.json');
+    }
+  } else {
+    console.log('  Skipped — no deployment.json');
+  }
+
+  // 6. Load deployment info if available
+  if (fs.existsSync('deployment.json')) {
+    console.log('\\n--- Deployment Info ---');
+    const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));
+    console.log('  Rollup:', deployment.coreContracts?.rollup);
+    console.log('  Inbox:', deployment.coreContracts?.inbox);
+    console.log('  Bridge:', deployment.coreContracts?.bridge);
+    if (deployment.tokenBridgeContracts) {
+      console.log('  Token Bridge Router (parent):', deployment.tokenBridgeContracts.parentChain?.router);
+      console.log('  Token Bridge Router (orbit):', deployment.tokenBridgeContracts.orbitChain?.router);
+    }
+  }
+
+  console.log('\\n=== Health Check Complete ===');
+}
+
+main().catch(console.error);
+`;
+}
+
+function generateGovernanceScript(parentChainId: number, parentChainName: string): string {
+  return `import 'dotenv/config';
+import * as fs from 'fs';
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  encodeFunctionData,
+  Chain,
+} from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+
+// UpgradeExecutor ABI
+const upgradeExecutorAbi = [
+  {
+    name: 'executeCall',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'target', type: 'address' },
+      { name: 'data', type: 'bytes' },
+    ],
+    outputs: [],
+  },
+  {
+    name: 'hasRole',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'role', type: 'bytes32' },
+      { name: 'account', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    name: 'grantRole',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'role', type: 'bytes32' },
+      { name: 'account', type: 'address' },
+    ],
+    outputs: [],
+  },
+  {
+    name: 'revokeRole',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'role', type: 'bytes32' },
+      { name: 'account', type: 'address' },
+    ],
+    outputs: [],
+  },
+] as const;
+
+const EXECUTOR_ROLE = '0xd8aa0f3194971a2a116679f7c2090f6939c8d4e01a2a8d7e41d55e5351469e63' as \\\`0x\\\${string}\\\`;
+const ADMIN_ROLE = '0xa49807205ce4d355092ef5a8a18f56e8913cf4a201fbe287825b095693c21775' as \\\`0x\\\${string}\\\`;
+
+const parentChain: Chain = {
+  id: ${parentChainId},
+  name: '${parentChainName}',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: {
+    default: { http: [process.env.PARENT_CHAIN_RPC!] },
+  },
+};
+
+/**
+ * Manage governance roles on the UpgradeExecutor.
+ *
+ * Usage:
+ *   npx tsx scripts/manage-governance.ts status
+ *   npx tsx scripts/manage-governance.ts grant <address>
+ *   npx tsx scripts/manage-governance.ts revoke <address>
+ */
+async function main() {
+  const command = process.argv[2] ?? 'status';
+  const targetAddress = process.argv[3] as \\\`0x\\\${string}\\\` | undefined;
+
+  const account = privateKeyToAccount(
+    process.env.DEPLOYER_PRIVATE_KEY! as \\\`0x\\\${string}\\\`
+  );
+
+  // Read UpgradeExecutor from deployment.json
+  if (!fs.existsSync('deployment.json')) {
+    console.error('Error: deployment.json not found. Run deploy-rollup.ts first.');
+    process.exit(1);
+  }
+  const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));
+  const upgradeExecutor = deployment.coreContracts.upgradeExecutor as \\\`0x\\\${string}\\\`;
+
+  const publicClient = createPublicClient({
+    chain: parentChain,
+    transport: http(process.env.PARENT_CHAIN_RPC),
+  });
+
+  const walletClient = createWalletClient({
+    account,
+    chain: parentChain,
+    transport: http(process.env.PARENT_CHAIN_RPC),
+  });
+
+  console.log('=== Governance Management ===');
+  console.log('UpgradeExecutor:', upgradeExecutor);
+  console.log('Caller:', account.address);
+
+  if (command === 'status') {
+    // Check roles for the caller and optionally a target
+    const addresses = [account.address];
+    if (targetAddress) addresses.push(targetAddress);
+
+    for (const addr of addresses) {
+      const hasExecutor = await publicClient.readContract({
+        address: upgradeExecutor,
+        abi: upgradeExecutorAbi,
+        functionName: 'hasRole',
+        args: [EXECUTOR_ROLE, addr],
+      });
+      const hasAdmin = await publicClient.readContract({
+        address: upgradeExecutor,
+        abi: upgradeExecutorAbi,
+        functionName: 'hasRole',
+        args: [ADMIN_ROLE, addr],
+      });
+      console.log(\\\`\\\\n  \\\${addr}:\\\`);
+      console.log(\\\`    EXECUTOR_ROLE: \\\${hasExecutor}\\\`);
+      console.log(\\\`    ADMIN_ROLE:    \\\${hasAdmin}\\\`);
+    }
+  } else if (command === 'grant' && targetAddress) {
+    console.log('\\\\nGranting EXECUTOR_ROLE to:', targetAddress);
+    // Grant must go through executeCall if caller has EXECUTOR_ROLE (not ADMIN_ROLE directly)
+    const grantCalldata = encodeFunctionData({
+      abi: upgradeExecutorAbi,
+      functionName: 'grantRole',
+      args: [EXECUTOR_ROLE, targetAddress],
+    });
+    const txHash = await walletClient.writeContract({
+      address: upgradeExecutor,
+      abi: upgradeExecutorAbi,
+      functionName: 'executeCall',
+      args: [upgradeExecutor, grantCalldata],
+    });
+    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+    console.log('  Tx:', receipt.transactionHash, '- Status:', receipt.status);
+  } else if (command === 'revoke' && targetAddress) {
+    console.log('\\\\nRevoking EXECUTOR_ROLE from:', targetAddress);
+    const revokeCalldata = encodeFunctionData({
+      abi: upgradeExecutorAbi,
+      functionName: 'revokeRole',
+      args: [EXECUTOR_ROLE, targetAddress],
+    });
+    const txHash = await walletClient.writeContract({
+      address: upgradeExecutor,
+      abi: upgradeExecutorAbi,
+      functionName: 'executeCall',
+      args: [upgradeExecutor, revokeCalldata],
+    });
+    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+    console.log('  Tx:', receipt.transactionHash, '- Status:', receipt.status);
+  } else {
+    console.log('\\\\nUsage:');
+    console.log('  npx tsx scripts/manage-governance.ts status [address]');
+    console.log('  npx tsx scripts/manage-governance.ts grant <address>');
+    console.log('  npx tsx scripts/manage-governance.ts revoke <address>');
+  }
+}
+
+main().catch(console.error);
+`;
+}
+
 /**
  * Orchestrate generation of a complete Orbit chain deployment project.
  *
@@ -719,18 +1225,24 @@ export function orchestrateOrbit(
   const files: Record<string, string> = {};
 
   // 1. Chain config script
+  // Always get the basic chain config (not AnyTrust keyset — that's step 6)
   const configResult = generateOrbitConfig({
     prompt: "prepare chain config",
     chainId,
     owner: "0x0000000000000000000000000000000000000000",
-    isAnyTrust,
     parentChain,
   });
   const configFile = Object.entries(configResult.files).find(([k]) =>
     k.startsWith("scripts/")
   );
   if (configFile) {
-    files["scripts/prepare-chain-config.ts"] = configFile[1];
+    let configCode = configFile[1];
+    // generateOrbitConfig defaults isAnyTrust to false (to avoid template collision),
+    // but AnyTrust chains need DataAvailabilityCommittee: true in the chain config
+    if (isAnyTrust) {
+      configCode = configCode.replace("DataAvailabilityCommittee: false", "DataAvailabilityCommittee: true");
+    }
+    files["scripts/prepare-chain-config.ts"] = configCode;
   }
 
   // 2. Deploy rollup script (+ token approval if custom gas token)
@@ -805,11 +1317,22 @@ export function orchestrateOrbit(
     files["scripts/deploy-test-token.sh"] = generateDeployTokenSh();
   }
 
+  // 6c. BLS key generation for AnyTrust
+  if (isAnyTrust) {
+    files["scripts/generate-das-keys.sh"] = generateDasKeysScript();
+  }
+
+  // 6d. Test chain health check
+  files["scripts/test-chain.ts"] = generateTestChainScript(chainId, chainName, parentChainId);
+
+  // 6e. Governance management
+  files["scripts/manage-governance.ts"] = generateGovernanceScript(parentChainId, parentChainName);
+
   // 7. Scaffold files
-  files["package.json"] = generatePackageJson(chainName);
+  files["package.json"] = generatePackageJson(chainName, isAnyTrust);
   files["tsconfig.json"] = generateTsconfig();
   files[".env.example"] = generateEnvExample(parentRpc, chainId, chainName, isAnyTrust, nativeToken);
-  files["setup.sh"] = generateSetupSh();
+  files["setup.sh"] = generateSetupSh(isAnyTrust);
   files["deploy.sh"] = generateDeploySh();
 
   // 8. Docker compose
@@ -837,6 +1360,8 @@ export function orchestrateOrbit(
       "deploy-token-bridge.ts",
       "manage-validators.ts",
       "prepare-node-config.ts",
+      "test-chain.ts",
+      "manage-governance.ts",
     ],
     root: [
       "package.json",
@@ -855,6 +1380,7 @@ export function orchestrateOrbit(
   }
   if (isAnyTrust) {
     projectStructure["scripts/"].push("configure-anytrust.ts");
+    projectStructure["scripts/"].push("generate-das-keys.sh");
   }
 
   return {

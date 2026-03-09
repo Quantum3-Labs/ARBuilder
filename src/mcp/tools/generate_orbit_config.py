@@ -125,11 +125,6 @@ Generates TypeScript scripts using @arbitrum/orbit-sdk."""
                 "[account.address] as `0x${string}`[]",
             )
 
-        # AnyTrust-specific
-        code = code.replace("{sequencer_inbox}", "0x0000000000000000000000000000000000000000")
-        code = code.replace("{dac_members_array}", "[]")
-        code = code.replace("{keyset_bytes}", "0x")
-
         # Build files dict
         files = {}
         if template.template_type == "config" and template.name == "Orbit Chain Config":
