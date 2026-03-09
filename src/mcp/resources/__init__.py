@@ -11,16 +11,16 @@ Resources organized by milestone:
 - M4: Orbit Chain (orbit rules)
 """
 
-from .stylus_cli import STYLUS_CLI_RESOURCE
-from .workflows import BUILD_WORKFLOW, DEPLOY_WORKFLOW, TEST_WORKFLOW
-from .networks import NETWORK_CONFIGS
-from .coding_rules import STYLUS_CODING_RULES
-from .sdk_rules import SDK_CODING_RULES
 from .backend_rules import BACKEND_CODING_RULES
+from .coding_rules import STYLUS_CODING_RULES
 from .frontend_rules import FRONTEND_CODING_RULES
 from .indexer_rules import INDEXER_CODING_RULES
+from .networks import NETWORK_CONFIGS
 from .oracle_rules import ORACLE_CODING_RULES
 from .orbit_rules import ORBIT_RULES
+from .sdk_rules import SDK_CODING_RULES
+from .stylus_cli import STYLUS_CLI_RESOURCE
+from .workflows import BUILD_WORKFLOW, DEPLOY_WORKFLOW, TEST_WORKFLOW
 
 # All available resources
 RESOURCES = {
