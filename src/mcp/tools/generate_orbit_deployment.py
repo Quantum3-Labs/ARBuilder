@@ -34,6 +34,164 @@ ROLLUP_CREATOR_ADDRESSES = {
     },
 }
 
+# Known TokenBridgeCreator addresses (for custom gas token approval)
+TOKEN_BRIDGE_CREATOR_ADDRESSES = {
+    421614: "0x56C486D3786fA26cc61473C499A36Eb9CC1FbD8E",  # Arbitrum Sepolia
+    42161: "0x2f5624dc8800dfA0A82AC03509Ef8bb8E7Ac000e",   # Arbitrum One
+    11155111: "0xB1CB026025d32bAe5D0A5B3d905a22B31E8aD7Bc",  # Ethereum Sepolia
+    1: "0x60D9A46F24D5a35b95A3F6c4f96074d44c1a3f3c",       # Ethereum Mainnet
+}
+
+# Standalone approve-token.ts script — generated when nativeToken is set
+# Uses .replace() placeholders: {parent_chain_id}, {parent_chain_name}, {native_token}
+APPROVE_TOKEN_TEMPLATE = """import 'dotenv/config';
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  Chain,
+  maxUint256,
+} from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+
+// Known RollupCreator addresses (v3.1)
+// See: https://docs.arbitrum.io/launch-orbit-chain/orbit-sdk-introduction
+const ROLLUP_CREATOR: Record<number, `0x${string}`> = {
+  1: '0x43698080f40dB54DEE6871540037b8AB8fD0AB44',       // Ethereum Mainnet
+  42161: '0xB90e53fd945Cd28Ec4728cBfB566981dD571eB8b',   // Arbitrum One
+  421614: '0x5F45675AC8DDF7d45713b2c7D191B287475C16cF',  // Arbitrum Sepolia
+  11155111: '0x687Bc1D23390875a868Db158DA1cDC8998E31640', // Ethereum Sepolia
+};
+
+const erc20Abi = [
+  {
+    name: 'approve',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    name: 'allowance',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'spender', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'symbol',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'string' }],
+  },
+  {
+    name: 'decimals',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint8' }],
+  },
+] as const;
+
+const parentChain: Chain = {
+  id: {parent_chain_id},
+  name: '{parent_chain_name}',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: {
+    default: { http: [process.env.PARENT_CHAIN_RPC!] },
+  },
+};
+
+/**
+ * Approve the custom gas token for the RollupCreator.
+ *
+ * This MUST be run before deploy-rollup.ts when using a custom gas token.
+ * The RollupCreator needs allowance to transfer the token during deployment.
+ *
+ * If you don't have a token yet, deploy an ERC-20 on the parent chain first:
+ *   - Foundry: forge create src/MyToken.sol:MyToken --rpc-url $PARENT_CHAIN_RPC --private-key $DEPLOYER_PRIVATE_KEY
+ *   - Hardhat: npx hardhat run scripts/deploy-token.ts --network <parent-chain>
+ *   - Or use any existing ERC-20 on the parent chain
+ */
+async function main() {
+  const account = privateKeyToAccount(
+    process.env.DEPLOYER_PRIVATE_KEY! as `0x${string}`
+  );
+
+  const publicClient = createPublicClient({
+    chain: parentChain,
+    transport: http(process.env.PARENT_CHAIN_RPC),
+  });
+
+  const walletClient = createWalletClient({
+    account,
+    chain: parentChain,
+    transport: http(process.env.PARENT_CHAIN_RPC),
+  });
+
+  const nativeToken = '{native_token}' as `0x${string}`;
+  const rollupCreator = ROLLUP_CREATOR[{parent_chain_id}];
+
+  if (!rollupCreator) {
+    console.error('No known RollupCreator for chain ID {parent_chain_id}.');
+    console.error('Set the correct RollupCreator address manually.');
+    process.exit(1);
+  }
+
+  // Check token info
+  const [symbol, decimals] = await Promise.all([
+    publicClient.readContract({ address: nativeToken, abi: erc20Abi, functionName: 'symbol' }),
+    publicClient.readContract({ address: nativeToken, abi: erc20Abi, functionName: 'decimals' }),
+  ]);
+
+  console.log('=== Token Approval for Custom Gas Token ===');
+  console.log('  Token:', nativeToken);
+  console.log('  Symbol:', symbol);
+  console.log('  Decimals:', decimals);
+  console.log('  RollupCreator:', rollupCreator);
+
+  // Check current allowance
+  const currentAllowance = await publicClient.readContract({
+    address: nativeToken,
+    abi: erc20Abi,
+    functionName: 'allowance',
+    args: [account.address, rollupCreator],
+  });
+
+  console.log('  Current allowance:', currentAllowance.toString());
+
+  if (currentAllowance > 0n) {
+    console.log('\\nToken already approved. You can proceed with deployment.');
+    console.log('  Run: npx tsx scripts/deploy-rollup.ts');
+    return;
+  }
+
+  // Approve max amount
+  console.log('\\nApproving token for RollupCreator...');
+  const txHash = await walletClient.writeContract({
+    address: nativeToken,
+    abi: erc20Abi,
+    functionName: 'approve',
+    args: [rollupCreator, maxUint256],
+  });
+
+  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+  console.log('\\nToken approved!');
+  console.log('  Transaction:', receipt.transactionHash);
+  console.log('  Status:', receipt.status);
+  console.log('\\nNext: Run npx tsx scripts/deploy-rollup.ts');
+}
+
+main().catch(console.error);
+"""
+
 
 class GenerateOrbitDeploymentTool(BaseTool):
     """Generate Orbit chain deployment scripts."""
@@ -214,6 +372,22 @@ Generates TypeScript scripts using @arbitrum/orbit-sdk."""
                     code, "deploy-rollup"
                 )
 
+            # Generate standalone approve-token.ts when using custom gas token
+            if native_token:
+                approve_code = APPROVE_TOKEN_TEMPLATE
+                approve_code = approve_code.replace(
+                    "{parent_chain_id}", str(parent_chain_id)
+                )
+                approve_code = approve_code.replace(
+                    "{parent_chain_name}", parent_chain_name
+                )
+                approve_code = approve_code.replace(
+                    "{native_token}", native_token
+                )
+                files["scripts/approve-token.ts"] = validate_template_output(
+                    approve_code, "approve-token"
+                )
+
         # Generate token bridge deployment
         if deployment_type in ("token_bridge", "full"):
             bridge_template = get_orbit_template("deploy_token_bridge")
@@ -224,6 +398,104 @@ Generates TypeScript scripts using @arbitrum/orbit-sdk."""
                 code = code.replace("{parent_chain_id}", str(parent_chain_id))
                 code = code.replace("{parent_chain_name}", parent_chain_name)
                 code = code.replace("{rollup_address}", rollup_address)
+
+                # Inject token approval for TokenBridgeCreator when using custom gas token
+                if native_token:
+                    tbc_address = TOKEN_BRIDGE_CREATOR_ADDRESSES.get(
+                        parent_chain_id, "0x0000000000000000000000000000000000000000"
+                    )
+
+                    # Add maxUint256 to the viem import
+                    code = code.replace(
+                        "  createWalletClient,\n  http,\n  Chain,\n} from 'viem';",
+                        "  createWalletClient,\n  http,\n  maxUint256,\n  Chain,\n} from 'viem';",
+                    )
+
+                    # Add ERC20 ABI after the chain-sdk import
+                    erc20_abi_block = (
+                        "\n// ERC20 ABI for token approval\n"
+                        "const erc20Abi = [\n"
+                        "  {\n"
+                        "    name: 'approve',\n"
+                        "    type: 'function',\n"
+                        "    stateMutability: 'nonpayable',\n"
+                        "    inputs: [\n"
+                        "      { name: 'spender', type: 'address' },\n"
+                        "      { name: 'amount', type: 'uint256' },\n"
+                        "    ],\n"
+                        "    outputs: [{ name: '', type: 'bool' }],\n"
+                        "  },\n"
+                        "  {\n"
+                        "    name: 'allowance',\n"
+                        "    type: 'function',\n"
+                        "    stateMutability: 'view',\n"
+                        "    inputs: [\n"
+                        "      { name: 'owner', type: 'address' },\n"
+                        "      { name: 'spender', type: 'address' },\n"
+                        "    ],\n"
+                        "    outputs: [{ name: '', type: 'uint256' }],\n"
+                        "  },\n"
+                        "] as const;\n"
+                    )
+                    code = code.replace(
+                        "import { createTokenBridge } from '@arbitrum/chain-sdk';",
+                        "import { createTokenBridge } from '@arbitrum/chain-sdk';\n"
+                        + erc20_abi_block,
+                    )
+
+                    # Inject approval block right before "console.log('Deploying token bridge...')"
+                    approval_block = (
+                        "  // --- Approve native token for TokenBridgeCreator ---\n"
+                        "  // Custom gas token chains require the TokenBridgeCreator to spend the native token\n"
+                        "  if (nativeToken) {\n"
+                        f"    const tokenBridgeCreator = '{tbc_address}' as `0x${{string}}`;\n"
+                        "    console.log('Approving native token for TokenBridgeCreator...');\n"
+                        "    console.log('  Token:', nativeToken);\n"
+                        "    console.log('  TokenBridgeCreator:', tokenBridgeCreator);\n"
+                        "\n"
+                        "    const currentAllowance = await parentPublicClient.readContract({\n"
+                        "      address: nativeToken,\n"
+                        "      abi: erc20Abi,\n"
+                        "      functionName: 'allowance',\n"
+                        "      args: [account.address, tokenBridgeCreator],\n"
+                        "    });\n"
+                        "\n"
+                        "    if (currentAllowance === 0n) {\n"
+                        "      const approveTx = await parentWalletClient.writeContract({\n"
+                        "        address: nativeToken,\n"
+                        "        abi: erc20Abi,\n"
+                        "        functionName: 'approve',\n"
+                        "        args: [tokenBridgeCreator, maxUint256],\n"
+                        "      });\n"
+                        "      await parentPublicClient.waitForTransactionReceipt({ hash: approveTx });\n"
+                        "      console.log('  Token approved for TokenBridgeCreator');\n"
+                        "    } else {\n"
+                        "      console.log('  Token already approved for TokenBridgeCreator');\n"
+                        "    }\n"
+                        "  }\n"
+                        "\n"
+                    )
+
+                    # Also read nativeToken from deployment.json — add after the existing deployment.json read
+                    code = code.replace(
+                        "    console.log('Loaded deployment.json — rollup:', rollupAddress);",
+                        "    nativeToken = deployment.nativeToken as `0x${string}` | undefined;\n"
+                        "    console.log('Loaded deployment.json — rollup:', rollupAddress);\n"
+                        "    if (nativeToken) console.log('  Native token:', nativeToken);",
+                    )
+                    # Add nativeToken variable declaration after orbitChainId
+                    # Note: {chain_id} was already replaced above, so match the actual value
+                    code = code.replace(
+                        f"  let orbitChainId = {chain_id};",
+                        f"  let orbitChainId = {chain_id};\n"
+                        "  let nativeToken: `0x${string}` | undefined;",
+                    )
+
+                    code = code.replace(
+                        "  console.log('Deploying token bridge...');",
+                        approval_block + "  console.log('Deploying token bridge...');",
+                    )
+
                 files["scripts/deploy-token-bridge.ts"] = validate_template_output(
                     code, "deploy-token-bridge"
                 )
@@ -258,7 +530,7 @@ Generates TypeScript scripts using @arbitrum/orbit-sdk."""
                 "validators": validators,
                 "batch_posters": batch_posters,
             },
-            "setup_instructions": self._get_setup_instructions(deployment_type),
+            "setup_instructions": self._get_setup_instructions(deployment_type, native_token),
             "notes": self._get_notes(deployment_type, native_token, is_anytrust, rollup_version),
             "disclaimer": TEMPLATE_DISCLAIMER,
         }
@@ -314,7 +586,9 @@ Generates TypeScript scripts using @arbitrum/orbit-sdk."""
         return chain_ids.get(parent_chain, 421614)
 
     @staticmethod
-    def _get_setup_instructions(deployment_type: str) -> list[str]:
+    def _get_setup_instructions(
+        deployment_type: str, native_token: str | None = None,
+    ) -> list[str]:
         """Get setup instructions for the deployment type."""
         instructions = [
             "1. Install dependencies: npm install",
@@ -323,16 +597,29 @@ Generates TypeScript scripts using @arbitrum/orbit-sdk."""
         ]
 
         if deployment_type == "rollup":
-            instructions.append("4. Run: npx tsx scripts/deploy-rollup.ts")
-            instructions.append("5. Save the output contract addresses for next steps")
+            if native_token:
+                instructions.append("4. Deploy or obtain your ERC-20 gas token on the parent chain")
+                instructions.append("5. Run: npx tsx scripts/approve-token.ts (approve token for RollupCreator)")
+                instructions.append("6. Run: npx tsx scripts/deploy-rollup.ts")
+                instructions.append("7. Save the output contract addresses for next steps")
+            else:
+                instructions.append("4. Run: npx tsx scripts/deploy-rollup.ts")
+                instructions.append("5. Save the output contract addresses for next steps")
         elif deployment_type == "token_bridge":
             instructions.append("4. Update ORBIT_CHAIN_RPC and rollup address in the script")
             instructions.append("5. Run: npx tsx scripts/deploy-token-bridge.ts")
         elif deployment_type == "full":
-            instructions.append("4. Run: npx tsx scripts/deploy-rollup.ts")
-            instructions.append("5. Start the Orbit chain node with the rollup contracts")
-            instructions.append("6. Update ORBIT_CHAIN_RPC and rollup address")
-            instructions.append("7. Run: npx tsx scripts/deploy-token-bridge.ts")
+            if native_token:
+                instructions.append("4. Deploy or obtain your ERC-20 gas token on the parent chain")
+                instructions.append("5. Run: npx tsx scripts/approve-token.ts (approve token for RollupCreator)")
+                instructions.append("6. Run: npx tsx scripts/deploy-rollup.ts")
+                next_step = 7
+            else:
+                instructions.append("4. Run: npx tsx scripts/deploy-rollup.ts")
+                next_step = 5
+            instructions.append(f"{next_step}. Start the Orbit chain node with the rollup contracts")
+            instructions.append(f"{next_step + 1}. Update ORBIT_CHAIN_RPC and rollup address")
+            instructions.append(f"{next_step + 2}. Run: npx tsx scripts/deploy-token-bridge.ts")
 
         return instructions
 

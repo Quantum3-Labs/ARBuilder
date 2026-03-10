@@ -219,6 +219,31 @@ Includes package.json, tsconfig.json, .env.example, setup.sh, and deploy.sh."""
                     code, "configure-anytrust"
                 )
 
+        # 6b. ERC-20 test token for custom gas token chains
+        if native_token:
+            files["contracts/TestToken.sol"] = self._generate_test_token_sol(
+                chain_name
+            )
+            files["scripts/deploy-test-token.sh"] = (
+                self._generate_deploy_token_sh()
+            )
+
+        # 6c. BLS key generation for AnyTrust
+        if is_anytrust:
+            files["scripts/generate-das-keys.sh"] = (
+                self._generate_das_keys_script()
+            )
+
+        # 6d. Test chain health check
+        files["scripts/test-chain.ts"] = self._generate_test_chain_script(
+            chain_id, chain_name, parent_chain_id
+        )
+
+        # 6e. Governance management
+        files["scripts/manage-governance.ts"] = (
+            self._generate_governance_script(parent_chain_id, parent_chain_name)
+        )
+
         # 7. Orchestration scaffold files
         orchestration_template = get_orbit_template("orchestration")
         if orchestration_template:
@@ -247,6 +272,8 @@ Includes package.json, tsconfig.json, .env.example, setup.sh, and deploy.sh."""
                 "deploy-token-bridge.ts",
                 "manage-validators.ts",
                 "prepare-node-config.ts",
+                "test-chain.ts",
+                "manage-governance.ts",
             ],
             "root": [
                 "package.json",
@@ -258,8 +285,12 @@ Includes package.json, tsconfig.json, .env.example, setup.sh, and deploy.sh."""
                 "README.md",
             ],
         }
+        if native_token:
+            project_structure["scripts/"].append("deploy-test-token.sh")
+            project_structure["contracts/"] = ["TestToken.sol"]
         if is_anytrust:
             project_structure["scripts/"].append("configure-anytrust.ts")
+            project_structure["scripts/"].append("generate-das-keys.sh")
 
         result = {
             "name": chain_name,
@@ -284,22 +315,33 @@ Includes package.json, tsconfig.json, .env.example, setup.sh, and deploy.sh."""
                 " (and optionally separate BATCH_POSTER/VALIDATOR keys)",
                 *(
                     [
-                        "3. Deploy or obtain your ERC-20 gas token on the parent chain",
+                        "3. Deploy or obtain your ERC-20 gas token"
+                        " on the parent chain",
                         "4. Run: npx tsx scripts/approve-token.ts"
                         " (approve token for RollupCreator)",
                         "5. Run: npm run config:chain",
-                        "6. Run: npm run deploy:rollup (output saved to deployment.json)",
-                        "7. Run: npm run config:node (reads deployment.json)",
+                        "6. Run: npm run deploy:rollup"
+                        " (output saved to deployment.json)",
+                        "7. Run: npm run config:node"
+                        " (reads deployment.json)",
                         "8. Start Nitro node: docker-compose up -d",
-                        "9. Run: npm run deploy:token-bridge (reads deployment.json)",
+                        "9. Run: npm run deploy:token-bridge"
+                        " (reads deployment.json)",
+                        "10. Run: npm run test:chain"
+                        " (verify chain health)",
                     ]
                     if native_token
                     else [
                         "3. Run: npm run config:chain",
-                        "4. Run: npm run deploy:rollup (output saved to deployment.json)",
-                        "5. Run: npm run config:node (reads deployment.json)",
+                        "4. Run: npm run deploy:rollup"
+                        " (output saved to deployment.json)",
+                        "5. Run: npm run config:node"
+                        " (reads deployment.json)",
                         "6. Start Nitro node: docker-compose up -d",
-                        "7. Run: npm run deploy:token-bridge (reads deployment.json)",
+                        "7. Run: npm run deploy:token-bridge"
+                        " (reads deployment.json)",
+                        "8. Run: npm run test:chain"
+                        " (verify chain health)",
                     ]
                 ),
             ],
@@ -308,6 +350,632 @@ Includes package.json, tsconfig.json, .env.example, setup.sh, and deploy.sh."""
         }
 
         return result
+
+    @staticmethod
+    def _generate_test_chain_script(
+        chain_id: int,
+        chain_name: str,
+        parent_chain_id: int,
+    ) -> str:
+        """Generate scripts/test-chain.ts — chain verification and health check."""
+        code = (
+            "import 'dotenv/config';\n"
+            "import * as fs from 'fs';\n"
+            "import {\n"
+            "  createPublicClient,\n"
+            "  createWalletClient,\n"
+            "  http,\n"
+            "  parseEther,\n"
+            "  formatEther,\n"
+            "  maxUint256,\n"
+            "  Chain,\n"
+            "} from 'viem';\n"
+            "import { privateKeyToAccount } from 'viem/accounts';\n"
+            "\n"
+            "// ERC-20 ABI for custom gas token approval\n"
+            "const erc20Abi = [\n"
+            "  {\n"
+            "    name: 'approve',\n"
+            "    type: 'function',\n"
+            "    stateMutability: 'nonpayable',\n"
+            "    inputs: [\n"
+            "      { name: 'spender', type: 'address' },\n"
+            "      { name: 'amount', type: 'uint256' },\n"
+            "    ],\n"
+            "    outputs: [{ name: '', type: 'bool' }],\n"
+            "  },\n"
+            "  {\n"
+            "    name: 'balanceOf',\n"
+            "    type: 'function',\n"
+            "    stateMutability: 'view',\n"
+            "    inputs: [{ name: 'account', type: 'address' }],\n"
+            "    outputs: [{ name: '', type: 'uint256' }],\n"
+            "  },\n"
+            "] as const;\n"
+            "\n"
+            "// Inbox ABI for ERC-20 deposit (custom gas token chains)\n"
+            "const inboxAbi = [\n"
+            "  {\n"
+            "    name: 'depositERC20',\n"
+            "    type: 'function',\n"
+            "    stateMutability: 'nonpayable',\n"
+            "    inputs: [{ name: 'amount', type: 'uint256' }],\n"
+            "    outputs: [],\n"
+            "  },\n"
+            "] as const;\n"
+            "\n"
+            "const orbitChain: Chain = {\n"
+            "  id: CHAIN_ID_PLACEHOLDER,\n"
+            "  name: 'CHAIN_NAME_PLACEHOLDER',\n"
+            "  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },\n"
+            "  rpcUrls: {\n"
+            "    default: { http: [process.env.ORBIT_CHAIN_RPC ?? 'http://localhost:8449'] },\n"
+            "  },\n"
+            "};\n"
+            "\n"
+            "const parentChain: Chain = {\n"
+            "  id: PARENT_CHAIN_ID_PLACEHOLDER,\n"
+            "  name: 'Parent Chain',\n"
+            "  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },\n"
+            "  rpcUrls: {\n"
+            "    default: { http: [process.env.PARENT_CHAIN_RPC!] },\n"
+            "  },\n"
+            "};\n"
+            "\n"
+            "/**\n"
+            " * Test chain connectivity and basic operations.\n"
+            " *\n"
+            " * Checks:\n"
+            " *   1. L3 RPC connectivity and chain ID\n"
+            " *   2. Balances on both parent and orbit chain\n"
+            " *   3. Test transfer on L3\n"
+            " *   4. Simple contract deployment\n"
+            " *   5. Deposit test (parent -> L3)\n"
+            " */\n"
+            "async function main() {\n"
+            "  const account = privateKeyToAccount(\n"
+            "    process.env.DEPLOYER_PRIVATE_KEY! as `0x${string}`\n"
+            "  );\n"
+            "\n"
+            "  console.log('=== Orbit Chain Health Check ===');\n"
+            "  console.log('Account:', account.address);\n"
+            "\n"
+            "  // 1. Test L3 RPC connectivity\n"
+            "  console.log('\\n--- L3 RPC Connectivity ---');\n"
+            "  const orbitClient = createPublicClient({\n"
+            "    chain: orbitChain,\n"
+            "    transport: http(process.env.ORBIT_CHAIN_RPC ?? 'http://localhost:8449'),\n"
+            "  });\n"
+            "\n"
+            "  try {\n"
+            "    const chainId = await orbitClient.getChainId();\n"
+            "    console.log('  Chain ID:', chainId,"
+            " chainId === CHAIN_ID_PLACEHOLDER"
+            " ? '(correct)'"
+            " : '(MISMATCH — expected CHAIN_ID_PLACEHOLDER)');\n"
+            "\n"
+            "    const blockNumber = await orbitClient.getBlockNumber();\n"
+            "    console.log('  Latest block:', blockNumber.toString());\n"
+            "  } catch (err) {\n"
+            "    console.error('  FAILED: Cannot connect to L3 RPC');\n"
+            "    console.error('  Error:', (err as Error).message);\n"
+            "    console.error('  Is the Nitro node running? Try: docker-compose up -d');\n"
+            "    process.exit(1);\n"
+            "  }\n"
+            "\n"
+            "  // 2. Check balances\n"
+            "  console.log('\\n--- Balances ---');\n"
+            "  const parentClient = createPublicClient({\n"
+            "    chain: parentChain,\n"
+            "    transport: http(process.env.PARENT_CHAIN_RPC),\n"
+            "  });\n"
+            "\n"
+            "  const parentBalance = await parentClient.getBalance({ address: account.address });\n"
+            "  console.log('  Parent chain:', formatEther(parentBalance), 'ETH');\n"
+            "\n"
+            "  const orbitBalance = await orbitClient.getBalance({ address: account.address });\n"
+            "  console.log('  Orbit chain: ', formatEther(orbitBalance), 'ETH/gas token');\n"
+            "\n"
+            "  // 3. Test transfer on L3 (if balance > 0)\n"
+            "  console.log('\\n--- Test Transfer (L3) ---');\n"
+            "  if (orbitBalance > 0n) {\n"
+            "    const walletClient = createWalletClient({\n"
+            "      account,\n"
+            "      chain: orbitChain,\n"
+            "      transport: http(process.env.ORBIT_CHAIN_RPC ?? 'http://localhost:8449'),\n"
+            "    });\n"
+            "\n"
+            "    try {\n"
+            "      const txHash = await walletClient.sendTransaction({\n"
+            "        to: account.address,\n"
+            "        value: 0n,\n"
+            "      });\n"
+            "      const receipt = await orbitClient.waitForTransactionReceipt({ hash: txHash });\n"
+            "      console.log('  Self-transfer:',"
+            " receipt.status === 'success'"
+            " ? 'SUCCESS' : 'FAILED');\n"
+            "      console.log('  Tx:', txHash);\n"
+            "      console.log('  Gas used:', receipt.gasUsed.toString());\n"
+            "    } catch (err) {\n"
+            "      console.error('  FAILED:', (err as Error).message);\n"
+            "    }\n"
+            "  } else {\n"
+            "    console.log('  Skipped — no balance on L3. Deposit funds first.');\n"
+            "  }\n"
+            "\n"
+            "  // 4. Contract deployment test\n"
+            "  console.log('\\n--- Contract Deployment Test ---');\n"
+            "  if (orbitBalance > 0n) {\n"
+            "    const walletClient = createWalletClient({\n"
+            "      account,\n"
+            "      chain: orbitChain,\n"
+            "      transport: http(process.env.ORBIT_CHAIN_RPC ?? 'http://localhost:8449'),\n"
+            "    });\n"
+            "\n"
+            "    try {\n"
+            "      // Minimal contract: PUSH1 0x00 PUSH1 0x00 RETURN (returns empty)\n"
+            "      const txHash = await walletClient.deployContract({\n"
+            "        abi: [],\n"
+            "        bytecode: '0x60006000f3',\n"
+            "      });\n"
+            "      const receipt = await orbitClient.waitForTransactionReceipt({ hash: txHash });\n"
+            "      console.log('  Deploy:', receipt.status === 'success' ? 'SUCCESS' : 'FAILED');\n"
+            "      console.log('  Contract:', receipt.contractAddress);\n"
+            "    } catch (err) {\n"
+            "      console.error('  FAILED:', (err as Error).message);\n"
+            "    }\n"
+            "  } else {\n"
+            "    console.log('  Skipped — no balance on L3.');\n"
+            "  }\n"
+            "\n"
+            "  // 5. Deposit test (parent chain -> L3)\n"
+            "  console.log('\\n--- Deposit Test (Parent -> L3) ---');\n"
+            "  if (fs.existsSync('deployment.json')) {\n"
+            "    const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));\n"
+            "    const inboxAddress = deployment.coreContracts?.inbox as `0x${string}`;\n"
+            "\n"
+            "    if (inboxAddress) {\n"
+            "      const parentWalletClient = createWalletClient({\n"
+            "        account,\n"
+            "        chain: parentChain,\n"
+            "        transport: http(process.env.PARENT_CHAIN_RPC),\n"
+            "      });\n"
+            "\n"
+            "      if (deployment.nativeToken) {\n"
+            "        // Custom gas token chain: approve Inbox, then depositERC20\n"
+            "        const nativeToken = deployment.nativeToken as `0x${string}`;\n"
+            "        console.log('  Custom gas token:', nativeToken);\n"
+            "\n"
+            "        const tokenBalance = await parentClient.readContract({\n"
+            "          address: nativeToken,\n"
+            "          abi: erc20Abi,\n"
+            "          functionName: 'balanceOf',\n"
+            "          args: [account.address],\n"
+            "        });\n"
+            "        const depositAmount = tokenBalance / 100n; // 1% of balance\n"
+            "\n"
+            "        if (depositAmount > 0n) {\n"
+            "          try {\n"
+            "            // Approve Inbox (NOT Bridge) for the token\n"
+            "            console.log('  Approving Inbox for token spend...');\n"
+            "            const approveHash = await parentWalletClient.writeContract({\n"
+            "              address: nativeToken,\n"
+            "              abi: erc20Abi,\n"
+            "              functionName: 'approve',\n"
+            "              args: [inboxAddress, maxUint256],\n"
+            "            });\n"
+            "            await parentClient.waitForTransactionReceipt({ hash: approveHash });\n"
+            "\n"
+            "            // Deposit via Inbox.depositERC20(amount)\n"
+            "            console.log('  Depositing',"
+            " depositAmount.toString(),"
+            " 'tokens to L3 via Inbox...');\n"
+            "            const depositHash ="
+            " await parentWalletClient.writeContract({\n"
+            "              address: inboxAddress,\n"
+            "              abi: inboxAbi,\n"
+            "              functionName: 'depositERC20',\n"
+            "              args: [depositAmount],\n"
+            "            });\n"
+            "            const depositReceipt ="
+            " await parentClient"
+            ".waitForTransactionReceipt("
+            "{ hash: depositHash });\n"
+            "            console.log('  Deposit:',"
+            " depositReceipt.status === 'success'"
+            " ? 'SUCCESS' : 'FAILED');\n"
+            "            console.log('  Tx:', depositHash);\n"
+            "            console.log('  Note: L3 balance updates"
+            " after ~15 min"
+            " (retryable ticket processing)');\n"
+            "          } catch (err) {\n"
+            "            console.error('  FAILED:', (err as Error).message);\n"
+            "          }\n"
+            "        } else {\n"
+            "          console.log('  Skipped — no token balance on parent chain');\n"
+            "        }\n"
+            "      } else {\n"
+            "        // ETH chain: send ETH directly to the Inbox\n"
+            "        const depositAmount = parseEther('0.001');\n"
+            "        if (parentBalance >= depositAmount + parseEther('0.01')) {\n"
+            "          try {\n"
+            "            console.log('  Depositing 0.001 ETH to L3 via Inbox...');\n"
+            "            const txHash = await parentWalletClient.sendTransaction({\n"
+            "              to: inboxAddress,\n"
+            "              value: depositAmount,\n"
+            "            });\n"
+            "            const receipt ="
+            " await parentClient"
+            ".waitForTransactionReceipt("
+            "{ hash: txHash });\n"
+            "            console.log('  Deposit:',"
+            " receipt.status === 'success'"
+            " ? 'SUCCESS' : 'FAILED');\n"
+            "            console.log('  Tx:', txHash);\n"
+            "            console.log('  Note: L3 balance"
+            " updates after ~15 min"
+            " (retryable ticket processing)');\n"
+            "          } catch (err) {\n"
+            "            console.error("
+            "'  FAILED:', (err as Error).message);\n"
+            "          }\n"
+            "        } else {\n"
+            "          console.log("
+            "'  Skipped — insufficient parent chain"
+            " balance (need 0.011 ETH)');\n"
+            "        }\n"
+            "      }\n"
+            "    } else {\n"
+            "      console.log('  Skipped — no Inbox address in deployment.json');\n"
+            "    }\n"
+            "  } else {\n"
+            "    console.log('  Skipped — no deployment.json');\n"
+            "  }\n"
+            "\n"
+            "  // 6. Load deployment info if available\n"
+            "  if (fs.existsSync('deployment.json')) {\n"
+            "    console.log('\\n--- Deployment Info ---');\n"
+            "    const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));\n"
+            "    console.log('  Rollup:', deployment.coreContracts?.rollup);\n"
+            "    console.log('  Inbox:', deployment.coreContracts?.inbox);\n"
+            "    console.log('  Bridge:', deployment.coreContracts?.bridge);\n"
+            "    if (deployment.tokenBridgeContracts) {\n"
+            "      console.log("
+            "'  Token Bridge Router (parent):',"
+            " deployment.tokenBridgeContracts"
+            ".parentChain?.router);\n"
+            "      console.log("
+            "'  Token Bridge Router (orbit):',"
+            " deployment.tokenBridgeContracts"
+            ".orbitChain?.router);\n"
+            "    }\n"
+            "  }\n"
+            "\n"
+            "  console.log('\\n=== Health Check Complete ===');\n"
+            "}\n"
+            "\n"
+            "main().catch(console.error);\n"
+        )
+        code = code.replace("CHAIN_ID_PLACEHOLDER", str(chain_id))
+        code = code.replace("CHAIN_NAME_PLACEHOLDER", chain_name)
+        code = code.replace("PARENT_CHAIN_ID_PLACEHOLDER", str(parent_chain_id))
+        return code
+
+    @staticmethod
+    def _generate_governance_script(
+        parent_chain_id: int,
+        parent_chain_name: str,
+    ) -> str:
+        """Generate scripts/manage-governance.ts — governance operations."""
+        code = (
+            "import 'dotenv/config';\n"
+            "import * as fs from 'fs';\n"
+            "import {\n"
+            "  createPublicClient,\n"
+            "  createWalletClient,\n"
+            "  http,\n"
+            "  encodeFunctionData,\n"
+            "  Chain,\n"
+            "} from 'viem';\n"
+            "import { privateKeyToAccount } from 'viem/accounts';\n"
+            "\n"
+            "// UpgradeExecutor ABI\n"
+            "const upgradeExecutorAbi = [\n"
+            "  {\n"
+            "    name: 'executeCall',\n"
+            "    type: 'function',\n"
+            "    stateMutability: 'nonpayable',\n"
+            "    inputs: [\n"
+            "      { name: 'target', type: 'address' },\n"
+            "      { name: 'data', type: 'bytes' },\n"
+            "    ],\n"
+            "    outputs: [],\n"
+            "  },\n"
+            "  {\n"
+            "    name: 'hasRole',\n"
+            "    type: 'function',\n"
+            "    stateMutability: 'view',\n"
+            "    inputs: [\n"
+            "      { name: 'role', type: 'bytes32' },\n"
+            "      { name: 'account', type: 'address' },\n"
+            "    ],\n"
+            "    outputs: [{ name: '', type: 'bool' }],\n"
+            "  },\n"
+            "  {\n"
+            "    name: 'grantRole',\n"
+            "    type: 'function',\n"
+            "    stateMutability: 'nonpayable',\n"
+            "    inputs: [\n"
+            "      { name: 'role', type: 'bytes32' },\n"
+            "      { name: 'account', type: 'address' },\n"
+            "    ],\n"
+            "    outputs: [],\n"
+            "  },\n"
+            "  {\n"
+            "    name: 'revokeRole',\n"
+            "    type: 'function',\n"
+            "    stateMutability: 'nonpayable',\n"
+            "    inputs: [\n"
+            "      { name: 'role', type: 'bytes32' },\n"
+            "      { name: 'account', type: 'address' },\n"
+            "    ],\n"
+            "    outputs: [],\n"
+            "  },\n"
+            "] as const;\n"
+            "\n"
+            "const EXECUTOR_ROLE ="
+            " '0xd8aa0f3194971a2a116679f7c2090f6939c8d4"
+            "e01a2a8d7e41d55e5351469e63'"
+            " as `0x${string}`;\n"
+            "const ADMIN_ROLE ="
+            " '0xa49807205ce4d355092ef5a8a18f56e8913cf4a"
+            "201fbe287825b095693c21775'"
+            " as `0x${string}`;\n"
+            "\n"
+            "const parentChain: Chain = {\n"
+            "  id: PARENT_CHAIN_ID_PLACEHOLDER,\n"
+            "  name: 'PARENT_CHAIN_NAME_PLACEHOLDER',\n"
+            "  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },\n"
+            "  rpcUrls: {\n"
+            "    default: { http: [process.env.PARENT_CHAIN_RPC!] },\n"
+            "  },\n"
+            "};\n"
+            "\n"
+            "/**\n"
+            " * Manage governance roles on the UpgradeExecutor.\n"
+            " *\n"
+            " * Usage:\n"
+            " *   npx tsx scripts/manage-governance.ts status\n"
+            " *   npx tsx scripts/manage-governance.ts grant <address>\n"
+            " *   npx tsx scripts/manage-governance.ts revoke <address>\n"
+            " */\n"
+            "async function main() {\n"
+            "  const command = process.argv[2] ?? 'status';\n"
+            "  const targetAddress = process.argv[3] as `0x${string}` | undefined;\n"
+            "\n"
+            "  const account = privateKeyToAccount(\n"
+            "    process.env.DEPLOYER_PRIVATE_KEY! as `0x${string}`\n"
+            "  );\n"
+            "\n"
+            "  // Read UpgradeExecutor from deployment.json\n"
+            "  if (!fs.existsSync('deployment.json')) {\n"
+            "    console.error('Error: deployment.json not found. Run deploy-rollup.ts first.');\n"
+            "    process.exit(1);\n"
+            "  }\n"
+            "  const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));\n"
+            "  const upgradeExecutor = deployment.coreContracts.upgradeExecutor as `0x${string}`;\n"
+            "\n"
+            "  const publicClient = createPublicClient({\n"
+            "    chain: parentChain,\n"
+            "    transport: http(process.env.PARENT_CHAIN_RPC),\n"
+            "  });\n"
+            "\n"
+            "  const walletClient = createWalletClient({\n"
+            "    account,\n"
+            "    chain: parentChain,\n"
+            "    transport: http(process.env.PARENT_CHAIN_RPC),\n"
+            "  });\n"
+            "\n"
+            "  console.log('=== Governance Management ===');\n"
+            "  console.log('UpgradeExecutor:', upgradeExecutor);\n"
+            "  console.log('Caller:', account.address);\n"
+            "\n"
+            "  if (command === 'status') {\n"
+            "    // Check roles for the caller and optionally a target\n"
+            "    const addresses = [account.address];\n"
+            "    if (targetAddress) addresses.push(targetAddress);\n"
+            "\n"
+            "    for (const addr of addresses) {\n"
+            "      const hasExecutor = await publicClient.readContract({\n"
+            "        address: upgradeExecutor,\n"
+            "        abi: upgradeExecutorAbi,\n"
+            "        functionName: 'hasRole',\n"
+            "        args: [EXECUTOR_ROLE, addr],\n"
+            "      });\n"
+            "      const hasAdmin = await publicClient.readContract({\n"
+            "        address: upgradeExecutor,\n"
+            "        abi: upgradeExecutorAbi,\n"
+            "        functionName: 'hasRole',\n"
+            "        args: [ADMIN_ROLE, addr],\n"
+            "      });\n"
+            "      console.log(`\\n  ${addr}:`);\n"
+            "      console.log(`    EXECUTOR_ROLE: ${hasExecutor}`);\n"
+            "      console.log(`    ADMIN_ROLE:    ${hasAdmin}`);\n"
+            "    }\n"
+            "  } else if (command === 'grant' && targetAddress) {\n"
+            "    console.log('\\nGranting EXECUTOR_ROLE to:', targetAddress);\n"
+            "    // Grant must go through executeCall if caller has EXECUTOR_ROLE\n"
+            "    const grantCalldata = encodeFunctionData({\n"
+            "      abi: upgradeExecutorAbi,\n"
+            "      functionName: 'grantRole',\n"
+            "      args: [EXECUTOR_ROLE, targetAddress],\n"
+            "    });\n"
+            "    const txHash = await walletClient.writeContract({\n"
+            "      address: upgradeExecutor,\n"
+            "      abi: upgradeExecutorAbi,\n"
+            "      functionName: 'executeCall',\n"
+            "      args: [upgradeExecutor, grantCalldata],\n"
+            "    });\n"
+            "    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });\n"
+            "    console.log('  Tx:', receipt.transactionHash, '- Status:', receipt.status);\n"
+            "  } else if (command === 'revoke' && targetAddress) {\n"
+            "    console.log('\\nRevoking EXECUTOR_ROLE from:', targetAddress);\n"
+            "    const revokeCalldata = encodeFunctionData({\n"
+            "      abi: upgradeExecutorAbi,\n"
+            "      functionName: 'revokeRole',\n"
+            "      args: [EXECUTOR_ROLE, targetAddress],\n"
+            "    });\n"
+            "    const txHash = await walletClient.writeContract({\n"
+            "      address: upgradeExecutor,\n"
+            "      abi: upgradeExecutorAbi,\n"
+            "      functionName: 'executeCall',\n"
+            "      args: [upgradeExecutor, revokeCalldata],\n"
+            "    });\n"
+            "    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });\n"
+            "    console.log('  Tx:', receipt.transactionHash, '- Status:', receipt.status);\n"
+            "  } else {\n"
+            "    console.log('\\nUsage:');\n"
+            "    console.log('  npx tsx scripts/manage-governance.ts status [address]');\n"
+            "    console.log('  npx tsx scripts/manage-governance.ts grant <address>');\n"
+            "    console.log('  npx tsx scripts/manage-governance.ts revoke <address>');\n"
+            "  }\n"
+            "}\n"
+            "\n"
+            "main().catch(console.error);\n"
+        )
+        code = code.replace(
+            "PARENT_CHAIN_ID_PLACEHOLDER", str(parent_chain_id)
+        )
+        code = code.replace(
+            "PARENT_CHAIN_NAME_PLACEHOLDER", parent_chain_name
+        )
+        return code
+
+    @staticmethod
+    def _generate_das_keys_script() -> str:
+        """Generate scripts/generate-das-keys.sh — BLS key generation for AnyTrust."""
+        nitro_image = "offchainlabs/nitro-node:v3.9.4-7f582c3"
+        return (
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "\n"
+            'echo "=== Generate DAS BLS Keys ==="\n'
+            "\n"
+            "# Create output directory\n"
+            "mkdir -p das-keys\n"
+            "\n"
+            "# Generate BLS key pair using the datool from the Nitro image\n"
+            "docker run --rm \\\n"
+            "  --entrypoint /usr/local/bin/datool \\\n"
+            '  -v "$(pwd)/das-keys:/keys" \\\n'
+            f"  {nitro_image} \\\n"
+            "  keygen --dir /keys\n"
+            "\n"
+            'echo ""\n'
+            'echo "BLS keys generated in das-keys/"\n'
+            'echo "  das_bls      — private key (keep secret!)"\n'
+            'echo "  das_bls.pub  — public key (used for keyset registration)"\n'
+            'echo ""\n'
+            'echo "Next steps:"\n'
+            'echo "  1. Start DAS + Nitro node: docker-compose up -d"\n'
+            'echo "  2. Register keyset: npm run configure:anytrust"\n'
+        )
+
+    @staticmethod
+    def _generate_test_token_sol(chain_name: str) -> str:
+        """Generate contracts/TestToken.sol — test ERC20 for custom gas token."""
+        # Convert chain-name to PascalCase token name
+        token_name = "".join(
+            word.capitalize() for word in chain_name.split("-")
+        )
+        symbol = token_name[:4].upper()
+        return (
+            "// SPDX-License-Identifier: MIT\n"
+            "pragma solidity ^0.8.20;\n"
+            "\n"
+            'import "@openzeppelin/contracts/token/ERC20/ERC20.sol";\n'
+            "\n"
+            "/**\n"
+            " * Minimal ERC-20 for testing as a custom gas token"
+            " on an Orbit chain.\n"
+            " *\n"
+            " * Deploy with Foundry:\n"
+            f" *   forge create contracts/TestToken.sol:{token_name}Token \\\\\n"
+            " *     --rpc-url $PARENT_CHAIN_RPC \\\\\n"
+            " *     --private-key $DEPLOYER_PRIVATE_KEY \\\\\n"
+            ' *     --constructor-args "$(cast address $DEPLOYER_PRIVATE_KEY)"\n'
+            " *\n"
+            " * Or use the deploy script:\n"
+            " *   bash scripts/deploy-test-token.sh\n"
+            " */\n"
+            f"contract {token_name}Token is ERC20 {{\n"
+            f'    constructor(address initialHolder) ERC20("{token_name}'
+            f' Gas Token", "{symbol}") {{\n'
+            "        // Mint 1 billion tokens to the deployer for testing\n"
+            "        _mint(initialHolder, 1_000_000_000 * 10 ** decimals());\n"
+            "    }\n"
+            "}\n"
+        )
+
+    @staticmethod
+    def _generate_deploy_token_sh() -> str:
+        """Generate scripts/deploy-test-token.sh — deploy test ERC20 token."""
+        return (
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "\n"
+            "# Load environment variables\n"
+            "if [ -f .env ]; then\n"
+            "  set -a\n"
+            "  source .env\n"
+            "  set +a\n"
+            "fi\n"
+            "\n"
+            'echo "=== Deploy Test ERC-20 Gas Token ==="\n'
+            "\n"
+            "# Check for Foundry\n"
+            "if ! command -v forge &> /dev/null; then\n"
+            '  echo "Error: Foundry not installed."\n'
+            '  echo "Install: curl -L https://foundry.paradigm.xyz'
+            ' | bash && foundryup"\n'
+            "  exit 1\n"
+            "fi\n"
+            "\n"
+            "# Install OpenZeppelin (if not already)\n"
+            'if [ ! -d "lib/openzeppelin-contracts" ]; then\n'
+            '  echo "Installing OpenZeppelin contracts..."\n'
+            "  forge install OpenZeppelin/openzeppelin-contracts"
+            " --no-commit\n"
+            "fi\n"
+            "\n"
+            "# Get deployer address from private key\n"
+            'DEPLOYER_ADDRESS=$(cast wallet address "$DEPLOYER_PRIVATE_KEY")\n'
+            "\n"
+            'echo "Deploying test token..."\n'
+            'echo "  Deployer: $DEPLOYER_ADDRESS"\n'
+            'echo "  RPC: $PARENT_CHAIN_RPC"\n'
+            "\n"
+            "# Deploy\n"
+            "DEPLOY_OUTPUT=$(forge create contracts/TestToken.sol:*Token \\\\\n"
+            '  --rpc-url "$PARENT_CHAIN_RPC" \\\\\n'
+            '  --private-key "$DEPLOYER_PRIVATE_KEY" \\\\\n'
+            '  --constructor-args "$DEPLOYER_ADDRESS" \\\\\n'
+            "  --json)\n"
+            "\n"
+            "TOKEN_ADDRESS=$(echo \"$DEPLOY_OUTPUT\" | jq -r '.deployedTo')\n"
+            "\n"
+            'echo ""\n'
+            'echo "Token deployed!"\n'
+            'echo "  Address: $TOKEN_ADDRESS"\n'
+            'echo ""\n'
+            'echo "Add to your .env:"\n'
+            'echo "  NATIVE_TOKEN=$TOKEN_ADDRESS"\n'
+            'echo ""\n'
+            'echo "Next steps:"\n'
+            'echo "  1. Set NATIVE_TOKEN=$TOKEN_ADDRESS in .env"\n'
+            'echo "  2. Run: npx tsx scripts/approve-token.ts"\n'
+            'echo "  3. Run: npm run deploy:rollup"\n'
+        )
 
     @staticmethod
     def _format_address_array(addresses: list[str]) -> str:
