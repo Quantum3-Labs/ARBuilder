@@ -70,6 +70,29 @@ export const PARENT_CHAIN_IDS: Record<ParentChain, number> = {
   "arbitrum-sepolia": 421614,
 };
 
+/**
+ * Validate that rendered template code has no unresolved template tokens.
+ * Checks for `{{`, `}}` artifacts that indicate broken template rendering.
+ * Throws if found; returns code unchanged if clean.
+ */
+export function validateTemplateOutput(code: string, templateName = ""): string {
+  // Match {{ or }} that are NOT preceded by $ (which would be valid shell vars)
+  const artifacts: string[] = [];
+  const re = /\{\{|\}\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(code)) !== null) {
+    if (m.index > 0 && code[m.index - 1] === "$") continue;
+    artifacts.push(`pos ${m.index}: "${m[0]}"`);
+    if (artifacts.length >= 5) break;
+  }
+  if (artifacts.length > 0) {
+    throw new Error(
+      `Template '${templateName}' has unresolved tokens: ${artifacts.join(", ")}`
+    );
+  }
+  return code;
+}
+
 // --- Templates ---
 
 const CHAIN_CONFIG_TEMPLATE = `import 'dotenv/config';

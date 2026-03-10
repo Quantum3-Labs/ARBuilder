@@ -13,6 +13,7 @@ from ...templates.orbit_templates import (
     ORBIT_DEPENDENCIES,
     PARENT_CHAIN_RPCS,
     get_orbit_template,
+    validate_template_output,
 )
 from .base import BaseTool
 from .generate_stylus_code import TEMPLATE_DISCLAIMER
@@ -209,7 +210,9 @@ Generates TypeScript scripts using @arbitrum/orbit-sdk."""
                         "console.log('\\nRollup deployed successfully!');",
                         "console.log('\\nRollup deployed successfully! (v3.1 BoLD)');",
                     )
-                files["scripts/deploy-rollup.ts"] = code
+                files["scripts/deploy-rollup.ts"] = validate_template_output(
+                    code, "deploy-rollup"
+                )
 
         # Generate token bridge deployment
         if deployment_type in ("token_bridge", "full"):
@@ -221,7 +224,9 @@ Generates TypeScript scripts using @arbitrum/orbit-sdk."""
                 code = code.replace("{parent_chain_id}", str(parent_chain_id))
                 code = code.replace("{parent_chain_name}", parent_chain_name)
                 code = code.replace("{rollup_address}", rollup_address)
-                files["scripts/deploy-token-bridge.ts"] = code
+                files["scripts/deploy-token-bridge.ts"] = validate_template_output(
+                    code, "deploy-token-bridge"
+                )
 
         # Add .env.example
         env_vars = [

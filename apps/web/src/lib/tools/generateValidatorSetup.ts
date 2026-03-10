@@ -13,6 +13,7 @@ import {
   PARENT_CHAIN_RPCS,
   PARENT_CHAIN_IDS,
   TEMPLATE_DISCLAIMER,
+  validateTemplateOutput,
 } from "./generateOrbitConfig";
 
 // Types
@@ -57,6 +58,184 @@ interface GenerateValidatorSetupOutput {
 }
 
 // --- Templates ---
+
+const MUTATE_VALIDATOR_TEMPLATE = `import 'dotenv/config';
+import * as fs from 'fs';
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  encodeFunctionData,
+  Chain,
+} from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+
+// Rollup ABI — setValidator + isValidator
+const rollupAbi = [
+  {
+    name: 'setValidator',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'validators', type: 'address[]' },
+      { name: 'vals', type: 'bool[]' },
+    ],
+    outputs: [],
+  },
+  {
+    name: 'isValidator',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'validator', type: 'address' }],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+] as const;
+
+// SequencerInbox ABI — setIsBatchPoster + isBatchPoster
+const sequencerInboxAbi = [
+  {
+    name: 'setIsBatchPoster',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'addr', type: 'address' },
+      { name: 'isBatchPoster', type: 'bool' },
+    ],
+    outputs: [],
+  },
+  {
+    name: 'isBatchPoster',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'addr', type: 'address' }],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+] as const;
+
+// UpgradeExecutor ABI — executeCall
+const upgradeExecutorAbi = [
+  {
+    name: 'executeCall',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'target', type: 'address' },
+      { name: 'data', type: 'bytes' },
+    ],
+    outputs: [],
+  },
+] as const;
+
+const parentChain: Chain = {
+  id: {parentChainId},
+  name: '{parentChainName}',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: {
+    default: { http: [process.env.PARENT_CHAIN_RPC!] },
+  },
+};
+
+/**
+ * {actionVerb} validators and/or batch posters on an Orbit chain.
+ *
+ * Routes through UpgradeExecutor since only the executor has permission
+ * to call setValidator() on the Rollup and setIsBatchPoster() on SequencerInbox.
+ */
+async function main() {
+  const account = privateKeyToAccount(
+    process.env.DEPLOYER_PRIVATE_KEY! as \`0x\${string}\`
+  );
+
+  const publicClient = createPublicClient({
+    chain: parentChain,
+    transport: http(process.env.PARENT_CHAIN_RPC),
+  });
+
+  const walletClient = createWalletClient({
+    account,
+    chain: parentChain,
+    transport: http(process.env.PARENT_CHAIN_RPC),
+  });
+
+  // Read deployment.json for contract addresses
+  if (!fs.existsSync('deployment.json')) {
+    console.error('Error: deployment.json not found. Run deploy-rollup.ts first.');
+    process.exit(1);
+  }
+  const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));
+  const rollupAddress = deployment.coreContracts.rollup as \`0x\${string}\`;
+  const sequencerInboxAddress = deployment.coreContracts.sequencerInbox as \`0x\${string}\`;
+  const upgradeExecutorAddress = deployment.coreContracts.upgradeExecutor as \`0x\${string}\`;
+
+  console.log('Rollup:', rollupAddress);
+  console.log('SequencerInbox:', sequencerInboxAddress);
+  console.log('UpgradeExecutor:', upgradeExecutorAddress);
+
+  const addresses: \`0x\${string}\`[] = {addressesArray};
+  if (addresses.length === 0) {
+    console.error('Error: No addresses specified. Add addresses to the array above.');
+    process.exit(1);
+  }
+
+  // --- {actionVerb} Validators ---
+  console.log('\\n=== {actionVerb} Validators ===');
+  const validatorCalldata = encodeFunctionData({
+    abi: rollupAbi,
+    functionName: 'setValidator',
+    args: [addresses, addresses.map(() => {actionBool})],
+  });
+
+  const validatorTxHash = await walletClient.writeContract({
+    address: upgradeExecutorAddress,
+    abi: upgradeExecutorAbi,
+    functionName: 'executeCall',
+    args: [rollupAddress, validatorCalldata],
+  });
+  console.log('  Tx:', validatorTxHash);
+  const validatorReceipt = await publicClient.waitForTransactionReceipt({ hash: validatorTxHash });
+  console.log('  Status:', validatorReceipt.status);
+
+  // --- {actionVerb} Batch Posters ---
+  console.log('\\n=== {actionVerb} Batch Posters ===');
+  for (const addr of addresses) {
+    const batchPosterCalldata = encodeFunctionData({
+      abi: sequencerInboxAbi,
+      functionName: 'setIsBatchPoster',
+      args: [addr, {actionBool}],
+    });
+
+    const bpTxHash = await walletClient.writeContract({
+      address: upgradeExecutorAddress,
+      abi: upgradeExecutorAbi,
+      functionName: 'executeCall',
+      args: [sequencerInboxAddress, batchPosterCalldata],
+    });
+    console.log(\`  \${addr} tx: \${bpTxHash}\`);
+    const bpReceipt = await publicClient.waitForTransactionReceipt({ hash: bpTxHash });
+    console.log(\`  Status: \${bpReceipt.status}\`);
+  }
+
+  // --- Verify final state ---
+  console.log('\\n=== Verification ===');
+  for (const addr of addresses) {
+    const isValidator = await publicClient.readContract({
+      address: rollupAddress,
+      abi: rollupAbi,
+      functionName: 'isValidator',
+      args: [addr],
+    });
+    const isBatchPoster = await publicClient.readContract({
+      address: sequencerInboxAddress,
+      abi: sequencerInboxAbi,
+      functionName: 'isBatchPoster',
+      args: [addr],
+    });
+    console.log(\`  \${addr}: validator=\${isValidator}, batchPoster=\${isBatchPoster}\`);
+  }
+}
+
+main().catch(console.error);
+`;
 
 const VALIDATOR_MANAGEMENT_TEMPLATE = `import 'dotenv/config';
 import * as fs from 'fs';
@@ -331,6 +510,12 @@ export function generateValidatorSetup(
   if (target === "keyset") {
     templateName = "Orbit AnyTrust Config";
     code = ANYTRUST_KEYSET_TEMPLATE;
+  } else if (action === "add") {
+    templateName = "Orbit Add Validators";
+    code = MUTATE_VALIDATOR_TEMPLATE;
+  } else if (action === "remove") {
+    templateName = "Orbit Remove Validators";
+    code = MUTATE_VALIDATOR_TEMPLATE;
   } else {
     templateName = "Orbit Validator Management";
     code = VALIDATOR_MANAGEMENT_TEMPLATE;
@@ -340,18 +525,22 @@ export function generateValidatorSetup(
   const addressesStr = formatAddressArray(addresses);
 
   // Substitute parameters
+  const actionVerb = action === "remove" ? "Removing" : "Adding";
+  const actionBool = action === "remove" ? "false" : "true";
   code = code.replace(/\{parentChainId\}/g, String(parentChainId));
   code = code.replace(/\{parentChainName\}/g, parentChainName);
   code = code.replace(/\{rollupAddress\}/g, rollupAddress);
   code = code.replace(/\{sequencerInbox\}/g, sequencerInbox);
   code = code.replace(/\{addressesArray\}/g, addressesStr);
+  code = code.replace(/\{actionVerb\}/g, actionVerb);
+  code = code.replace(/\{actionBool\}/g, actionBool);
 
   // Build files
   const files: Record<string, string> = {};
   if (target === "keyset") {
-    files["scripts/manage-keyset.ts"] = code;
+    files["scripts/manage-keyset.ts"] = validateTemplateOutput(code, "manage-keyset");
   } else {
-    files["scripts/manage-validators.ts"] = code;
+    files["scripts/manage-validators.ts"] = validateTemplateOutput(code, "manage-validators");
   }
 
   // Add .env.example

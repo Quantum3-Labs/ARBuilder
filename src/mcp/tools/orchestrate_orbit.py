@@ -18,6 +18,7 @@ from ...templates.orbit_templates import (
     PARENT_CHAIN_RPCS,
     generate_docker_compose,
     get_orbit_template,
+    validate_template_output,
 )
 from .base import BaseTool
 from .generate_stylus_code import TEMPLATE_DISCLAIMER
@@ -129,7 +130,9 @@ Includes package.json, tsconfig.json, .env.example, setup.sh, and deploy.sh."""
             code = code.replace("{chain_id}", str(chain_id))
             code = code.replace("{owner}", "0x0000000000000000000000000000000000000000")
             code = code.replace("{is_anytrust}", "true" if is_anytrust else "false")
-            files["scripts/prepare-chain-config.ts"] = code
+            files["scripts/prepare-chain-config.ts"] = validate_template_output(
+                code, "prepare-chain-config"
+            )
 
         # 2. Deploy rollup script
         rollup_template = get_orbit_template("deploy_rollup")
@@ -148,7 +151,9 @@ Includes package.json, tsconfig.json, .env.example, setup.sh, and deploy.sh."""
                 )
             else:
                 code = code.replace("{native_token_line}", "")
-            files["scripts/deploy-rollup.ts"] = code
+            files["scripts/deploy-rollup.ts"] = validate_template_output(
+                code, "deploy-rollup"
+            )
 
         # 3. Token bridge script
         bridge_template = get_orbit_template("deploy_token_bridge")
@@ -162,7 +167,9 @@ Includes package.json, tsconfig.json, .env.example, setup.sh, and deploy.sh."""
                 "{rollup_address}",
                 "0x0000000000000000000000000000000000000000",
             )
-            files["scripts/deploy-token-bridge.ts"] = code
+            files["scripts/deploy-token-bridge.ts"] = validate_template_output(
+                code, "deploy-token-bridge"
+            )
 
         # 4. Validator management script
         validator_template = get_orbit_template("validator_management")
@@ -179,7 +186,9 @@ Includes package.json, tsconfig.json, .env.example, setup.sh, and deploy.sh."""
                 "0x0000000000000000000000000000000000000000",
             )
             code = code.replace("{addresses_array}", validators_str)
-            files["scripts/manage-validators.ts"] = code
+            files["scripts/manage-validators.ts"] = validate_template_output(
+                code, "manage-validators"
+            )
 
         # 5. Node config script
         node_template = get_orbit_template("node_config")
@@ -195,7 +204,9 @@ Includes package.json, tsconfig.json, .env.example, setup.sh, and deploy.sh."""
                 "{parent_chain_is_arbitrum}",
                 "true" if parent_is_arbitrum else "false",
             )
-            files["scripts/prepare-node-config.ts"] = code
+            files["scripts/prepare-node-config.ts"] = validate_template_output(
+                code, "prepare-node-config"
+            )
 
         # 6. AnyTrust keyset config (if applicable)
         if is_anytrust:
@@ -204,7 +215,9 @@ Includes package.json, tsconfig.json, .env.example, setup.sh, and deploy.sh."""
                 code = anytrust_template.code
                 code = code.replace("{parent_chain_id}", str(parent_chain_id))
                 code = code.replace("{parent_chain_name}", parent_chain_name)
-                files["scripts/configure-anytrust.ts"] = code
+                files["scripts/configure-anytrust.ts"] = validate_template_output(
+                    code, "configure-anytrust"
+                )
 
         # 7. Orchestration scaffold files
         orchestration_template = get_orbit_template("orchestration")

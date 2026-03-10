@@ -74,7 +74,7 @@ async function main() {
   const chainConfig = prepareChainConfig({
     chainId: {chain_id},
     arbitrum: {
-      InitialChainOwner: '{owner}' as `0x${{string}}`,
+      InitialChainOwner: '{owner}' as `0x${string}`,
       DataAvailabilityCommittee: {is_anytrust},
     },
   });
@@ -106,54 +106,54 @@ DEPLOY_ROLLUP_TEMPLATE = OrbitTemplate(
     ],
     code='''import 'dotenv/config';
 import * as fs from 'fs';
-import {{
+import {
   createPublicClient,
   createWalletClient,
   http,
   parseEther,
   Chain,
-}} from 'viem';
-import {{ privateKeyToAccount }} from 'viem/accounts';
-import {{
+} from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import {
   prepareChainConfig,
   createRollup,
   createRollupPrepareDeploymentParamsConfig,
-}} from '@arbitrum/chain-sdk';
+} from '@arbitrum/chain-sdk';
 
 // Parent chain configuration
-const parentChain: Chain = {{
+const parentChain: Chain = {
   id: {parent_chain_id},
   name: '{parent_chain_name}',
-  nativeCurrency: {{ name: 'Ether', symbol: 'ETH', decimals: 18 }},
-  rpcUrls: {{
-    default: {{ http: [process.env.PARENT_CHAIN_RPC!] }},
-  }},
-}};
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: {
+    default: { http: [process.env.PARENT_CHAIN_RPC!] },
+  },
+};
 
-async function main() {{
+async function main() {
   const account = privateKeyToAccount(
-    process.env.DEPLOYER_PRIVATE_KEY! as `0x${{string}}`
+    process.env.DEPLOYER_PRIVATE_KEY! as `0x${string}`
   );
 
-  const publicClient = createPublicClient({{
+  const publicClient = createPublicClient({
     chain: parentChain,
     transport: http(process.env.PARENT_CHAIN_RPC),
-  }});
+  });
 
-  const walletClient = createWalletClient({{
+  const walletClient = createWalletClient({
     account,
     chain: parentChain,
     transport: http(process.env.PARENT_CHAIN_RPC),
-  }});
+  });
 
   // Prepare chain config
-  const chainConfig = prepareChainConfig({{
+  const chainConfig = prepareChainConfig({
     chainId: {chain_id},
-    arbitrum: {{
+    arbitrum: {
       InitialChainOwner: account.address,
       DataAvailabilityCommittee: {is_anytrust},
-    }},
-  }});
+    },
+  });
 
   console.log('Deploying Orbit chain...');
   console.log('  Chain ID:', {chain_id});
@@ -161,21 +161,21 @@ async function main() {{
   console.log('  AnyTrust:', {is_anytrust});
 
   // Deploy rollup
-  const deployResult = await createRollup({{
-    params: {{
-      config: createRollupPrepareDeploymentParamsConfig(publicClient, {{
+  const deployResult = await createRollup({
+    params: {
+      config: createRollupPrepareDeploymentParamsConfig(publicClient, {
         chainId: BigInt({chain_id}),
         owner: account.address,
         chainConfig,
-      }}),
+      }),
       validators: {validators_array},
       batchPosters: {batch_posters_array},
       batchPosterManager: account.address,{native_token_line}
-    }},
+    },
     account,
     publicClient,
     walletClient,
-  }});
+  });
 
   console.log('\\nRollup deployed successfully!');
   console.log('Transaction hash:', deployResult.transactionHash);
@@ -190,7 +190,7 @@ async function main() {{
 
   // Save deployment output IMMEDIATELY — ensures deployment.json exists
   // even if the receipt fetch below fails or times out
-  const deployment: Record<string, unknown> = {{
+  const deployment: Record<string, unknown> = {
     chainId: {chain_id},
     parentChainId: {parent_chain_id},
     transactionHash: deployResult.transactionHash,
@@ -198,25 +198,25 @@ async function main() {{
     coreContracts: deployResult.coreContracts,
     deployer: account.address,
     timestamp: new Date().toISOString(),
-  }};
+  };
   fs.writeFileSync('deployment.json', JSON.stringify(deployment, null, 2));
   console.log('\\nDeployment saved to deployment.json');
 
   // Fetch deployment block number and update deployment.json
-  if (deployResult.transactionHash) {{
-    try {{
-      const receipt = await publicClient.getTransactionReceipt({{
+  if (deployResult.transactionHash) {
+    try {
+      const receipt = await publicClient.getTransactionReceipt({
         hash: deployResult.transactionHash,
-      }});
+      });
       deployment.deployedAtBlock = Number(receipt.blockNumber);
       fs.writeFileSync('deployment.json', JSON.stringify(deployment, null, 2));
       console.log('  Deployed at block:', deployment.deployedAtBlock);
-    }} catch (err) {{
+    } catch (err) {
       console.warn('  Could not fetch receipt:', (err as Error).message);
       console.warn('  deployment.json saved without deployedAtBlock.');
-    }}
-  }}
-}}
+    }
+  }
+}
 
 main().catch(console.error);
 ''',
@@ -1301,3 +1301,30 @@ def get_orbit_template(name: str) -> Optional[OrbitTemplate]:
 def list_orbit_templates() -> List[OrbitTemplate]:
     """List all available Orbit templates."""
     return list(ORBIT_TEMPLATES.values())
+
+
+def validate_template_output(code: str, template_name: str = "") -> str:
+    """Validate that template output has no unresolved template tokens.
+
+    Checks for {{ and }} artifacts that indicate broken template rendering.
+    Raises ValueError if found, returns code unchanged if clean.
+    """
+    import re
+
+    # Check for Python format-string artifacts ({{ or }} not inside ${...})
+    # Allow ${...} patterns (valid shell/env var substitution in docker-compose)
+    # But flag {{ or }} outside of ${} context
+    artifacts = []
+    for match in re.finditer(r"\{\{|\}\}", code):
+        pos = match.start()
+        # Allow ${{ in docker-compose context (shell variable)
+        if pos > 0 and code[pos - 1] == "$":
+            continue
+        artifacts.append((match.start(), match.group()))
+
+    if artifacts:
+        positions = ", ".join(f'pos {p}: "{t}"' for p, t in artifacts[:5])
+        raise ValueError(
+            f"Template '{template_name}' has unresolved tokens: {positions}"
+        )
+    return code

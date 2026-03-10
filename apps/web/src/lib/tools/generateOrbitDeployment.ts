@@ -12,6 +12,7 @@ import {
   PARENT_CHAIN_RPCS,
   PARENT_CHAIN_IDS,
   TEMPLATE_DISCLAIMER,
+  validateTemplateOutput,
 } from "./generateOrbitConfig";
 
 // Types
@@ -790,7 +791,7 @@ const erc20Abi = [
       code = code.replace(/\{tokenApprovalBlock\}/g, "");
     }
 
-    files["scripts/deploy-rollup.ts"] = code;
+    files["scripts/deploy-rollup.ts"] = validateTemplateOutput(code, "deploy-rollup");
 
     // Generate token approval script when using custom gas token
     if (nativeToken) {
@@ -798,7 +799,7 @@ const erc20Abi = [
       approveCode = approveCode.replace(/\{parentChainId\}/g, String(parentChainId));
       approveCode = approveCode.replace(/\{parentChainName\}/g, parentChainName);
       approveCode = approveCode.replace(/\{nativeToken\}/g, nativeToken);
-      files["scripts/approve-token.ts"] = approveCode;
+      files["scripts/approve-token.ts"] = validateTemplateOutput(approveCode, "approve-token");
     }
   }
 
@@ -874,7 +875,7 @@ const erc20Abi = [
       code = code.replace(/\{tokenBridgeApprovalBlock\}/g, "");
     }
 
-    files["scripts/deploy-token-bridge.ts"] = code;
+    files["scripts/deploy-token-bridge.ts"] = validateTemplateOutput(code, "deploy-token-bridge");
   }
 
   // Add .env.example

@@ -10,6 +10,7 @@ import {
   PARENT_CHAIN_RPCS,
   PARENT_CHAIN_IDS,
   TEMPLATE_DISCLAIMER,
+  validateTemplateOutput,
 } from "./generateOrbitConfig";
 import { generateOrbitConfig } from "./generateOrbitConfig";
 import { generateOrbitDeployment } from "./generateOrbitDeployment";
