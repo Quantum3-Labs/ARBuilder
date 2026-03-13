@@ -95,12 +95,12 @@ class TestTemplateSelection:
         assert get_template("unknown") is None
 
     def test_list_templates_returns_all(self):
-        """list_templates should return all 6 templates."""
+        """list_templates should return all 7 templates."""
         templates = list_templates()
-        assert len(templates) == 6
+        assert len(templates) == 7
         names = {t.name for t in templates}
         assert names == {
-            "Counter", "VendingMachine", "DeFiVault",
+            "Counter", "VendingMachine", "DeFiVault", "StakingRewards",
             "SimpleERC20", "AccessControl", "NftRegistry",
         }
 
@@ -586,18 +586,26 @@ impl MyContract {
         assert "self.total_deposits.get()" in t.lib_rs
 
     def test_defi_keywords_select_vault_template(self):
-        """DeFi keywords should route to DeFiVault template."""
-        for kw in [
+        """DeFi keywords should route to DeFiVault template (except staking → StakingRewards)."""
+        defi_keywords = [
             "prediction market",
-            "staking pool",
             "swap contract",
             "deposit ETH",
             "oracle price feed",
             "lending protocol",
-        ]:
+        ]
+        for kw in defi_keywords:
             template = select_template("utility", kw)
             assert template.name == "DeFiVault", (
                 f"'{kw}' should select DeFiVault, got {template.name}"
+            )
+
+    def test_staking_keywords_select_staking_template(self):
+        """Staking keywords should route to StakingRewards template."""
+        for kw in ["staking pool", "staking contract", "unstake ETH", "staking rewards"]:
+            template = select_template("utility", kw)
+            assert template.name == "StakingRewards", (
+                f"'{kw}' should select StakingRewards, got {template.name}"
             )
 
     def test_fix_code_preserves_storage_reads_for_cargo_check(self):

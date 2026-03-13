@@ -1246,6 +1246,236 @@ fn main() {
 };
 
 /**
+ * Staking Rewards template — ETH staking with time-based rewards
+ * Focused template for staking prompts (smaller than DeFiVault, no sol_interface!)
+ * Demonstrates: #[payable], transfer_eth, block_timestamp, mapping patterns, events, errors
+ */
+export const STAKING_REWARDS_TEMPLATE: StylusTemplate = {
+  name: "StakingRewards",
+  description: "ETH staking with time-based rewards, stake/unstake/claim",
+  contractType: "defi",
+  sdkVersion: "0.10.0",
+  features: ["ETH transfer", "staking", "rewards", "events", "errors", "mappings", "block timestamp"],
+  libRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+#![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
+#[macro_use]
+extern crate alloc;
+
+use alloc::{vec, vec::Vec};
+use stylus_sdk::{
+    alloy_primitives::{Address, U256},
+    alloy_sol_types::{sol, SolError},
+    call::transfer::transfer_eth,
+    prelude::*,
+};
+
+// Events
+sol! {
+    event Staked(address indexed user, uint256 amount);
+    event Unstaked(address indexed user, uint256 amount);
+    event RewardClaimed(address indexed user, uint256 reward);
+}
+
+// Errors
+sol! {
+    error InsufficientStake(uint256 available, uint256 requested);
+    error ZeroAmount();
+}
+
+#[derive(SolidityError)]
+pub enum StakingError {
+    InsufficientStake(InsufficientStake),
+    ZeroAmount(ZeroAmount),
+}
+
+sol_storage! {
+    #[entrypoint]
+    pub struct StakingRewards {
+        address owner;
+        mapping(address => uint256) staked_balances;
+        mapping(address => uint256) rewards;
+        mapping(address => uint256) last_update_time;
+        uint256 total_staked;
+        uint256 reward_rate;
+    }
+}
+
+#[public]
+impl StakingRewards {
+    /// Initialize with owner and reward rate
+    pub fn initialize(&mut self, rate: U256) {
+        self.owner.set(self.vm().msg_sender());
+        self.reward_rate.set(rate);
+    }
+
+    /// Stake ETH — payable function
+    #[payable]
+    pub fn stake(&mut self) -> Result<(), Vec<u8>> {
+        let amount = self.vm().msg_value();
+        if amount == U256::ZERO {
+            return Err(ZeroAmount {}.abi_encode());
+        }
+
+        let caller = self.vm().msg_sender();
+        self.update_rewards(caller);
+
+        let current = self.staked_balances.get(caller);
+        self.staked_balances.setter(caller).set(current + amount);
+
+        let total = self.total_staked.get();
+        self.total_staked.set(total + amount);
+
+        self.vm().log(Staked { user: caller, amount });
+        Ok(())
+    }
+
+    /// Unstake ETH — uses transfer_eth(self.vm(), to, amount)
+    pub fn unstake(&mut self, amount: U256) -> Result<(), Vec<u8>> {
+        let caller = self.vm().msg_sender();
+        let staked = self.staked_balances.get(caller);
+        if staked < amount {
+            return Err(InsufficientStake {
+                available: staked,
+                requested: amount,
+            }
+            .abi_encode());
+        }
+
+        self.update_rewards(caller);
+
+        self.staked_balances.setter(caller).set(staked - amount);
+        let total = self.total_staked.get();
+        self.total_staked.set(total - amount);
+
+        // transfer_eth requires self.vm() as first arg
+        transfer_eth(self.vm(), caller, amount)?;
+
+        self.vm().log(Unstaked { user: caller, amount });
+        Ok(())
+    }
+
+    /// Claim accumulated rewards
+    pub fn claim_rewards(&mut self) -> Result<(), Vec<u8>> {
+        let caller = self.vm().msg_sender();
+        self.update_rewards(caller);
+
+        let reward = self.rewards.get(caller);
+        if reward == U256::ZERO {
+            return Err(ZeroAmount {}.abi_encode());
+        }
+
+        self.rewards.setter(caller).set(U256::ZERO);
+        transfer_eth(self.vm(), caller, reward)?;
+
+        self.vm().log(RewardClaimed { user: caller, reward });
+        Ok(())
+    }
+
+    /// View staked balance
+    pub fn staked_balance_of(&self, account: Address) -> U256 {
+        self.staked_balances.get(account)
+    }
+
+    /// View pending rewards
+    pub fn pending_rewards(&self, account: Address) -> U256 {
+        self.rewards.get(account)
+    }
+
+    /// View total staked
+    pub fn total_staked(&self) -> U256 {
+        self.total_staked.get()
+    }
+}
+
+/// Internal helpers — outside #[public] to avoid ABI exposure
+impl StakingRewards {
+    fn update_rewards(&mut self, account: Address) {
+        let staked = self.staked_balances.get(account);
+        if staked > U256::ZERO {
+            let now = U256::from(self.vm().block_timestamp());
+            let last = self.last_update_time.get(account);
+            if last > U256::ZERO {
+                let elapsed = now - last;
+                let rate = self.reward_rate.get();
+                let new_reward = staked * elapsed * rate / U256::from(1_000_000);
+                let current = self.rewards.get(account);
+                self.rewards.setter(account).set(current + new_reward);
+            }
+        }
+        let now = U256::from(self.vm().block_timestamp());
+        self.last_update_time.setter(account).set(now);
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use stylus_sdk::testing::*;
+    use stylus_sdk::alloy_primitives::address;
+
+    #[test]
+    fn test_stake_and_balance() {
+        let vm = TestVM::default();
+        let mut contract = StakingRewards::from(&vm);
+
+        let user = address!("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266");
+
+        vm.set_sender(user);
+        contract.initialize(U256::from(100));
+
+        vm.set_value(U256::from(1000));
+        assert!(contract.stake().is_ok());
+        assert_eq!(contract.staked_balance_of(user), U256::from(1000));
+        assert_eq!(contract.total_staked(), U256::from(1000));
+    }
+}`,
+  cargoToml: `[package]
+name = "stylus_staking"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+stylus-sdk = "0.10.0"
+alloy-primitives = "1.0.1"
+alloy-sol-types = "1.0.1"
+[dev-dependencies]
+stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
+
+[features]
+default = ["mini-alloc"]
+export-abi = ["stylus-sdk/export-abi"]
+debug = ["stylus-sdk/debug"]
+mini-alloc = ["stylus-sdk/mini-alloc"]
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[[bin]]
+name = "stylus_staking"
+path = "src/main.rs"
+
+[profile.release]
+codegen-units = 1
+strip = true
+lto = true
+panic = "abort"
+opt-level = "s"`,
+  mainRs: `#![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
+
+#[cfg(not(any(test, feature = "export-abi")))]
+#[unsafe(no_mangle)]
+pub extern "C" fn main() {}
+
+#[cfg(feature = "export-abi")]
+fn main() {
+    stylus_staking::print_from_args();
+}`,
+  stylusToml: `[workspace]\n\n[workspace.networks]\n\n[contract]\n`,
+  rustToolchainToml: `[toolchain]\nchannel = "1.91.0"\ntargets = ["wasm32-unknown-unknown"]\n`,
+};
+
+/**
  * All available templates indexed by contract type
  */
 export const TEMPLATES: Record<string, StylusTemplate> = {
@@ -1254,6 +1484,7 @@ export const TEMPLATES: Record<string, StylusTemplate> = {
   vending_machine: VENDING_MACHINE_TEMPLATE,
   vault: DEFI_VAULT_TEMPLATE,
   defi: DEFI_VAULT_TEMPLATE,
+  staking: STAKING_REWARDS_TEMPLATE,
   token: SIMPLE_ERC20_TEMPLATE,
   erc20: SIMPLE_ERC20_TEMPLATE,
   nft: NFT_REGISTRY_TEMPLATE,
@@ -1272,22 +1503,27 @@ export function selectTemplate(
 ): StylusTemplate {
   const lowerPrompt = prompt.toLowerCase();
 
-  // NFT keywords — check BEFORE ERC20 (both have "transfer"/"balance")
+  // ERC20 explicit match FIRST — "erc20" is unambiguous
+  if (lowerPrompt.includes("erc20") || lowerPrompt.includes("erc-20")) {
+    return SIMPLE_ERC20_TEMPLATE;
+  }
+
+  // NFT keywords — "mint" alone is ambiguous (ERC20 also mints),
+  // so only match when combined with NFT-specific terms
   if (
     lowerPrompt.includes("nft") ||
     lowerPrompt.includes("erc721") ||
     lowerPrompt.includes("erc-721") ||
-    lowerPrompt.includes("mint") ||
     lowerPrompt.includes("token id") ||
     lowerPrompt.includes("collectible") ||
-    lowerPrompt.includes("registry")
+    lowerPrompt.includes("nft registry") ||
+    (lowerPrompt.includes("mint") && !lowerPrompt.includes("token"))
   ) {
     return NFT_REGISTRY_TEMPLATE;
   }
 
-  // Check for specific keywords in prompt
+  // ERC20 by broader keywords
   if (
-    lowerPrompt.includes("erc20") ||
     lowerPrompt.includes("token") ||
     lowerPrompt.includes("transfer") ||
     lowerPrompt.includes("balance")
@@ -1313,9 +1549,19 @@ export function selectTemplate(
     return VENDING_MACHINE_TEMPLATE;
   }
 
+  // Staking — focused template (no sol_interface!, smaller prompt)
+  if (
+    lowerPrompt.includes("stake") ||
+    lowerPrompt.includes("staking") ||
+    lowerPrompt.includes("unstake") ||
+    lowerPrompt.includes("reward")
+  ) {
+    return STAKING_REWARDS_TEMPLATE;
+  }
+
   // DeFi patterns that need transfer_eth, sol_interface!, cross-contract calls
   const defiKeywords = [
-    "vault", "deposit", "withdraw", "stake", "staking", "swap",
+    "vault", "deposit", "withdraw", "swap",
     "pool", "liquidity", "oracle", "price", "feed",
     "prediction", "market", "bet", "wager", "auction",
     "lending", "borrow", "collateral", "bridge",
@@ -1343,6 +1589,7 @@ export function listTemplates(): StylusTemplate[] {
     COUNTER_TEMPLATE,
     VENDING_MACHINE_TEMPLATE,
     DEFI_VAULT_TEMPLATE,
+    STAKING_REWARDS_TEMPLATE,
     SIMPLE_ERC20_TEMPLATE,
     NFT_REGISTRY_TEMPLATE,
     ACCESS_CONTROL_TEMPLATE,

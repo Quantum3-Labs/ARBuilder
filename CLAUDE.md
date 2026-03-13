@@ -10,6 +10,7 @@ ARBuilder is an AI-powered development assistant for the Arbitrum ecosystem. It 
 - **Arbitrum SDK bridging** (TypeScript)
 - **Cross-chain messaging** (L1 ↔ L2 ↔ L3)
 - **Full-stack dApps** (contracts + backend + frontend + indexer)
+- **Orbit chain deployment** (@arbitrum/orbit-sdk)
 
 ## Repository Structure
 
@@ -18,7 +19,7 @@ ArbBuilder/
 ├── src/
 │   ├── mcp/                  # MCP server for IDE integration
 │   │   ├── server.py         # Main MCP server
-│   │   ├── tools/            # 14 MCP tools (M1: 6, M2: 3, M3: 5)
+│   │   ├── tools/            # 19 MCP tools (M1: 6, M2: 3, M3: 5, M4: 5)
 │   │   ├── resources/        # Static knowledge (11 resources)
 │   │   └── prompts/          # Workflow templates
 │   ├── embeddings/           # Vector DB and retrieval
@@ -29,7 +30,8 @@ ArbBuilder/
 │   │   ├── backend_templates.py  # M3: NestJS/Express (ABI placeholder support)
 │   │   ├── frontend_templates.py # M3: Next.js + wagmi (ABI placeholder support)
 │   │   ├── indexer_templates.py  # M3: The Graph subgraphs
-│   │   └── oracle_templates.py   # M3: Chainlink integrations
+│   │   ├── oracle_templates.py   # M3: Chainlink integrations
+│   │   └── orbit_templates.py    # M4: Orbit chain deployment (@arbitrum/orbit-sdk)
 │   ├── utils/                # Shared utilities
 │   │   ├── version_manager.py    # SDK version management
 │   │   ├── env_config.py         # Centralized env var configuration
@@ -131,6 +133,15 @@ ruff check .
 | `generate_indexer` | The Graph subgraph generation |
 | `generate_oracle` | Chainlink oracle integrations |
 | `orchestrate_dapp` | Full dApp scaffolding coordinator |
+
+### M4: Orbit Chain Integration (5 tools)
+| Tool | Purpose |
+|------|---------|
+| `generate_orbit_config` | Orbit chain configuration (prepareChainConfig, AnyTrust, custom gas tokens) |
+| `generate_orbit_deployment` | Rollup/token bridge deployment (createRollup, createTokenBridge) |
+| `generate_validator_setup` | Validator/batch poster management, AnyTrust DAC keysets |
+| `ask_orbit` | Orbit chain Q&A (deployment, configuration, operations) |
+| `orchestrate_orbit` | Full Orbit chain project scaffolding |
 
 ## Architecture Notes
 
@@ -378,6 +389,8 @@ let val = self.items.get(index).unwrap();
 - **No underscore fns in #[public] impl** — `#[public]` macro strips leading underscores for ABI selectors, so `fn _grant_role` and `fn grant_role` produce the same selector ("unreachable pattern"). Put internal helpers in a separate `impl MyContract { ... }` block without `#[public]`.
 - **address[] deref** — `*self.list.get(idx).unwrap()` on `address[]` returns `FixedBytes<20>`, not `Address`. Use `Address::from(*self.list.get(idx).unwrap())`.
 - **String mapping writes** — For `mapping(... => string)`, `.setter(key)` returns `StorageGuardMut<StorageString>` — call `.set_str(val)` directly. WRONG: `.setter(key).setter().set_str(val)`. CORRECT: `.setter(key).set_str(val)`.
+- **Nested struct writes** — For `mapping(uint256 => MyStruct)`, `.get(key)` returns immutable `StorageGuard<MyStruct>` — CANNOT call `.setter()` on its fields. Use `.setter(key)` for writes. WRONG: `self.roles.get(role).members.setter(account).set(true)`. CORRECT: `self.roles.setter(role).members.setter(account).set(true)`.
+- **No function overloading** — Rust does not support function overloading. Two `fn` with the same name in the same impl block is a compile error (E0428). If you need variants, use different names (e.g. `check_role`, `check_role_with_admin`). Never define a function twice.
 
 ## Network Endpoints
 

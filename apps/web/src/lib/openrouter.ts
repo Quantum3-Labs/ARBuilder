@@ -260,13 +260,154 @@ function backoff(attempt: number): Promise<void> {
 }
 
 /**
- * Build version-aware system prompt for code generation.
+ * Shared Stylus compilation rules — single source of truth.
+ * Used by buildCodeGenSystemPrompt(), generateCodeFromTemplate(), and answerQuestion().
+ * Deduped from ~70 rules that were previously duplicated across prompts.
+ */
+const STYLUS_COMPILATION_RULES = `STORAGE ACCESS:
+- ALWAYS use .get() to read: \`self.field.get()\` NOT \`self.field\`. Use .set(val) to write: \`self.field.set(val)\`.
+- For mappings: read with \`self.map.get(key)\`, write with \`self.map.setter(key).set(val)\`.
+- .setter(key) is ONLY for mappings. For simple fields (uint256, address, bool), use \`self.field.set(val)\` directly — NOT \`self.field.setter().set(val)\`.
+- StorageMap::get(key) returns value directly (zero-default), NOT Option. Do NOT use .unwrap_or_default().
+- NESTED MAPPINGS: read with \`self.map.get(k1).get(k2)\`. Write by chaining .setter(): \`self.map.setter(k1).setter(k2).set(v)\`. Do NOT mix .get() then .setter(). Do NOT use tuple keys.
+- StorageString: Use \`.set_str("val")\` and \`.get_string()\`. NOT .set() or .get().
+- STRING MAPPING READS: \`mapping(... => string)\` — \`.get(key)\` returns StorageGuard<StorageString>, NOT String. Use \`.getter(key).get_string()\`. Do NOT call .get_string() again on result. Write: \`.setter(key).set_str("val")\`.
+- STORAGESTRING VIEW FUNCTIONS: ALWAYS call .get_string(): \`pub fn name(&self) -> String { self.name.get_string() }\`. NEVER return self.name directly. Do NOT use .push_str() on StorageString.
+- StorageVec API: len() returns usize. setter(i) returns Option — call .unwrap() before .set(). Convert U256: index.to::<usize>(). Do NOT use .as_usize().
+- DYNAMIC ARRAYS: Declare as \`uint256[] items;\`. Append with .push(val) for primitives, .grow() for structs. Do NOT use .setter(len).unwrap().
+- BORROW CHECKER: Extract values to local vars before combining storage reads and writes.
+- MUTABLE BINDINGS: .setter() result stored in a variable needs \`let mut\`.
+
+IMPORTS AND no_std:
+- ALWAYS include \`use alloc::{vec, vec::Vec};\` — sol_storage! needs vec module in scope.
+- String: \`use alloc::string::String;\`. .to_string(): ALSO \`use alloc::string::ToString;\`. NOT in prelude.
+- Call comes from prelude::*. Do NOT add \`use stylus_sdk::call::Call;\` separately.
+- Do NOT use stylus_sdk::evm (removed in 0.10.0) or stylus_sdk::msg.
+- Do NOT use std::time, std::collections. For timestamps: self.vm().block_timestamp().
+
+EXTERNAL INTERFACES:
+- CRITICAL: sol! is for events and errors ONLY. External contract interfaces MUST use sol_interface!.
+- sol_interface! generates Rust methods in snake_case: transferFrom → .transfer_from(), balanceOf → .balance_of(), totalSupply → .total_supply(), latestPrice → .latest_price(). ALWAYS convert ALL camelCase to snake_case — this applies to EVERY method, not just common ones.
+- sol_interface! HOST ARG: self.vm() MUST be the FIRST argument, then Call context, then Solidity args.
+- VIEW calls: Call::new(). STATE-MODIFYING calls: extract Call first: \`let call = Call::new_mutating(self);\` — avoids borrow conflict.
+- External calls require &mut self (NOT &self — view functions revert on external calls).
+
+TYPES:
+- B256 is FixedBytes<32>, NOT Uint<256>. B256::from_uint() and B256::from_limbs() do NOT exist. Use B256::from(value.to_be_bytes::<32>()). For limbs: B256::from(U256::from_limbs([...]).to_be_bytes::<32>()). B256::ZERO for zero.
+- CONST U256: U256::from() is NOT const-compatible. Use U256::from_limbs([N, 0, 0, 0]).
+- I256: implements From<i64> but NOT From<i128>. Use I256::from(1) (bare literal).
+- U8: uint8 → U8 (Uint<8,1>), not native u8. Set: U8::from(val). Read: .to::<u8>().
+- UINT CONVERSION: .as_usize(), .as_u64(), .as_u32(), .as_u128() do NOT exist on alloy Uint. Use .to::<usize>(), .to::<u64>(), etc.
+- ZERO CONSTANTS: U256::ZERO, Address::ZERO (uppercase const). NOT .zero() methods.
+- unwrap_or(VALUE) for values, unwrap_or_else(|| VALUE) for closures.
+
+EVENTS AND ERRORS:
+- sol! MACRO: MUST \`use alloy_sol_types::{sol, SolError};\` — NOT in prelude.
+- sol! fields use camelCase: tokenId NOT token_id.
+- sol! STRUCT INIT: ALWAYS use explicit \`field: value\` syntax with camelCase field name on left, snake_case variable on right.
+  WRONG: \`Transfer { from, to, tokenId }\` — shorthand fails because \`tokenId\` variable doesn't exist in Rust (it's \`token_id\`).
+  WRONG: \`CapExceeded { newCap }\` — no local \`newCap\` exists.
+  CORRECT: \`Transfer { from, to, tokenId: token_id }\`.
+  CORRECT: \`CapExceeded { newCap: new_cap }\`.
+  Rule: if the field name contains an uppercase letter after a lowercase letter (camelCase), you MUST use explicit \`field: value\` syntax. Only pure lowercase fields (from, to, owner) can use shorthand.
+- sol! TYPE MATCHING: address → Address, uint256 → U256. Match RUST TYPE, not semantic meaning.
+- abi_encode(): on inner sol! error struct, NOT the #[derive(SolidityError)] enum.
+- EVENT/ERROR NAMING: Never same name for event and error.
+- SolidityError ENUM: Each variant wraps a DISTINCT error type.
+- Put all errors in one sol! {} block. Never define same name twice.
+- vm().log() returns () — do NOT use ? after it.
+
+SDK API:
+- TRANSFER ETH: \`use stylus_sdk::call::transfer::transfer_eth;\` then \`transfer_eth(self.vm(), to, amount)?;\`.
+- CONTRACT ADDRESS: self.vm().contract_address() NOT self.vm().address().
+- BLOCK TIMESTAMP: self.vm().block_timestamp() returns u64. Wrap with U256::from() for uint256 fields.
+- RESULT PROPAGATION: Always use ? to propagate Result from helper methods.
+- RawCall::new_with_value(self.vm(), amount) — requires self.vm() and unsafe block.
+
+PROJECT STRUCTURE:
+- sol_storage! SYNTAX: type + name + semicolon ONLY. NO default values. Use Solidity types: uint256, address, bool, string, mapping(...), type[]. NOT Rust Storage* types.
+- Exactly ONE sol_storage! block with #[entrypoint].
+- Package name MUST use underscores. crate-type = ["lib", "cdylib"]. src/main.rs required with print_from_args().
+
+OUTPUT:
+- CLEAN OUTPUT: Output ONLY valid Rust code. No commentary inside code blocks.
+- NO CONST IN #[public] IMPL: Move constants to module level.
+- NO PHANTOM VARIABLES: Functions get data from storage/parameters. Never \`let role = role;\`.
+- ABI exports snake_case as camelCase. Frontend must use camelCase.`;
+
+/**
+ * Shared reference code examples for Stylus patterns.
+ * Used by generateCodeFromTemplate() and answerQuestion().
+ */
+const STYLUS_REFERENCE_CODE = `ETH transfer:
+\`\`\`rust
+use stylus_sdk::call::transfer::transfer_eth;
+
+pub fn withdraw(&mut self, to: Address, amount: U256) -> Result<(), Vec<u8>> {
+    transfer_eth(self.vm(), to, amount)?;
+    Ok(())
+}
+\`\`\`
+
+Cross-contract VIEW call:
+\`\`\`rust
+sol_interface! {
+    interface IPriceFeed {
+        function latestPrice() external view returns (uint256);
+    }
+}
+
+pub fn get_price(&mut self, feed_addr: Address) -> Result<U256, Vec<u8>> {
+    let feed = IPriceFeed::new(feed_addr);
+    let price = feed.latest_price(self.vm(), Call::new())?;
+    Ok(price)
+}
+\`\`\`
+
+Cross-contract state-modifying call:
+\`\`\`rust
+sol_interface! {
+    interface IToken {
+        function transfer(address to, uint256 amount) external returns (bool);
+    }
+}
+
+pub fn transfer_tokens(
+    &mut self, token: Address, to: Address, amount: U256,
+) -> Result<bool, Vec<u8>> {
+    let tok = IToken::new(token);
+    let call = Call::new_mutating(self);
+    let success = tok.transfer(self.vm(), call, to, amount)?;
+    Ok(success)
+}
+\`\`\`
+
+Storage access:
+\`\`\`rust
+let val = self.my_field.get();
+let balance = self.balances.get(user);
+self.my_field.set(new_val);
+self.balances.setter(user).set(new_balance);
+\`\`\`
+
+Nested mapping:
+\`\`\`rust
+let allowance = self.allowances.get(owner).get(spender);
+self.allowances.setter(owner).setter(spender).set(value);
+\`\`\`
+
+Dynamic array:
+\`\`\`rust
+self.items.push(new_val);
+// For structs: let mut entry = self.items.grow(); entry.field.set(val);
+\`\`\``;
+
+/**
+ * Build version-aware system prompt for code generation (uses shared STYLUS_COMPILATION_RULES).
  */
 function buildCodeGenSystemPrompt(targetVersion: string): string {
-  const patterns = getVersionPatterns(targetVersion);
   const alloyVersion = getAlloyPrimitivesVersion(targetVersion);
-  const mainAttr = patterns.attributes[0] || "#[public]";
-  const errorHandling = patterns.error_handling;
+  const patterns = getVersionPatterns(targetVersion);
   const cfgAttr = patterns.cfg_attr;
 
   return `You are an expert Stylus (Rust) smart contract developer for Arbitrum.
@@ -274,69 +415,12 @@ You write clean, secure, and gas-efficient code following best practices.
 Use the provided context from the Stylus documentation and examples.
 
 Target SDK Version: stylus-sdk ${targetVersion}
+Alloy Primitives: ${alloyVersion}
+Config: ${cfgAttr}
 
-Key patterns for v${targetVersion}:
-- Use stylus-sdk ${targetVersion} with alloy-primitives ${alloyVersion}
-- Include ${cfgAttr}
-- Use sol_storage! macro for storage
-- Use ${mainAttr} for external functions
-- STORAGE ACCESS: ALWAYS use .get() to read: \`self.field.get()\` NOT \`self.field\`. Use .set() to write. For mappings: \`self.map.get(key)\` and \`self.map.setter(key).set(val)\`.
-- Handle errors with ${errorHandling}
-- Follow Rust naming conventions (snake_case for functions, PascalCase for types)
-- TRANSFER ETH: \`use stylus_sdk::call::transfer::transfer_eth;\` then \`transfer_eth(self.vm(), to, amount)?;\` — NOT self.transfer_eth() or call::transfer_eth()
-- For error types: define with sol! { error MyError(...); }, wrap in enum with #[derive(SolidityError)]
-- For .abi_encode() on errors: import SolError via use alloy_sol_types::SolError
-- Nested mapping writes: chain in one expression: self.map.setter(k1).setter(k2).set(v). Do NOT split into separate variables (causes multiple active borrows)
-- Do NOT use stylus_sdk::evm (removed in 0.10.0) or stylus_sdk::msg
-- ALWAYS include \`use alloc::{vec, vec::Vec};\` — sol_storage! needs vec module in scope
-- RawCall::new_with_value(self.vm(), amount) — requires self.vm() as first arg and unsafe block
-- uint8 in sol_storage! maps to Uint<8,1> not native u8 — prefer uint256
-- Package name in Cargo.toml MUST use underscores (e.g., "my_contract") — hyphens break cargo-stylus
-- src/main.rs is REQUIRED — use print_from_args() (NOT print_abi()) for ABI export
-- crate-type in [lib] must be ["lib", "cdylib"]
-- EXTERNAL INTERFACES: use \`sol_interface!\` (NOT \`sol!\`) for external contract interfaces. VIEW calls: \`ifoo.method(self.vm(), Call::new(), args)?\`. STATE-MODIFYING calls: extract Call first: \`let call = Call::new_mutating(self);\` then \`ifoo.method(self.vm(), call, args)?\` — avoids borrow conflict.
-- Stylus exports snake_case Rust fn names as camelCase in the ABI (create_market → createMarket). Frontend must use camelCase in functionName.
-- Stylus &self view functions CANNOT make external contract calls (they revert). Use &mut self or read from frontend.
-- DYNAMIC ARRAYS: In sol_storage!, declare as \`uint256[] items;\`. Append primitives with \`self.items.push(val)\`. For struct arrays, use \`self.items.grow()\` then set fields. Do NOT use \`.setter(len).unwrap()\`.
-- sol! MACRO IMPORT: When using sol! for events/errors, you MUST import it: \`use alloy_sol_types::{sol, SolError};\` — sol! is NOT in prelude.
-- BORROW CHECKER: Extract values to local vars before combining storage reads/writes. Never \`self.field.setter(self.vm().something())\`.
-- sol! EVENT/ERROR FIELDS: Use camelCase (Solidity convention): \`tokenId\` NOT \`token_id\`.
-- On Arbitrum Sepolia, MetaMask may underestimate maxFeePerGas — add explicit gas overrides if "max fee per gas less than block base fee"
-- CRITICAL: \`sol!\` is for events and errors ONLY. External contract interfaces MUST use \`sol_interface!\`. If you write \`sol! { interface IToken { ... } }\`, the macro generates an EVENT named IToken, not a callable interface. ALWAYS use \`sol_interface! { interface IToken { ... } }\` for cross-contract calls.
-- sol_interface! SNAKE_CASE METHODS: sol_interface! generates Rust methods in snake_case from Solidity camelCase. \`transferFrom\` → \`.transfer_from()\`, \`totalSupply\` → \`.total_supply()\`, \`balanceOf\` → \`.balance_of()\`. NEVER use camelCase when calling sol_interface! methods from Rust.
-- sol_interface! HOST ARG: sol_interface! methods require \`self.vm()\` as the FIRST argument, then CallContext, then Solidity args. Pattern: \`token.transfer(self.vm(), Call::new(), to, amount)?;\` — NOT \`token.transfer(Call::new(), to, amount)?;\`
-- CONTRACT ADDRESS: Use \`self.vm().contract_address()\` — NOT \`self.vm().address()\` which does not exist
-- ZERO CONSTANTS: Use \`U256::ZERO\`, \`Address::ZERO\` (uppercase const) — NOT \`U256::zero()\` or \`Address::zero()\` which do not exist
-- BLOCK TIMESTAMP: \`self.vm().block_timestamp()\` returns \`u64\`. Wrap with \`U256::from()\` before storing in uint256 fields
-- StorageString: Use \`.set_str("value")\` and \`.get_string()\` — NOT \`.set()\` or \`.get()\` on string storage fields
-- NO STD: Do NOT use \`std::time\`, \`std::collections\`, or any std library. For timestamps: \`self.vm().block_timestamp()\`
-- EVENT/ERROR NAMING: Never give an event and error the same name — they generate conflicting Rust structs. Use distinct names like \`event Paused(address)\` + \`error ContractPaused()\`
-- RESULT PROPAGATION: Always use \`?\` when calling helper methods that return Result: \`self.check()?\` not \`self.check()\`
-- Call IMPORT: \`Call\` is available from \`prelude::*\` — do NOT add \`use stylus_sdk::call::Call;\` separately
-- DUPLICATE DEFINITIONS: Put all errors in one \`sol! {}\` block. Never define the same error/event name twice
-- sol! STRUCT INIT: When constructing sol! event/error structs, ALWAYS use explicit field assignment: \`MyEvent { fieldName: my_var }\`. NEVER use Rust shorthand \`MyEvent { fieldName }\` — sol! fields are camelCase but Rust variables are snake_case, so shorthand WILL fail.
-- StorageVec API: \`len()\` returns \`usize\` (NOT U256). Use \`usize\` for loop indices. \`setter(i)\` returns \`Option\` — call \`.unwrap()\` before \`.set()\`. \`getter(i)\` also returns \`Option\` — call \`.unwrap()\`. Convert U256 to usize: \`index.to::<usize>()\`. Do NOT use \`.as_usize()\`.
-- SolidityError ENUM: Each variant must wrap a DISTINCT error type. Two variants wrapping the same inner type cause conflicting \`From\` impls.
-- U8 TYPE: \`uint8\` in sol_storage! maps to \`U8\` (Uint<8,1>), NOT native \`u8\`. Set: \`self.field.set(U8::from(18u8))\`. Read: \`self.field.get().to::<u8>()\`.
-- MUTABLE BINDINGS: \`.setter()\` result stored in a variable needs \`let mut\` if methods are called on it.
-- vm().log() returns \`()\` — do NOT use \`?\` after it. Just call: \`self.vm().log(MyEvent { ... });\`
-- unwrap_or vs unwrap_or_else: \`.unwrap_or(VALUE)\` for values, \`.unwrap_or_else(|| VALUE)\` for closures. Do NOT pass a value to unwrap_or_else.
-- sol_storage! TYPES: Inside sol_storage! {}, use SOLIDITY syntax: \`uint256\`, \`address\`, \`bool\`, \`string\`, \`mapping(address => uint256)\`, \`uint256[]\`. Do NOT use Rust Storage* types: \`StorageU256\`, \`StorageAddress\`, \`StorageString\`, \`StorageMap<...>\`, \`StorageVec<...>\`.
-- NESTED MAPPING WRITES: Chain \`.setter()\` calls: \`self.allowances.setter(owner).setter(spender).set(amount);\`. Do NOT use tuple keys \`(owner, spender)\`. Do NOT mix \`.get()\` then \`.setter()\` — \`.get()\` returns immutable ref conflicting with \`.setter()\`'s mutable borrow. ALWAYS chain \`.setter()\` for writes.
-- MAPPING READS return value directly: \`StorageMap::get(key)\` returns the value type (zero-default for uninitialized), NOT \`Option\`. Do NOT call \`.unwrap_or_default()\` on mapping reads. Nested: \`.getter(k1).get(k2)\` also returns value directly.
-- sol_interface! SNAKE_CASE: \`sol_interface!\` converts Solidity camelCase to Rust snake_case. \`transferFrom\` → \`.transfer_from()\`, \`balanceOf\` → \`.balance_of()\`. ALWAYS use snake_case when calling sol_interface! methods.
-- B256 CONVERSION: \`B256::from_uint()\` does NOT exist. To convert U256 to B256, use \`B256::from(value.to_be_bytes::<32>())\`.
-- CONST U256: \`U256::from()\` is NOT const-compatible. For const declarations use \`U256::from_limbs([N, 0, 0, 0])\` e.g. \`const MY_ROLE: U256 = U256::from_limbs([1, 0, 0, 0]);\`. \`U256::ZERO\` is fine.
-- sol_interface! HOST ARGUMENT: When calling methods on sol_interface!-generated types, \`self.vm()\` MUST be the FIRST argument, followed by the Call context, then Solidity parameters. Example: \`token.transfer(self.vm(), Call::new_mutating(self), to, amount)?;\` NOT \`token.transfer(Call::new_mutating(self), to, amount)?;\` — the \`self.vm()\` host reference is ALWAYS required as the first arg.
-- B256 IS NOT Uint: B256 is \`FixedBytes<32>\`, NOT \`Uint<256>\`. \`B256::from_limbs()\` does NOT exist — \`from_limbs\` is a Uint method. To create B256 from limbs: \`B256::from(U256::from_limbs([1, 0, 0, 0]).to_be_bytes::<32>())\`. Use \`B256::ZERO\` for zero, \`B256::with_last_byte(n)\` for small values.
-- STRING MAPPING READS: \`mapping(... => string)\` — \`.get(key)\` returns \`StorageGuard<StorageString>\`, NOT String. Use \`.getter(key).get_string()\` to read as String. Do NOT call \`.get_string()\` again on the result — it already IS a String. Write: \`.setter(key).set_str("val")\`.
-- abi_encode() ON ERRORS: \`.abi_encode()\` is on the inner \`sol!\` error struct (SolError trait), NOT on the \`#[derive(SolidityError)]\` enum. WRONG: \`MyErrors::NotOwner(NotOwner{...}).abi_encode()\`. CORRECT: \`NotOwner{caller, owner}.abi_encode()\`. The enum is for Stylus runtime dispatch, not manual encoding.
-- STORAGESTRING VIEW FUNCTIONS: When returning a \`string\` field from sol_storage! in a view function, ALWAYS call \`.get_string()\`: \`pub fn name(&self) -> String { self.name.get_string() }\`. NEVER return \`self.name\` directly — it is StorageString, not String. Do NOT use \`.push_str()\` on StorageString — extract first: \`let s = self.name.get_string(); format!("{}{}", s, other)\`.
-- STRING IMPORTS (no_std): When using \`String\` type, add \`use alloc::string::String;\`. When using \`.to_string()\`, ALSO add \`use alloc::string::ToString;\`. These are NOT in prelude in no_std.
-- NO CONST IN #[public] IMPL: Do NOT put \`pub const\` declarations inside \`#[public] impl MyContract { ... }\` — the proc macro does not support associated constants. Move constants to module level: \`const ADMIN_ROLE: U256 = U256::ZERO;\` BEFORE the impl block.
-- sol! ERROR/EVENT TYPE MATCHING: When defining sol! errors/events, Solidity field types MUST match the Rust values you pass. \`address\` → Address, \`uint256\` → U256, \`bool\` → bool. If you pass a U256 value, the field MUST be \`uint256\`, NOT \`address\`. CRITICAL: if a value comes from a \`mapping(... => uint256)\` via \`.get()\`, it IS U256 — the event/error field MUST be \`uint256\` even if the field name sounds like an address (e.g., admin, owner, sender). The Solidity type MUST match the RUST TYPE, not the semantic meaning. For comparison errors (InsufficientBalance, InsufficientStake), ALL value fields (have/want, available/required) should be \`uint256\`.
-- CLEAN OUTPUT: Output ONLY valid Rust code in code blocks. NEVER include natural language commentary, corrections, or "thinking aloud" text inside code. No \`<< ??? >\`, no \`Wait, we need...\`, no \`Correction:\` inside code blocks.
-- INTERNAL HELPERS — NO PHANTOM VARIABLES: Internal check functions (only_owner, ensure_admin, check_role) must get ALL data from storage or parameters. If a function body uses a variable, it MUST be: (a) a declared function parameter, (b) a local \`let\` binding from a storage read or computation, or (c) \`self.field\`. NEVER write \`let role = role;\` — this references a non-existent variable. For owner checks: read \`self.owner.get()\` and compare to \`self.vm().msg_sender()\`. For role checks with a specific role: define as \`const\` or read from storage. For dynamic role checks: add \`role: U256\` as a function parameter.
+Follow Rust naming conventions (snake_case for functions, PascalCase for types).
+
+${STYLUS_COMPILATION_RULES}
 
 Security best practices:
 - Check for overflows using checked_add/checked_sub
@@ -420,129 +504,34 @@ ABSOLUTE RULES - NEVER VIOLATE THESE:
 3. There must be EXACTLY ONE sol_storage! block - NEVER create empty sol_storage! blocks
 4. KEEP the #[entrypoint] attribute inside sol_storage!
 5. KEEP the #[public] attribute on the impl block
-6. When using sol! for events or errors, you MUST explicitly import it: \`use alloy_sol_types::{sol, SolError};\` — sol! is NOT available from prelude. If only using events (no .abi_encode()), \`use alloy_sol_types::sol;\` is sufficient.
+6. When using sol! for events or errors, you MUST explicitly import it: \`use alloy_sol_types::{sol, SolError};\`
 7. If adding events/errors with sol! macro, they must be BEFORE sol_storage!
+7b. EVERY event emitted with self.vm().log() MUST be declared in a sol! block
 8. KEEP the Cargo.toml [profile.release] section exactly as provided
 
-COMPILATION-CRITICAL — these mistakes WILL break the build:
-- STORAGE ACCESS: ALWAYS use .get() to read storage: \`self.field.get()\` NOT \`self.field\`. ALWAYS use .set(val) to write: \`self.field.set(val)\`. For mappings: read with \`self.map.get(key)\`, write with \`self.map.setter(key).set(val)\`.
-- TRANSFER ETH: \`use stylus_sdk::call::transfer::transfer_eth;\` then \`transfer_eth(self.vm(), to, amount)?;\`. Do NOT use \`self.transfer_eth()\`, \`call::transfer_eth()\`, or any other path.
-- EXTERNAL INTERFACES: use \`sol_interface!\` macro (NOT \`sol!\`). \`sol!\` is ONLY for events and errors.
-- CROSS-CONTRACT CALLS: VIEW calls: \`ifoo.method(self.vm(), Call::new(), args)?\`. STATE-MODIFYING calls: extract Call first: \`let call = Call::new_mutating(self);\` then \`ifoo.method(self.vm(), call, args)?\` — avoids borrow conflict.
-- External calls require \`&mut self\` (NOT \`&self\` — view functions revert on external calls)
-- DYNAMIC ARRAYS: In sol_storage!, declare as \`uint256[] items;\`. Append with \`self.items.push(val)\` for primitives, \`self.items.grow()\` for structs. Do NOT use \`.setter(len).unwrap()\`.
-- BORROW CHECKER: Extract values to local vars before combining storage reads and writes.
-- sol! EVENT/ERROR FIELDS: Use camelCase (Solidity convention): \`tokenId\` NOT \`token_id\`.
-- CONTRACT ADDRESS: \`self.vm().contract_address()\` NOT \`self.vm().address()\` (does not exist).
-- ZERO CONSTANTS: \`U256::ZERO\`, \`Address::ZERO\` (uppercase const). NOT \`U256::zero()\` (does not exist).
-- BLOCK TIMESTAMP: \`self.vm().block_timestamp()\` returns \`u64\`. Wrap with \`U256::from()\` before storing in uint256 fields.
-- StorageString: \`.set_str("val")\` and \`.get_string()\`. NOT \`.set()\` or \`.get()\`.
-- NO STD: Do NOT use \`std::time\`, \`std::collections\`. For timestamps: \`self.vm().block_timestamp()\`.
-- EVENT/ERROR NAMING: Never give an event and error the same name — they generate conflicting Rust structs. Use \`event Paused(address)\` and \`error ContractPaused()\`.
-- RESULT PROPAGATION: Always use \`?\` to propagate Result from helper methods.
-- Call IMPORT: \`Call\` comes from \`prelude::*\`. Do NOT add \`use stylus_sdk::call::Call;\` separately.
-- DUPLICATE DEFINITIONS: Put all errors in one \`sol! {}\` block. Never define the same name twice.
-- sol! STRUCT INIT: When constructing sol! event/error structs, ALWAYS use explicit field assignment: \`MyEvent { fieldName: my_var }\`. NEVER use Rust shorthand \`MyEvent { fieldName }\` — sol! fields are camelCase but Rust variables are snake_case.
-- StorageVec API: \`len()\` returns \`usize\` (NOT U256). Use \`usize\` for loop indices. \`setter(i)\` returns \`Option\` — call \`.unwrap()\` before \`.set()\`. Convert U256 to usize: \`index.to::<usize>()\`. Do NOT use \`.as_usize()\`.
-- SolidityError ENUM: Each variant must wrap a DISTINCT error type. Two variants wrapping the same inner type cause conflicting \`From\` impls.
-- U8 TYPE: \`uint8\` → \`U8\` (Uint<8,1>), not native u8. Set: \`U8::from(val)\`. Read: \`.to::<u8>()\`.
-- MUTABLE BINDINGS: \`.setter()\` result stored in a variable needs \`let mut\`.
-- vm().log() returns \`()\` — do NOT use \`?\` after it.
-- unwrap_or vs unwrap_or_else: \`.unwrap_or(VALUE)\` for values, not \`.unwrap_or_else(VALUE)\`.
-- sol_storage! TYPES: Use SOLIDITY syntax inside sol_storage!: \`uint256\`, \`address\`, \`bool\`, \`string\`, \`mapping(...)\`, \`type[]\`. NOT Rust Storage* types.
-- NESTED MAPPING WRITES: Chain \`.setter()\` calls: \`self.map.setter(k1).setter(k2).set(v)\`. Do NOT use tuple keys \`(k1, k2)\`. Do NOT mix \`.get()\` then \`.setter()\`.
-- MAPPING READS: \`StorageMap::get(key)\` returns value directly (zero-default), NOT Option. Do NOT use \`.unwrap_or_default()\` on mapping reads.
-- sol_interface! SNAKE_CASE: \`transferFrom\` → \`.transfer_from()\`, \`balanceOf\` → \`.balance_of()\`. Always snake_case for sol_interface! calls.
-- B256 CONVERSION: \`B256::from_uint()\` does NOT exist. Use \`B256::from(value.to_be_bytes::<32>())\`.
-- CONST U256: \`U256::from()\` is NOT const-compatible. Use \`U256::from_limbs([N, 0, 0, 0])\` for const declarations.
-- sol_interface! HOST ARGUMENT: When calling methods on sol_interface!-generated types, \`self.vm()\` MUST be the FIRST argument, followed by Call context, then Solidity parameters. Example: \`token.transfer(self.vm(), call, to, amount)?;\` NOT \`token.transfer(call, to, amount)?;\`.
-- B256 IS NOT Uint: B256 is \`FixedBytes<32>\`, NOT \`Uint<256>\`. \`B256::from_limbs()\` does NOT exist. Use \`B256::from(U256::from_limbs([...]).to_be_bytes::<32>())\`.
-- STRING MAPPING READS: \`mapping(... => string)\` — \`.get(key)\` returns \`StorageGuard<StorageString>\`, NOT String. Use \`.getter(key).get_string()\` to read as String. Do NOT call \`.get_string()\` again on the result — it already IS a String. Write: \`.setter(key).set_str("val")\`.
-- abi_encode() ON ERRORS: \`.abi_encode()\` is on the inner \`sol!\` error struct, NOT the \`#[derive(SolidityError)]\` enum. WRONG: \`MyErrors::Variant(Inner{..}).abi_encode()\`. CORRECT: \`Inner{..}.abi_encode()\`.
-- CRITICAL: \`sol!\` is for events and errors ONLY. External contract interfaces MUST use \`sol_interface!\`. If you write \`sol! { interface IToken { ... } }\`, the macro generates an EVENT named IToken, not a callable interface. ALWAYS use \`sol_interface! { interface IToken { ... } }\` for cross-contract calls.
-- sol_interface! SNAKE_CASE METHODS: sol_interface! generates Rust methods in snake_case from Solidity camelCase. \`transferFrom\` → \`.transfer_from()\`, \`totalSupply\` → \`.total_supply()\`, \`balanceOf\` → \`.balance_of()\`. NEVER use camelCase when calling sol_interface! methods from Rust.
-- sol_interface! HOST ARG: sol_interface! methods require \`self.vm()\` as the FIRST argument, then CallContext, then Solidity args. Pattern: \`token.transfer(self.vm(), Call::new(), to, amount)?;\` — NOT \`token.transfer(Call::new(), to, amount)?;\`
-- STORAGESTRING VIEW FUNCTIONS: When returning a \`string\` field from sol_storage! in a view function, ALWAYS call \`.get_string()\`: \`pub fn name(&self) -> String { self.name.get_string() }\`. NEVER return \`self.name\` directly — it is StorageString, not String. Do NOT use \`.push_str()\` on StorageString — extract first: \`let s = self.name.get_string(); format!("{}{}", s, other)\`.
-- STRING IMPORTS (no_std): When using \`String\`, add \`use alloc::string::String;\`. When using \`.to_string()\`, ALSO add \`use alloc::string::ToString;\`. These are NOT in prelude in no_std.
-- NO CONST IN #[public] IMPL: Do NOT put \`pub const\` inside \`#[public] impl\` — the proc macro doesn't support associated constants. Put constants at module level BEFORE the impl block.
-- sol! ERROR/EVENT TYPE MATCHING: Solidity field types MUST match the Rust values you pass. \`address\` → Address, \`uint256\` → U256. If passing U256 values, the sol! field MUST be \`uint256\`, NOT \`address\`. Comparison errors (InsufficientBalance, InsufficientStake) — ALL value fields (have/want, available/required) should be \`uint256\`.
-- CLEAN OUTPUT: Output ONLY valid Rust code. NEVER include natural language commentary or corrections inside code blocks. No "Wait,", "Correction:", or thinking-aloud text.
-- INTERNAL HELPERS — NO PHANTOM VARIABLES: Internal check functions (only_owner, ensure_admin, check_role) must get ALL data from storage or parameters. If a function body uses a variable, it MUST be: (a) a declared function parameter, (b) a local \`let\` binding from a storage read or computation, or (c) \`self.field\`. NEVER write \`let role = role;\` — this references a non-existent variable. For owner checks: read \`self.owner.get()\` and compare to \`self.vm().msg_sender()\`. For role checks with a specific role: define as \`const\` or read from storage. For dynamic role checks: add \`role: U256\` as a function parameter.
+${STYLUS_COMPILATION_RULES}
 
 WHAT YOU MAY DO:
-- Rename the contract struct in sol_storage! to match the user's request (e.g., PredictionMarket, Lottery, etc.)
+- Rename the contract struct in sol_storage!
 - Add/modify storage fields inside sol_storage!
 - Add/modify functions inside the #[public] impl block
-- Add events using sol! { event EventName(...); } BEFORE sol_storage!
-- Add error types using sol! { error ErrorName(...); } BEFORE sol_storage!
+- Add events/errors using sol! { } BEFORE sol_storage!
 - Add internal helper functions (without #[public])
-- Define external contract interfaces with sol_interface! (NOT sol!) for cross-contract calls
+- Define external contract interfaces with sol_interface!
 
 IMPORTS - USE THESE PATTERNS:
 - Types from stylus_sdk::alloy_primitives::{Address, U256, U8, ...}
-- sol! macro: \`use alloy_sol_types::sol;\` (NOT from prelude)
-- For events: self.vm().log(EventName { field1, field2 }) (NOT evm::log)
-- For caller: self.vm().msg_sender() (NOT msg::sender())
-- For ETH transfers: \`use stylus_sdk::call::transfer::transfer_eth;\` then \`transfer_eth(self.vm(), to, amount)?;\`
-- For errors: return Err(ErrorName { ... }.abi_encode()) — requires use alloy_sol_types::SolError;
-- For cross-contract calls: define with sol_interface! { interface IFoo { function bar(address) external returns (uint256); } }
-- VIEW calls: \`ifoo.bar(self.vm(), Call::new(), addr)?\`
-- STATE-MODIFYING calls: \`let call = Call::new_mutating(self); ifoo.bar(self.vm(), call, args)?\`
-- External calls require &mut self (NOT &self — view functions revert on external calls)
-- Do NOT use stylus_sdk::evm (removed in 0.10.0) or stylus_sdk::msg
+- sol! macro: \`use alloy_sol_types::sol;\`
+- Events: self.vm().log(EventName { field1, field2 })
+- Caller: self.vm().msg_sender()
+- ETH transfers: \`use stylus_sdk::call::transfer::transfer_eth;\` then \`transfer_eth(self.vm(), to, amount)?;\`
+- Errors: return Err(ErrorName { ... }.abi_encode()) — requires use alloy_sol_types::SolError;
+- Cross-contract: sol_interface! { interface IFoo { ... } }
+- VIEW calls: ifoo.bar(self.vm(), Call::new(), args)?
+- STATE calls: let call = Call::new_mutating(self); ifoo.bar(self.vm(), call, args)?
 
-REFERENCE CODE — copy these EXACTLY when the user's request needs them:
-
-ETH transfer (withdraw/deposit/send ETH):
-\`\`\`rust
-use stylus_sdk::call::transfer::transfer_eth;
-
-pub fn withdraw(&mut self, to: Address, amount: U256) -> Result<(), Vec<u8>> {
-    transfer_eth(self.vm(), to, amount)?;
-    Ok(())
-}
-\`\`\`
-
-Cross-contract VIEW call (read-only — Call::new() is fine):
-\`\`\`rust
-sol_interface! {
-    interface IPriceFeed {
-        function latestPrice() external view returns (uint256);
-    }
-}
-
-pub fn get_price(&mut self, feed_addr: Address) -> Result<U256, Vec<u8>> {
-    let feed = IPriceFeed::new(feed_addr);
-    let price = feed.latest_price(self.vm(), Call::new())?;
-    Ok(price)
-}
-\`\`\`
-
-Cross-contract state-modifying call (extract Call to avoid borrow conflict):
-\`\`\`rust
-sol_interface! {
-    interface IToken {
-        function transfer(address to, uint256 amount) external returns (bool);
-    }
-}
-
-pub fn transfer_tokens(
-    &mut self, token: Address, to: Address, amount: U256,
-) -> Result<bool, Vec<u8>> {
-    let tok = IToken::new(token);
-    let call = Call::new_mutating(self);
-    let success = tok.transfer(self.vm(), call, to, amount)?;
-    Ok(success)
-}
-\`\`\`
-
-Dynamic array (append to sol_storage! array):
-\`\`\`rust
-// In sol_storage!: uint256[] items;
-// Append primitive:
-self.items.push(new_val);
-// For structs: let mut entry = self.items.grow(); entry.field.set(val);
-\`\`\`
+REFERENCE CODE — copy these EXACTLY when needed:
+${STYLUS_REFERENCE_CODE}
 
 Output format:
 1. Brief explanation of changes (1-2 sentences)
@@ -599,102 +588,29 @@ Be concise but thorough.
 
 CRITICAL VERSION INFORMATION (January 2026):
 ALWAYS use these versions - ignore any outdated version info in retrieved context:
-- stylus-sdk: ${mainVersion} (latest stable, recommended for new projects)
+- stylus-sdk: ${mainVersion} (latest stable)
 - alloy-primitives: ${alloyVersion}
 - alloy-sol-types: ${alloyVersion}
 - Rust version: 1.91.0 (via rust-toolchain.toml)
 
-IMPORTANT SDK 0.10.0 changes:
-- msg::sender() is replaced by self.vm().msg_sender()
-- msg::value() is replaced by self.vm().msg_value()
-- evm::log() is replaced by self.vm().log()
-- use stylus_sdk::evm is removed entirely — use self.vm() methods
-- transfer_eth: use stylus_sdk::call::transfer::transfer_eth; then call transfer_eth(self.vm(), to, amount)?
-- Error types: define with sol! { error MyError(...); }, wrap enum with #[derive(SolidityError)]
-- For .abi_encode() on errors: import use alloy_sol_types::SolError;
-- Nested mapping writes: chain in one expression: self.map.setter(k1).setter(k2).set(v). Do NOT split into separate variables (causes multiple active borrows)
-- Projects MUST include Stylus.toml with [workspace], [workspace.networks], and [contract] sections
-- Projects MUST include rust-toolchain.toml with channel = "1.91.0"
-- Projects MUST include src/main.rs — cargo stylus deploy uses cargo run to check constructors
-- ABI export function in 0.10.0 is print_from_args() (NOT print_abi())
-- Package name MUST use underscores (e.g., "my_contract") — hyphens break cargo-stylus WASM lookup
-- crate-type must be ["lib", "cdylib"] — "lib" needed for bin target linking
-- ALWAYS include use alloc::{vec, vec::Vec}; — sol_storage! needs vec module
-- RawCall::new_with_value(self.vm(), amount) — needs self.vm() as first arg and unsafe block
-- uint8 in sol_storage! maps to Uint<8,1>, not u8 — comparisons with u8 won't compile
+SDK 0.10.0 changes:
+- msg::sender() → self.vm().msg_sender()
+- msg::value() → self.vm().msg_value()
+- evm::log() → self.vm().log()
+- stylus_sdk::evm is removed — use self.vm() methods
+- transfer_eth: use stylus_sdk::call::transfer::transfer_eth; then transfer_eth(self.vm(), to, amount)?
+- Error types: sol! { error MyError(...); } + #[derive(SolidityError)] + use alloy_sol_types::SolError
+- Nested mapping writes: chain .setter() calls: self.map.setter(k1).setter(k2).set(v)
+- Stylus.toml, rust-toolchain.toml (channel 1.91.0), src/main.rs all required
+- print_from_args() for ABI export (NOT print_abi())
+- Package name uses underscores, crate-type = ["lib", "cdylib"]
+- ALWAYS use alloc::{vec, vec::Vec};
+- RawCall::new_with_value(self.vm(), amount) — needs self.vm() + unsafe
 
-When asked about versions, ALWAYS use the version info above, NOT from retrieved context which may be outdated.
+When asked about versions, ALWAYS use the version info above, NOT from retrieved context.
 
-REFERENCE CODE — use these EXACT patterns in your code examples:
-
-ETH transfer (withdraw/deposit/send ETH):
-\`\`\`rust
-use stylus_sdk::call::transfer::transfer_eth;
-
-pub fn withdraw(&mut self, to: Address, amount: U256) -> Result<(), Vec<u8>> {
-    transfer_eth(self.vm(), to, amount)?;
-    Ok(())
-}
-\`\`\`
-
-Cross-contract call (interact with another deployed contract):
-\`\`\`rust
-sol_interface! {
-    interface IToken {
-        function balanceOf(address account) external view returns (uint256);
-        function transfer(address to, uint256 amount) external returns (bool);
-    }
-}
-
-// In a #[public] &mut self method:
-pub fn get_balance(&mut self, token: Address, account: Address) -> Result<U256, Vec<u8>> {
-    let token_contract = IToken::new(token);
-    let balance = token_contract.balance_of(self.vm(), Call::new(), account)?;
-    Ok(balance)
-}
-\`\`\`
-
-Storage access:
-\`\`\`rust
-// Read: ALWAYS use .get()
-let val = self.my_field.get();
-let balance = self.balances.get(user);
-
-// Write: use .set() or .setter().set()
-self.my_field.set(new_val);
-self.balances.setter(user).set(new_balance);
-\`\`\`
-
-Nested mapping (e.g. mapping(address => mapping(address => uint256))):
-\`\`\`rust
-// In sol_storage! — use Solidity syntax, NOT Rust types:
-//   mapping(address => mapping(address => uint256)) allowances;
-
-// Read nested: chain .get() calls
-let allowance = self.allowances.get(owner).get(spender);
-
-// Write nested: chain .setter() calls in ONE expression
-self.allowances.setter(owner).setter(spender).set(value);
-
-// WRONG — .get() returns immutable, can't call .setter():
-// self.allowances.get(owner).setter(spender).set(value);
-// WRONG — tuple keys don't exist:
-// self.allowances.setter((owner, spender)).set(value);
-\`\`\`
-
-Dynamic arrays (sol_storage! uses Solidity syntax: uint256[], address[]):
-\`\`\`rust
-// In sol_storage! — use Solidity syntax, NOT StorageVec<T>:
-//   uint256[] values;
-
-// Read: .get(index), .len() (returns usize)
-// Append primitive value — use push():
-self.values.push(new_val);
-
-// For struct arrays — use grow() then set fields:
-let mut item = self.items.grow();
-item.field_a.set(val_a);
-\`\`\``,
+REFERENCE CODE — use these EXACT patterns:
+${STYLUS_REFERENCE_CODE}`,
     },
     {
       role: "user",
@@ -735,6 +651,50 @@ Reference the correct SDK v4 classes: ParentTransactionReceipt, ChildTransaction
     {
       role: "user",
       content: `Context from Arbitrum SDK documentation:\n${context}\n\n---\n\nQuestion: ${question}`,
+    },
+  ];
+
+  return chatCompletion(apiKey, messages, {
+    model: MODELS.QA,
+    temperature: 0.3,
+    maxTokens: 6000,
+  });
+}
+
+/**
+ * Answer questions about Arbitrum Orbit chain deployment and management.
+ */
+export async function answerOrbitQuestion(
+  apiKey: string,
+  question: string,
+  context: string
+): Promise<ChatCompletionResponse> {
+  const messages: Message[] = [
+    {
+      role: "system",
+      content: `You are an expert on Arbitrum Orbit chain deployment and management.
+Answer questions about:
+- Chain configuration using prepareChainConfig() from @arbitrum/orbit-sdk
+- Rollup deployment using createRollup() — validators, batch posters, native tokens
+- Token bridge deployment using createTokenBridge()
+- AnyTrust DAC configuration — keysets, data availability committees
+- Custom gas token chains — ERC20 native token setup and approval flow
+- Nitro node setup using prepareNodeConfig()
+- Governance via UpgradeExecutor — EXECUTOR_ROLE, ADMIN_ROLE, contract upgrades
+- Validator and batch poster management
+
+Use the provided context from the Orbit SDK documentation and code examples.
+Include TypeScript code examples using viem and @arbitrum/orbit-sdk when relevant.
+Be accurate about:
+- Deployment order: config → createRollup → start node → createTokenBridge
+- AnyTrust vs Rollup trade-offs (cost vs security assumptions)
+- Custom gas token requires ERC20 approval before createRollup()
+- UpgradeExecutor is the admin proxy for all chain contracts
+Reference the correct SDK functions: prepareChainConfig, createRollup, createTokenBridge, prepareNodeConfig.`,
+    },
+    {
+      role: "user",
+      content: `Context from Orbit SDK documentation:\n${context}\n\n---\n\nQuestion: ${question}`,
     },
   ];
 

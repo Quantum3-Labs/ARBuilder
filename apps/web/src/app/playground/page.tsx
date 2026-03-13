@@ -6,7 +6,8 @@ import Link from "next/link";
 type Tool =
   | "context" | "generate" | "ask" | "tests" | "workflow"
   | "bridge" | "messaging" | "askBridging"
-  | "backend" | "frontend" | "indexer" | "oracle" | "orchestrate";
+  | "backend" | "frontend" | "indexer" | "oracle" | "orchestrate"
+  | "orbitConfig" | "orbitDeploy" | "orbitValidator" | "askOrbit" | "orchestrateOrbit";
 
 interface ToolConfig {
   name: string;
@@ -423,6 +424,180 @@ const tools: Record<Tool, ToolConfig> = {
         label: "Contract ABI (optional)",
         type: "textarea",
         placeholder: "Paste contract ABI JSON to auto-inject into backend and frontend...",
+      },
+    ],
+  },
+  orbitConfig: {
+    name: "Orbit Chain Config",
+    description: "Generate Orbit L3 chain configuration",
+    endpoint: "/api/v1/tools/orbit-config",
+    icon: (
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+    ),
+    iconBg: "bg-cyan-100",
+    iconColor: "text-cyan-600",
+    inputs: [
+      {
+        name: "prompt",
+        label: "Chain Requirements",
+        type: "textarea",
+        placeholder: "Describe your Orbit chain (e.g., 'Gaming L3 with custom gas token')...",
+        required: true,
+      },
+      {
+        name: "chainId",
+        label: "Chain ID",
+        type: "text",
+        placeholder: "412346",
+      },
+      {
+        name: "owner",
+        label: "Chain Owner Address",
+        type: "text",
+        placeholder: "0x...",
+      },
+      {
+        name: "parentChain",
+        label: "Parent Chain",
+        type: "select",
+        options: [
+          { value: "arbitrum-sepolia", label: "Arbitrum Sepolia" },
+          { value: "arbitrum-one", label: "Arbitrum One" },
+          { value: "ethereum-sepolia", label: "Ethereum Sepolia" },
+          { value: "ethereum-mainnet", label: "Ethereum Mainnet" },
+        ],
+      },
+    ],
+  },
+  orbitDeploy: {
+    name: "Orbit Deployment",
+    description: "Generate rollup and token bridge deployment scripts",
+    endpoint: "/api/v1/tools/orbit-deploy",
+    icon: (
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+    ),
+    iconBg: "bg-cyan-100",
+    iconColor: "text-cyan-600",
+    inputs: [
+      {
+        name: "prompt",
+        label: "Deployment Description",
+        type: "textarea",
+        placeholder: "Describe your deployment (e.g., 'Deploy AnyTrust chain with custom gas token')...",
+        required: true,
+      },
+      {
+        name: "deploymentType",
+        label: "Deployment Type",
+        type: "select",
+        options: [
+          { value: "full", label: "Full (Rollup + Token Bridge)" },
+          { value: "rollup", label: "Rollup Only" },
+          { value: "token_bridge", label: "Token Bridge Only" },
+        ],
+      },
+      {
+        name: "parentChain",
+        label: "Parent Chain",
+        type: "select",
+        options: [
+          { value: "arbitrum-sepolia", label: "Arbitrum Sepolia" },
+          { value: "arbitrum-one", label: "Arbitrum One" },
+          { value: "ethereum-sepolia", label: "Ethereum Sepolia" },
+        ],
+      },
+    ],
+  },
+  orbitValidator: {
+    name: "Validator Setup",
+    description: "Manage validators and batch posters",
+    endpoint: "/api/v1/tools/orbit-validator",
+    icon: (
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+    ),
+    iconBg: "bg-cyan-100",
+    iconColor: "text-cyan-600",
+    inputs: [
+      {
+        name: "prompt",
+        label: "Validator Setup Description",
+        type: "textarea",
+        placeholder: "Describe what you need (e.g., 'List all validators for my rollup')...",
+        required: true,
+      },
+      {
+        name: "action",
+        label: "Action",
+        type: "select",
+        options: [
+          { value: "list", label: "List" },
+          { value: "add", label: "Add" },
+          { value: "remove", label: "Remove" },
+        ],
+      },
+      {
+        name: "target",
+        label: "Target",
+        type: "select",
+        options: [
+          { value: "validator", label: "Validator" },
+          { value: "batch_poster", label: "Batch Poster" },
+          { value: "keyset", label: "Keyset (AnyTrust)" },
+        ],
+      },
+    ],
+  },
+  askOrbit: {
+    name: "Ask Orbit",
+    description: "Q&A about Orbit chain deployment",
+    endpoint: "/api/v1/tools/ask-orbit",
+    icon: (
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    ),
+    iconBg: "bg-cyan-100",
+    iconColor: "text-cyan-600",
+    inputs: [
+      {
+        name: "question",
+        label: "Your Question",
+        type: "textarea",
+        placeholder: "Ask about Orbit chains (e.g., 'How do custom gas tokens work?')...",
+        required: true,
+      },
+    ],
+  },
+  orchestrateOrbit: {
+    name: "Orchestrate Orbit Chain",
+    description: "Full Orbit chain project scaffold",
+    endpoint: "/api/v1/tools/orchestrate-orbit",
+    icon: (
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+    ),
+    iconBg: "bg-cyan-100",
+    iconColor: "text-cyan-600",
+    inputs: [
+      {
+        name: "prompt",
+        label: "Chain Description",
+        type: "textarea",
+        placeholder: "Describe your Orbit chain project (e.g., 'Gaming L3 with custom token on Arbitrum Sepolia')...",
+        required: true,
+      },
+      {
+        name: "chainName",
+        label: "Chain Name",
+        type: "text",
+        placeholder: "my-orbit-chain",
+      },
+      {
+        name: "parentChain",
+        label: "Parent Chain",
+        type: "select",
+        options: [
+          { value: "arbitrum-sepolia", label: "Arbitrum Sepolia" },
+          { value: "arbitrum-one", label: "Arbitrum One" },
+          { value: "ethereum-sepolia", label: "Ethereum Sepolia" },
+        ],
       },
     ],
   },

@@ -693,6 +693,159 @@
       "milestone": "m3",
       "category": "backend",
       "subcategory": "arbitrum_bridge_ui"
+    },
+    {
+      "url": "https://docs.arbitrum.io/launch-orbit-chain/orbit-gentle-introduction",
+      "type": "documentation",
+      "milestone": "m4",
+      "category": "orbit",
+      "subcategory": "official"
+    },
+    {
+      "url": "https://docs.arbitrum.io/launch-orbit-chain/orbit-quickstart",
+      "type": "documentation",
+      "milestone": "m4",
+      "category": "orbit",
+      "subcategory": "official"
+    },
+    {
+      "url": "https://docs.arbitrum.io/launch-orbit-chain/how-tos/orbit-sdk-deploying-rollup-chain",
+      "type": "documentation",
+      "milestone": "m4",
+      "category": "orbit",
+      "subcategory": "official"
+    },
+    {
+      "url": "https://docs.arbitrum.io/launch-orbit-chain/how-tos/orbit-sdk-deploying-anytrust-chain",
+      "type": "documentation",
+      "milestone": "m4",
+      "category": "orbit",
+      "subcategory": "official"
+    },
+    {
+      "url": "https://docs.arbitrum.io/launch-orbit-chain/how-tos/use-a-custom-gas-token",
+      "type": "documentation",
+      "milestone": "m4",
+      "category": "orbit",
+      "subcategory": "official"
+    },
+    {
+      "url": "https://docs.arbitrum.io/launch-arbitrum-chain/reference/additional-configuration-parameters",
+      "type": "documentation",
+      "milestone": "m4",
+      "category": "orbit",
+      "subcategory": "official"
+    },
+    {
+      "url": "https://docs.arbitrum.io/launch-orbit-chain/concepts/chain-ownership",
+      "type": "documentation",
+      "milestone": "m4",
+      "category": "orbit",
+      "subcategory": "official"
+    },
+    {
+      "url": "https://docs.arbitrum.io/launch-orbit-chain/deploy-an-orbit-chain/deploying-anytrust-chain",
+      "type": "documentation",
+      "milestone": "m4",
+      "category": "orbit",
+      "subcategory": "official"
+    },
+    {
+      "url": "https://docs.arbitrum.io/launch-orbit-chain/concepts/custom-gas-token-sdk",
+      "type": "documentation",
+      "milestone": "m4",
+      "category": "orbit",
+      "subcategory": "official"
+    },
+    {
+      "url": "https://docs.arbitrum.io/launch-orbit-chain/how-tos/orbit-sdk-preparing-node-config",
+      "type": "documentation",
+      "milestone": "m4",
+      "category": "orbit",
+      "subcategory": "official"
+    },
+    {
+      "url": "https://docs.arbitrum.io/run-arbitrum-node/run-full-node",
+      "type": "documentation",
+      "milestone": "m4",
+      "category": "orbit",
+      "subcategory": "official"
+    },
+    {
+      "url": "https://docs.arbitrum.io/run-arbitrum-node/nitro/build-nitro-locally",
+      "type": "documentation",
+      "milestone": "m4",
+      "category": "orbit",
+      "subcategory": "official"
+    },
+    {
+      "url": "https://docs.arbitrum.io/launch-orbit-chain/how-tos/customize-deployment-configuration",
+      "type": "documentation",
+      "milestone": "m4",
+      "category": "orbit",
+      "subcategory": "official"
+    },
+    {
+      "url": "https://docs.arbitrum.io/launch-orbit-chain/how-tos/orbit-sdk-configuring-orbit-chain-parameters",
+      "type": "documentation",
+      "milestone": "m4",
+      "category": "orbit",
+      "subcategory": "official"
+    },
+    {
+      "url": "https://docs.arbitrum.io/how-arbitrum-works/inside-anytrust",
+      "type": "documentation",
+      "milestone": "m4",
+      "category": "orbit",
+      "subcategory": "official"
+    },
+    {
+      "url": "https://github.com/ARBuilder-Forks/orbit-setup-script",
+      "type": "github",
+      "milestone": "m4",
+      "category": "orbit",
+      "subcategory": "official_examples",
+      "forkedFrom": "OffchainLabs/orbit-setup-script"
+    },
+    {
+      "url": "https://github.com/ARBuilder-Forks/arbitrum-orbit-deployment-ui",
+      "type": "github",
+      "milestone": "m4",
+      "category": "orbit",
+      "subcategory": "official_examples",
+      "forkedFrom": "OffchainLabs/arbitrum-orbit-deployment-ui"
+    },
+    {
+      "url": "https://github.com/ARBuilder-Forks/orbit-actions",
+      "type": "github",
+      "milestone": "m4",
+      "category": "orbit",
+      "subcategory": "official_examples",
+      "forkedFrom": "OffchainLabs/orbit-actions"
+    },
+    {
+      "url": "https://github.com/ARBuilder-Forks/arbitrum-orbit-scripts",
+      "type": "github",
+      "milestone": "m4",
+      "category": "orbit",
+      "subcategory": "community",
+      "forkedFrom": "gelatodigital/arbitrum-orbit-scripts"
+    },
+    {
+      "url": "https://github.com/ARBuilder-Forks/orbit-sdk-scripts",
+      "type": "github",
+      "milestone": "m4",
+      "category": "orbit",
+      "subcategory": "community",
+      "forkedFrom": "celestiaorg/orbit-sdk-scripts"
+    },
+    {
+      "url": "https://github.com/ARBuilder-Forks/arbitrum-orbit-chain-demo",
+      "type": "github",
+      "milestone": "m4",
+      "category": "orbit",
+      "subcategory": "community",
+      "forkedFrom": "narbs91/arbitrum-orbit-chain-demo"
     }
   ]
 }

@@ -1,0 +1,1330 @@
+"""
+Orbit chain templates for Arbitrum L3 deployment.
+
+These templates provide scaffolding for deploying and managing
+Orbit chains (L3s) using the @arbitrum/chain-sdk.
+
+Templates:
+- Chain Config: Prepare chain configuration
+- Deploy Rollup: Deploy rollup contracts
+- Deploy Token Bridge: Deploy token bridge
+- Custom Gas Token: Deploy with custom gas token
+- Validator Management: Manage validators and batch posters
+- Governance: UpgradeExecutor operations
+- Node Config: Nitro node configuration
+- AnyTrust Config: DAC keyset management
+- Orchestration: Full project scaffold (package.json, scripts, etc.)
+"""
+
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
+
+
+@dataclass
+class OrbitTemplate:
+    """A curated Orbit chain template."""
+
+    name: str
+    description: str
+    template_type: str  # "config" | "deployment" | "management" | "orchestration"
+    features: List[str]
+    code: str  # TypeScript code
+    dependencies: Dict[str, str]
+    env_vars: List[str] = field(default_factory=list)
+    files: Dict[str, str] = field(default_factory=dict)
+
+
+# Default dependencies shared by all Orbit templates
+ORBIT_DEPENDENCIES = {
+    "@arbitrum/chain-sdk": "^0.25.0",
+    "viem": "^1.20.0",
+    "dotenv": "^16.4.0",
+}
+
+# Parent chain RPC URLs
+PARENT_CHAIN_RPCS = {
+    "arbitrum-one": "https://arb1.arbitrum.io/rpc",
+    "arbitrum-sepolia": "https://sepolia-rollup.arbitrum.io/rpc",
+    "ethereum-mainnet": "https://eth.llamarpc.com",
+    "ethereum-sepolia": "https://rpc.sepolia.org",
+}
+
+
+# 1. Chain Config Template
+CHAIN_CONFIG_TEMPLATE = OrbitTemplate(
+    name="Orbit Chain Config",
+    description="Prepare chain configuration for an Orbit chain using prepareChainConfig()",
+    template_type="config",
+    features=[
+        "Chain ID configuration",
+        "Initial chain owner setup",
+        "Rollup vs AnyTrust selection",
+        "Data availability mode",
+    ],
+    code='''import 'dotenv/config';
+import { prepareChainConfig } from '@arbitrum/chain-sdk';
+
+/**
+ * Prepare the chain configuration for a new Orbit chain.
+ *
+ * This generates the chainConfig JSON that will be passed to createRollup().
+ * It defines the core parameters of your Orbit chain.
+ */
+async function main() {
+  const chainConfig = prepareChainConfig({
+    chainId: {chain_id},
+    arbitrum: {
+      InitialChainOwner: '{owner}' as `0x${string}`,
+      DataAvailabilityCommittee: {is_anytrust},
+    },
+  });
+
+  console.log('Chain Config:');
+  console.log(JSON.stringify(chainConfig, null, 2));
+  return chainConfig;
+}
+
+main().catch(console.error);
+''',
+    dependencies=ORBIT_DEPENDENCIES,
+    env_vars=["DEPLOYER_PRIVATE_KEY", "PARENT_CHAIN_RPC"],
+)
+
+
+# 2. Deploy Rollup Template
+DEPLOY_ROLLUP_TEMPLATE = OrbitTemplate(
+    name="Orbit Deploy Rollup",
+    description="Deploy a new Orbit rollup chain using createRollup()",
+    template_type="deployment",
+    features=[
+        "Full rollup deployment",
+        "Validator configuration",
+        "Batch poster setup",
+        "Native token support",
+        "Rollup version selection (v2.1/v3.1)",
+        "Saves deployment output to deployment.json",
+    ],
+    code='''import 'dotenv/config';
+import * as fs from 'fs';
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  parseEther,
+  Chain,
+} from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import {
+  prepareChainConfig,
+  createRollup,
+  createRollupPrepareDeploymentParamsConfig,
+} from '@arbitrum/chain-sdk';
+
+// Parent chain configuration
+const parentChain: Chain = {
+  id: {parent_chain_id},
+  name: '{parent_chain_name}',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: {
+    default: { http: [process.env.PARENT_CHAIN_RPC!] },
+  },
+};
+
+async function main() {
+  const account = privateKeyToAccount(
+    process.env.DEPLOYER_PRIVATE_KEY! as `0x${string}`
+  );
+
+  const publicClient = createPublicClient({
+    chain: parentChain,
+    transport: http(process.env.PARENT_CHAIN_RPC),
+  });
+
+  const walletClient = createWalletClient({
+    account,
+    chain: parentChain,
+    transport: http(process.env.PARENT_CHAIN_RPC),
+  });
+
+  // Prepare chain config
+  const chainConfig = prepareChainConfig({
+    chainId: {chain_id},
+    arbitrum: {
+      InitialChainOwner: account.address,
+      DataAvailabilityCommittee: {is_anytrust},
+    },
+  });
+
+  console.log('Deploying Orbit chain...');
+  console.log('  Chain ID:', {chain_id});
+  console.log('  Owner:', account.address);
+  console.log('  AnyTrust:', {is_anytrust});
+
+  // Deploy rollup
+  const deployResult = await createRollup({
+    params: {
+      config: createRollupPrepareDeploymentParamsConfig(publicClient, {
+        chainId: BigInt({chain_id}),
+        owner: account.address,
+        chainConfig,
+      }),
+      validators: {validators_array},
+      batchPosters: {batch_posters_array},
+      batchPosterManager: account.address,{native_token_line}
+    },
+    account,
+    publicClient,
+    walletClient,
+  });
+
+  console.log('\\nRollup deployed successfully!');
+  console.log('Transaction hash:', deployResult.transactionHash);
+  console.log('\\nCore contracts:');
+  console.log('  Rollup:', deployResult.coreContracts.rollup);
+  console.log('  Inbox:', deployResult.coreContracts.inbox);
+  console.log('  Outbox:', deployResult.coreContracts.outbox);
+  console.log('  Bridge:', deployResult.coreContracts.bridge);
+  console.log('  SequencerInbox:', deployResult.coreContracts.sequencerInbox);
+  console.log('  RollupEventInbox:', deployResult.coreContracts.rollupEventInbox);
+  console.log('  UpgradeExecutor:', deployResult.coreContracts.upgradeExecutor);
+
+  // Save deployment output IMMEDIATELY — ensures deployment.json exists
+  // even if the receipt fetch below fails or times out
+  const deployment: Record<string, unknown> = {
+    chainId: {chain_id},
+    parentChainId: {parent_chain_id},
+    transactionHash: deployResult.transactionHash,
+    chainConfig,
+    coreContracts: deployResult.coreContracts,
+    deployer: account.address,
+    timestamp: new Date().toISOString(),
+  };
+  fs.writeFileSync('deployment.json', JSON.stringify(deployment, null, 2));
+  console.log('\\nDeployment saved to deployment.json');
+
+  // Fetch deployment block number and update deployment.json
+  if (deployResult.transactionHash) {
+    try {
+      const receipt = await publicClient.getTransactionReceipt({
+        hash: deployResult.transactionHash,
+      });
+      deployment.deployedAtBlock = Number(receipt.blockNumber);
+      fs.writeFileSync('deployment.json', JSON.stringify(deployment, null, 2));
+      console.log('  Deployed at block:', deployment.deployedAtBlock);
+    } catch (err) {
+      console.warn('  Could not fetch receipt:', (err as Error).message);
+      console.warn('  deployment.json saved without deployedAtBlock.');
+    }
+  }
+}
+
+main().catch(console.error);
+''',
+    dependencies=ORBIT_DEPENDENCIES,
+    env_vars=["DEPLOYER_PRIVATE_KEY", "PARENT_CHAIN_RPC"],
+)
+
+
+# 3. Deploy Token Bridge Template
+DEPLOY_TOKEN_BRIDGE_TEMPLATE = OrbitTemplate(
+    name="Orbit Token Bridge",
+    description="Deploy a token bridge for an Orbit chain using createTokenBridge()",
+    template_type="deployment",
+    features=[
+        "Token bridge deployment",
+        "Reads rollup address from deployment.json",
+        "L2/L3 bridge contracts",
+        "Gateway router setup",
+        "Standard ERC20 gateway",
+    ],
+    code='''import 'dotenv/config';
+import * as fs from 'fs';
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  Chain,
+} from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import { createTokenBridge } from '@arbitrum/chain-sdk';
+
+// Parent chain configuration
+const parentChain: Chain = {
+  id: {parent_chain_id},
+  name: '{parent_chain_name}',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: {
+    default: { http: [process.env.PARENT_CHAIN_RPC!] },
+  },
+};
+
+async function main() {
+  // Read rollup address from deployment.json (output of deploy-rollup.ts)
+  let rollupAddress: `0x${string}` = '{rollup_address}' as `0x${string}`;
+  let orbitChainId = {chain_id};
+
+  if (fs.existsSync('deployment.json')) {
+    const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));
+    rollupAddress = deployment.coreContracts.rollup as `0x${string}`;
+    orbitChainId = deployment.chainId ?? orbitChainId;
+    console.log('Loaded deployment.json — rollup:', rollupAddress);
+  } else {
+    console.log('Warning: deployment.json not found, using placeholder rollup address.');
+    console.log('Run deploy-rollup.ts first, or set rollupAddress manually.');
+  }
+
+  // Orbit chain configuration
+  const orbitChain: Chain = {
+    id: orbitChainId,
+    name: '{chain_name}',
+    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+    rpcUrls: {
+      default: { http: [process.env.ORBIT_CHAIN_RPC!] },
+    },
+  };
+
+  const account = privateKeyToAccount(
+    process.env.DEPLOYER_PRIVATE_KEY! as `0x${string}`
+  );
+
+  const parentPublicClient = createPublicClient({
+    chain: parentChain,
+    transport: http(process.env.PARENT_CHAIN_RPC),
+  });
+
+  const parentWalletClient = createWalletClient({
+    account,
+    chain: parentChain,
+    transport: http(process.env.PARENT_CHAIN_RPC),
+  });
+
+  const orbitPublicClient = createPublicClient({
+    chain: orbitChain,
+    transport: http(process.env.ORBIT_CHAIN_RPC),
+  });
+
+  console.log('Deploying token bridge...');
+  console.log('  Rollup address:', rollupAddress);
+
+  const tokenBridgeResult = await createTokenBridge({
+    rollupAddress,
+    rollupOwner: account.address,
+    parentChainPublicClient: parentPublicClient,
+    orbitChainPublicClient: orbitPublicClient,
+    account,
+    parentChainWalletClient: parentWalletClient,
+  });
+
+  console.log('\\nToken bridge deployed successfully!');
+  console.log('\\nParent chain contracts:');
+  console.log('  Router:', tokenBridgeResult.parentChainContracts.router);
+  console.log('  StandardGateway:', tokenBridgeResult.parentChainContracts.standardGateway);
+  console.log('\\nOrbit chain contracts:');
+  console.log('  Router:', tokenBridgeResult.orbitChainContracts.router);
+  console.log('  StandardGateway:', tokenBridgeResult.orbitChainContracts.standardGateway);
+
+  // Update deployment.json with token bridge contracts
+  if (fs.existsSync('deployment.json')) {
+    const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));
+    deployment.tokenBridgeContracts = {
+      parentChain: tokenBridgeResult.parentChainContracts,
+      orbitChain: tokenBridgeResult.orbitChainContracts,
+    };
+    fs.writeFileSync('deployment.json', JSON.stringify(deployment, null, 2));
+    console.log('\\nUpdated deployment.json with token bridge contracts');
+  }
+}
+
+main().catch(console.error);
+''',
+    dependencies=ORBIT_DEPENDENCIES,
+    env_vars=["DEPLOYER_PRIVATE_KEY", "PARENT_CHAIN_RPC", "ORBIT_CHAIN_RPC"],
+)
+
+
+# 4. Custom Gas Token Template
+CUSTOM_GAS_TOKEN_TEMPLATE = OrbitTemplate(
+    name="Orbit Custom Gas Token",
+    description="Deploy an Orbit chain with a custom ERC20 gas token",
+    template_type="deployment",
+    features=[
+        "Custom gas token approval",
+        "ERC20 native token rollup",
+        "Token approval flow",
+        "Gas token configuration",
+    ],
+    code='''import 'dotenv/config';
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  parseUnits,
+  Chain,
+} from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import {
+  prepareChainConfig,
+  createRollup,
+  createRollupPrepareDeploymentParamsConfig,
+} from '@arbitrum/chain-sdk';
+
+// ERC20 ABI for token approval
+const erc20Abi = [
+  {
+    name: 'approve',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    name: 'allowance',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'spender', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const;
+
+const parentChain: Chain = {
+  id: {parent_chain_id},
+  name: '{parent_chain_name}',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: {
+    default: { http: [process.env.PARENT_CHAIN_RPC!] },
+  },
+};
+
+async function main() {
+  const account = privateKeyToAccount(
+    process.env.DEPLOYER_PRIVATE_KEY! as `0x${string}`
+  );
+
+  const nativeToken = '{native_token}' as `0x${string}`;
+
+  const publicClient = createPublicClient({
+    chain: parentChain,
+    transport: http(process.env.PARENT_CHAIN_RPC),
+  });
+
+  const walletClient = createWalletClient({
+    account,
+    chain: parentChain,
+    transport: http(process.env.PARENT_CHAIN_RPC),
+  });
+
+  // Step 1: Approve the native token for the rollup creator
+  console.log('Approving native token for rollup deployment...');
+  console.log('  Token:', nativeToken);
+
+  // The rollup creator needs allowance to transfer the native token
+  // Approve a large amount for deployment
+  const approvalAmount = parseUnits('1000000', 18);
+
+  const approveHash = await walletClient.writeContract({
+    address: nativeToken,
+    abi: erc20Abi,
+    functionName: 'approve',
+    args: [
+      // RollupCreator address — consult SDK docs for the correct address
+      '0x0000000000000000000000000000000000000000' as `0x${string}`,
+      approvalAmount,
+    ],
+  });
+
+  await publicClient.waitForTransactionReceipt({ hash: approveHash });
+  console.log('Token approved');
+
+  // Step 2: Prepare chain config
+  const chainConfig = prepareChainConfig({
+    chainId: {chain_id},
+    arbitrum: {
+      InitialChainOwner: account.address,
+      DataAvailabilityCommittee: {is_anytrust},
+    },
+  });
+
+  // Step 3: Deploy rollup with native token
+  console.log('Deploying Orbit chain with custom gas token...');
+
+  const deployResult = await createRollup({
+    params: {
+      config: createRollupPrepareDeploymentParamsConfig(publicClient, {
+        chainId: BigInt({chain_id}),
+        owner: account.address,
+        chainConfig,
+      }),
+      validators: {validators_array},
+      batchPosters: {batch_posters_array},
+      batchPosterManager: account.address,
+      nativeToken,
+    },
+    account,
+    publicClient,
+    walletClient,
+  });
+
+  console.log('\\nOrbit chain with custom gas token deployed!');
+  console.log('Transaction hash:', deployResult.transactionHash);
+  console.log('Native token:', nativeToken);
+  console.log('\\nCore contracts:');
+  console.log('  Rollup:', deployResult.coreContracts.rollup);
+  console.log('  Inbox:', deployResult.coreContracts.inbox);
+  console.log('  Bridge:', deployResult.coreContracts.bridge);
+}
+
+main().catch(console.error);
+''',
+    dependencies=ORBIT_DEPENDENCIES,
+    env_vars=["DEPLOYER_PRIVATE_KEY", "PARENT_CHAIN_RPC"],
+)
+
+
+# 5. Validator Management Template
+VALIDATOR_MANAGEMENT_TEMPLATE = OrbitTemplate(
+    name="Orbit Validator Management",
+    description="Query and manage validators and batch posters for an Orbit chain",
+    template_type="management",
+    features=[
+        "List validators",
+        "List batch posters",
+        "Add/remove validators",
+        "Batch poster management",
+    ],
+    code='''import 'dotenv/config';
+import * as fs from 'fs';
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  Chain,
+  getAddress,
+} from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+
+// Rollup contract ABI (subset for validator/batch poster queries)
+const rollupAbi = [
+  {
+    name: 'isValidator',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'validator', type: 'address' }],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+] as const;
+
+// SequencerInbox ABI for batch poster queries
+const sequencerInboxAbi = [
+  {
+    name: 'isBatchPoster',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'addr', type: 'address' }],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+] as const;
+
+const parentChain: Chain = {
+  id: {parent_chain_id},
+  name: '{parent_chain_name}',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: {
+    default: { http: [process.env.PARENT_CHAIN_RPC!] },
+  },
+};
+
+async function main() {
+  const account = privateKeyToAccount(
+    process.env.DEPLOYER_PRIVATE_KEY! as `0x${string}`
+  );
+
+  const publicClient = createPublicClient({
+    chain: parentChain,
+    transport: http(process.env.PARENT_CHAIN_RPC),
+  });
+
+  // Read contract addresses from deployment.json if available
+  let rollupAddress: `0x${string}` = '{rollup_address}' as `0x${string}`;
+  let sequencerInboxAddress: `0x${string}` = '{sequencer_inbox}' as `0x${string}`;
+
+  if (fs.existsSync('deployment.json')) {
+    const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));
+    rollupAddress = deployment.coreContracts.rollup as `0x${string}`;
+    sequencerInboxAddress = deployment.coreContracts.sequencerInbox as `0x${string}`;
+    console.log('Loaded contract addresses from deployment.json');
+  }
+
+  // Check if specific addresses are validators
+  const addressesToCheck: `0x${string}`[] = {addresses_array};
+
+  console.log('=== Validator Status ===');
+  for (const addr of addressesToCheck) {
+    const isValidator = await publicClient.readContract({
+      address: rollupAddress,
+      abi: rollupAbi,
+      functionName: 'isValidator',
+      args: [addr],
+    });
+    console.log(`  ${addr}: ${isValidator ? 'VALIDATOR' : 'not a validator'}`);
+  }
+
+  console.log('\\n=== Batch Poster Status ===');
+  for (const addr of addressesToCheck) {
+    const isBatchPoster = await publicClient.readContract({
+      address: sequencerInboxAddress,
+      abi: sequencerInboxAbi,
+      functionName: 'isBatchPoster',
+      args: [addr],
+    });
+    console.log(`  ${addr}: ${isBatchPoster ? 'BATCH POSTER' : 'not a batch poster'}`);
+  }
+}
+
+main().catch(console.error);
+''',
+    dependencies=ORBIT_DEPENDENCIES,
+    env_vars=["DEPLOYER_PRIVATE_KEY", "PARENT_CHAIN_RPC"],
+)
+
+
+# 6. Governance Template
+GOVERNANCE_TEMPLATE = OrbitTemplate(
+    name="Orbit Governance",
+    description="Execute governance operations via UpgradeExecutor",
+    template_type="management",
+    features=[
+        "UpgradeExecutor operations",
+        "Role-based access control",
+        "Contract upgrades",
+        "Admin operations",
+    ],
+    code='''import 'dotenv/config';
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  encodeFunctionData,
+  Chain,
+} from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+
+// UpgradeExecutor ABI
+const upgradeExecutorAbi = [
+  {
+    name: 'execute',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'target', type: 'address' },
+      { name: 'data', type: 'bytes' },
+    ],
+    outputs: [],
+  },
+  {
+    name: 'executeCall',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'target', type: 'address' },
+      { name: 'data', type: 'bytes' },
+    ],
+    outputs: [],
+  },
+  {
+    name: 'hasRole',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'role', type: 'bytes32' },
+      { name: 'account', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+] as const;
+
+// Role identifiers
+const EXECUTOR_ROLE = '0xd8aa0f3194971a2a116679f7c2090f6939c8d4e01a2a8d7e41d55e5351469e63';
+const ADMIN_ROLE = '0xa49807205ce4d355092ef5a8a18f56e8913cf4a201fbe287825b095693c21775';
+
+const parentChain: Chain = {
+  id: {parent_chain_id},
+  name: '{parent_chain_name}',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: {
+    default: { http: [process.env.PARENT_CHAIN_RPC!] },
+  },
+};
+
+async function main() {
+  const account = privateKeyToAccount(
+    process.env.DEPLOYER_PRIVATE_KEY! as `0x${string}`
+  );
+
+  const publicClient = createPublicClient({
+    chain: parentChain,
+    transport: http(process.env.PARENT_CHAIN_RPC),
+  });
+
+  const walletClient = createWalletClient({
+    account,
+    chain: parentChain,
+    transport: http(process.env.PARENT_CHAIN_RPC),
+  });
+
+  const upgradeExecutorAddress = '{upgrade_executor}' as `0x${string}`;
+
+  // Check roles
+  const hasExecutorRole = await publicClient.readContract({
+    address: upgradeExecutorAddress,
+    abi: upgradeExecutorAbi,
+    functionName: 'hasRole',
+    args: [EXECUTOR_ROLE as `0x${string}`, account.address],
+  });
+
+  console.log('Has executor role:', hasExecutorRole);
+
+  if (!hasExecutorRole) {
+    console.error('Account does not have executor role on UpgradeExecutor');
+    process.exit(1);
+  }
+
+  // Example: Execute a call through the UpgradeExecutor
+  // This can be used for contract upgrades, parameter changes, etc.
+  const targetContract = '{target_contract}' as `0x${string}`;
+  const callData = '{call_data}' as `0x${string}`;
+
+  console.log('Executing governance action...');
+  console.log('  Target:', targetContract);
+
+  const txHash = await walletClient.writeContract({
+    address: upgradeExecutorAddress,
+    abi: upgradeExecutorAbi,
+    functionName: 'executeCall',
+    args: [targetContract, callData],
+  });
+
+  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+  console.log('Governance action executed!');
+  console.log('  Transaction:', receipt.transactionHash);
+  console.log('  Status:', receipt.status);
+}
+
+main().catch(console.error);
+''',
+    dependencies=ORBIT_DEPENDENCIES,
+    env_vars=["DEPLOYER_PRIVATE_KEY", "PARENT_CHAIN_RPC"],
+)
+
+
+# 7. Node Config Template
+NODE_CONFIG_TEMPLATE = OrbitTemplate(
+    name="Orbit Node Config",
+    description="Generate Nitro node configuration for an Orbit chain",
+    template_type="config",
+    features=[
+        "Nitro node configuration",
+        "Reads deployment.json from deploy-rollup output",
+        "Private key handling (strips 0x prefix for Nitro)",
+        "Sequencer configuration",
+    ],
+    code='''import 'dotenv/config';
+import * as fs from 'fs';
+import { prepareNodeConfig } from '@arbitrum/chain-sdk';
+import { zeroAddress } from 'viem';
+
+/**
+ * Generate Nitro node configuration from deployment output.
+ *
+ * Reads deployment.json (created by deploy-rollup.ts) and generates
+ * the nodeConfig.json required by the Nitro node.
+ */
+async function main() {
+  // Read deployment output
+  if (!fs.existsSync('deployment.json')) {
+    console.error('Error: deployment.json not found.');
+    console.error('Run deploy-rollup.ts first to create it.');
+    process.exit(1);
+  }
+
+  const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));
+  console.log('Loaded deployment.json');
+  console.log('  Chain ID:', deployment.chainId);
+  console.log('  Rollup:', deployment.coreContracts.rollup);
+
+  // Private keys for batch poster and validator (strip 0x prefix for Nitro)
+  // IMPORTANT: Only use env vars that are actually set (not placeholder "0x...")
+  function resolveKey(envName: string): string {
+    const val = process.env[envName];
+    if (val && val.length > 10) return val.replace(/^0x/, '');
+    return process.env.DEPLOYER_PRIVATE_KEY!.replace(/^0x/, '');
+  }
+  const batchPosterKey = resolveKey('BATCH_POSTER_PRIVATE_KEY');
+  const validatorKey = resolveKey('VALIDATOR_PRIVATE_KEY');
+
+  // Generate node configuration using the actual SDK API
+  const nodeConfig = prepareNodeConfig({
+    chainName: '{chain_name}',
+    chainConfig: deployment.chainConfig,
+    coreContracts: deployment.coreContracts,
+    batchPosterPrivateKey: batchPosterKey,
+    validatorPrivateKey: validatorKey,
+    stakeToken: zeroAddress,
+    parentChainId: {parent_chain_id},
+    parentChainIsArbitrum: {parent_chain_is_arbitrum},
+    parentChainRpcUrl: process.env.PARENT_CHAIN_RPC!,
+  });
+
+  // --- Post-process nodeConfig ---
+
+  // 1. prepareNodeConfig() masks private keys with "..." — restore actual keys
+  function deepSet(obj: any, path: string[], val: string | boolean) {
+    let current = obj;
+    for (let i = 0; i < path.length - 1; i++) {
+      if (!current?.[path[i]]) return;
+      current = current[path[i]];
+    }
+    if (current) current[path[path.length - 1]] = val;
+  }
+  deepSet(nodeConfig, ['node', 'batch-poster', 'parent-chain-wallet', 'private-key'], batchPosterKey);
+  deepSet(nodeConfig, ['node', 'staker', 'parent-chain-wallet', 'private-key'], validatorKey);
+
+  // 2. Nitro v3.9+ rejects same address for batch poster and staker.
+  //    For single-key testnet setups, disable the staker to avoid startup error.
+  if (batchPosterKey === validatorKey) {
+    console.warn('Warning: Batch poster and staker share the same key.');
+    console.warn('  Disabling staker (set separate BATCH_POSTER_PRIVATE_KEY and VALIDATOR_PRIVATE_KEY for production).');
+    deepSet(nodeConfig, ['node', 'staker', 'enable'], false);
+  }
+
+  // 3. Inject deployed-at block number into chain info-json.
+  //    Without this, the node can't find the rollup genesis on L1.
+  if (deployment.deployedAtBlock) {
+    if (!nodeConfig.chain) nodeConfig.chain = {};
+    if (!nodeConfig.chain['info-json']) {
+      nodeConfig.chain['info-json'] = JSON.stringify([{
+        'chain-id': deployment.chainId,
+        'chain-name': '{chain_name}',
+        'parent-chain-id': {parent_chain_id},
+        'chain-config': deployment.chainConfig,
+        'rollup': {
+          ...deployment.coreContracts,
+          'deployed-at': deployment.deployedAtBlock,
+        },
+      }]);
+    } else {
+      try {
+        let infoJson = typeof nodeConfig.chain['info-json'] === 'string'
+          ? JSON.parse(nodeConfig.chain['info-json'])
+          : nodeConfig.chain['info-json'];
+        if (Array.isArray(infoJson) && infoJson[0]?.rollup) {
+          infoJson[0].rollup['deployed-at'] = deployment.deployedAtBlock;
+        }
+        nodeConfig.chain['info-json'] = JSON.stringify(infoJson);
+      } catch {
+        console.warn('  Could not patch deployed-at into existing info-json');
+      }
+    }
+    console.log('  Injected deployed-at block:', deployment.deployedAtBlock);
+  } else {
+    console.warn('Warning: deployment.json has no deployedAtBlock.');
+    console.warn('  Node may fail with "failed to get init message". Re-run deploy-rollup.ts to fix.');
+  }
+
+  // 4. Fix malformed DAS URLs — SDK may produce double-port like http://host:9877:9877
+  let configJson = JSON.stringify(nodeConfig, null, 2);
+  configJson = configJson.replace(/:(\\d+):\\1/g, ':$1');
+
+  console.log('\\nNode Configuration:');
+  console.log(configJson);
+
+  fs.writeFileSync('nodeConfig.json', configJson);
+  console.log('\\nSaved to nodeConfig.json');
+  console.log('\\nNext steps:');
+  console.log('  1. Create data directory: mkdir -p data/arbitrum');
+  console.log('  2. Start Nitro node: docker-compose up -d');
+}
+
+main().catch(console.error);
+''',
+    dependencies=ORBIT_DEPENDENCIES,
+    env_vars=["DEPLOYER_PRIVATE_KEY", "PARENT_CHAIN_RPC", "BATCH_POSTER_PRIVATE_KEY", "VALIDATOR_PRIVATE_KEY"],
+)
+
+
+# 8. AnyTrust Config Template
+ANYTRUST_CONFIG_TEMPLATE = OrbitTemplate(
+    name="Orbit AnyTrust Config",
+    description="Configure AnyTrust Data Availability Committee (DAC) keyset",
+    template_type="config",
+    features=[
+        "DAC keyset management",
+        "Keyset validation",
+        "setValidKeyset() operations",
+        "AnyTrust committee setup",
+    ],
+    code='''import 'dotenv/config';
+import * as fs from 'fs';
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  keccak256,
+  Chain,
+} from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import { prepareKeyset, setValidKeyset } from '@arbitrum/chain-sdk';
+
+// SequencerInbox ABI for keyset verification only
+const sequencerInboxAbi = [
+  {
+    name: 'isValidKeysetHash',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'ksHash', type: 'bytes32' }],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+] as const;
+
+const parentChain: Chain = {
+  id: {parent_chain_id},
+  name: '{parent_chain_name}',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: {
+    default: { http: [process.env.PARENT_CHAIN_RPC!] },
+  },
+};
+
+/**
+ * Configure AnyTrust DAC keyset on the SequencerInbox.
+ *
+ * Uses SDK's prepareKeyset() + setValidKeyset() for correct encoding
+ * and UpgradeExecutor routing.
+ *
+ * Prerequisites:
+ *   1. Deploy rollup: npm run deploy:rollup (creates deployment.json)
+ *   2. Generate BLS keys: npm run generate:das-keys
+ */
+async function main() {
+  const account = privateKeyToAccount(
+    process.env.DEPLOYER_PRIVATE_KEY! as `0x${string}`
+  );
+
+  const publicClient = createPublicClient({
+    chain: parentChain,
+    transport: http(process.env.PARENT_CHAIN_RPC),
+  });
+
+  const walletClient = createWalletClient({
+    account,
+    chain: parentChain,
+    transport: http(process.env.PARENT_CHAIN_RPC),
+  });
+
+  // Read contract addresses from deployment.json
+  if (!fs.existsSync('deployment.json')) {
+    console.error('Error: deployment.json not found. Run deploy-rollup.ts first.');
+    process.exit(1);
+  }
+  const deployment = JSON.parse(fs.readFileSync('deployment.json', 'utf-8'));
+  const sequencerInboxAddress = deployment.coreContracts.sequencerInbox as `0x${string}`;
+  console.log('SequencerInbox:', sequencerInboxAddress);
+  console.log('UpgradeExecutor:', deployment.coreContracts.upgradeExecutor);
+
+  // Load BLS key — das_bls.pub is base64-encoded, must decode
+  const dasKeyPath = 'das-keys/das_bls.pub';
+  if (!fs.existsSync(dasKeyPath)) {
+    console.error('Error: No BLS key at', dasKeyPath);
+    console.error('Generate: npm run generate:das-keys');
+    process.exit(1);
+  }
+  const blsPubKeyBase64 = fs.readFileSync(dasKeyPath, 'utf-8').trim();
+  console.log('BLS key loaded (base64, SDK decodes internally)');
+
+  // Encode keyset via SDK — pass base64 strings directly (SDK decodes internally)
+  const keyset = prepareKeyset([blsPubKeyBase64], 1);
+
+  // Register via SDK (handles UpgradeExecutor routing, returns receipt directly)
+  console.log('\\nRegistering keyset via setValidKeyset()...');
+  const receipt = await setValidKeyset({
+    coreContracts: deployment.coreContracts,
+    keyset,
+    publicClient,
+    walletClient,
+  });
+  console.log('  Tx:', receipt.transactionHash, '- Status:', receipt.status);
+
+  // Verify
+  const keysetHash = keccak256(keyset);
+  const isValid = await publicClient.readContract({
+    address: sequencerInboxAddress,
+    abi: sequencerInboxAbi,
+    functionName: 'isValidKeysetHash',
+    args: [keysetHash],
+  });
+  console.log('\\nKeyset hash:', keysetHash, isValid ? '(VALID)' : '(NOT FOUND — check UpgradeExecutor role)');
+}
+
+main().catch(console.error);
+''',
+    dependencies=ORBIT_DEPENDENCIES,
+    env_vars=["DEPLOYER_PRIVATE_KEY", "PARENT_CHAIN_RPC"],
+)
+
+
+# 9. Orchestration Template (project scaffold files)
+ORCHESTRATION_TEMPLATE = OrbitTemplate(
+    name="Orbit Full Orchestration",
+    description="Full Orbit chain deployment project scaffold",
+    template_type="orchestration",
+    features=[
+        "Complete project scaffold",
+        "Package.json with all dependencies",
+        "TypeScript configuration",
+        "Environment template",
+        "Setup and deploy scripts",
+    ],
+    code="",  # No single code file — uses files dict
+    dependencies=ORBIT_DEPENDENCIES,
+    env_vars=[
+        "DEPLOYER_PRIVATE_KEY",
+        "PARENT_CHAIN_RPC",
+        "ORBIT_CHAIN_RPC",
+    ],
+    files={
+        "package.json": '''{
+  "name": "{project_name}",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "bash setup.sh",
+    "deploy:rollup": "npx tsx scripts/deploy-rollup.ts",
+    "deploy:token-bridge": "npx tsx scripts/deploy-token-bridge.ts",
+    "config:chain": "npx tsx scripts/prepare-chain-config.ts",
+    "config:node": "npx tsx scripts/prepare-node-config.ts",
+    "manage:validators": "npx tsx scripts/manage-validators.ts",
+    "manage:governance": "npx tsx scripts/manage-governance.ts",
+    "test:chain": "npx tsx scripts/test-chain.ts",
+    "deploy": "bash deploy.sh"
+  },
+  "dependencies": {
+    "@arbitrum/chain-sdk": "^0.25.0",
+    "viem": "^1.20.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0",
+    "@types/node": "^20.0.0"
+  }
+}
+''',
+        "tsconfig.json": '''{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "strict": true,
+    "outDir": "dist",
+    "rootDir": "scripts",
+    "resolveJsonModule": true,
+    "declaration": true,
+    "skipLibCheck": true
+  },
+  "include": ["scripts/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
+''',
+        ".env.example": '''# Deployer private key (with 0x prefix)
+DEPLOYER_PRIVATE_KEY=0x...
+
+# Separate keys for batch poster and validator (recommended for production)
+# If not set, DEPLOYER_PRIVATE_KEY is used for both
+# IMPORTANT: Uncomment ONLY if you have separate keys — placeholder values
+# will override the DEPLOYER_PRIVATE_KEY fallback and cause errors
+# BATCH_POSTER_PRIVATE_KEY=0x...
+# VALIDATOR_PRIVATE_KEY=0x...
+
+# Parent chain RPC URL
+# Ethereum Sepolia: https://rpc.sepolia.org
+# Arbitrum Sepolia: https://sepolia-rollup.arbitrum.io/rpc
+# Ethereum Mainnet: https://eth.llamarpc.com
+# Arbitrum One: https://arb1.arbitrum.io/rpc
+PARENT_CHAIN_RPC={parent_chain_rpc}
+
+# Orbit chain RPC (after deployment)
+ORBIT_CHAIN_RPC=http://localhost:8449
+
+# Chain configuration
+CHAIN_ID={chain_id}
+CHAIN_NAME={chain_name}
+
+# SequencerInbox address (from deployment.json, needed by DAS server)
+# Set after running deploy-rollup.ts
+SEQUENCER_INBOX_ADDRESS=0x0000000000000000000000000000000000000000
+
+# DAS (Data Availability Server) — required for AnyTrust chains
+# In Docker Compose, use the service name: http://das-server:9877
+DAS_SERVER_URL=http://das-server:9877
+''',
+        "setup.sh": '''#!/usr/bin/env bash
+set -euo pipefail
+
+echo "=== Orbit Chain Setup ==="
+
+# Install dependencies
+echo "Installing dependencies..."
+npm install
+
+# Create data directories for Docker bind mounts
+mkdir -p data/arbitrum data/das das-keys
+
+# Copy env template if .env doesn't exist
+if [ ! -f .env ]; then
+  cp .env.example .env
+  echo "Created .env from template - edit it with your keys before deploying."
+fi
+
+echo ""
+echo "Setup complete!"
+echo "Next steps:"
+echo "  1. Edit .env with your DEPLOYER_PRIVATE_KEY and PARENT_CHAIN_RPC"
+echo "  2. Run: npm run config:chain   (prepare chain config)"
+echo "  3. Run: npm run deploy:rollup  (deploy rollup contracts)"
+echo "  4. Run: npm run config:node    (generate node config)"
+echo "  5. Run: docker-compose up -d   (start Nitro node)"
+echo "  6. Run: npm run deploy:token-bridge (deploy token bridge)"
+''',
+        "deploy.sh": '''#!/usr/bin/env bash
+set -euo pipefail
+
+# Load environment variables
+if [ -f .env ]; then
+  set -a
+  source .env
+  set +a
+fi
+
+echo "=== Orbit Chain Full Deployment ==="
+
+echo ""
+echo "Step 1: Prepare chain config..."
+npx tsx scripts/prepare-chain-config.ts
+
+echo ""
+echo "Step 2: Deploy rollup contracts..."
+npx tsx scripts/deploy-rollup.ts
+
+if [ ! -f deployment.json ]; then
+  echo "ERROR: deployment.json not created. Rollup deployment may have failed."
+  exit 1
+fi
+
+echo ""
+echo "Step 3: Generate node config..."
+npx tsx scripts/prepare-node-config.ts
+
+echo ""
+echo "Step 4: Start node (manual step)..."
+echo "  Run: docker-compose up -d"
+echo "  Wait for the node to sync, then continue with token bridge deployment."
+echo "  Press ENTER to continue when the node is ready, or Ctrl+C to stop."
+read -r
+
+echo ""
+echo "Step 5: Deploy token bridge..."
+npx tsx scripts/deploy-token-bridge.ts
+
+echo ""
+echo "=== Deployment complete! ==="
+echo "Deployment output saved to deployment.json"
+echo "Node config saved to nodeConfig.json"
+''',
+    },
+)
+
+
+def generate_docker_compose(
+    chain_name: str,
+    chain_id: int,
+    parent_chain_id: int,
+    is_anytrust: bool,
+) -> str:
+    """Generate docker-compose.yml for Nitro node (+ DAS for AnyTrust)."""
+    nitro_image = "offchainlabs/nitro-node:v3.9.4-7f582c3"
+
+    compose = f"""services:
+  nitro-node:
+    image: {nitro_image}
+    container_name: {chain_name}-node
+    restart: unless-stopped
+    ports:
+      - "8449:8449"   # L3 RPC (HTTP)
+      - "8548:8548"   # L3 WebSocket
+      - "9642:9642"   # Metrics
+    volumes:
+      - ./nodeConfig.json:/config/nodeConfig.json:ro
+      - ./data/arbitrum:/home/user/.arbitrum
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        # Clean stale WASM files that cause checkEmptyDatabaseDir crash-loops
+        rm -rf /home/user/.arbitrum/*/nitro/wasm
+        exec /usr/local/bin/nitro \\
+          --conf.file=/config/nodeConfig.json \\
+          --node.dangerous.no-sequencer-coordinator \\
+          --validation.wasm.allowed-wasm-module-roots=/home/user/nitro-legacy/machines,/home/user/target/machines \\
+          --http.addr=0.0.0.0 \\
+          --http.port=8449 \\
+          --http.vhosts=* \\
+          --http.corsdomain=* \\
+          --http.api=net,web3,eth,debug,txpool,arb \\
+          --ws.addr=0.0.0.0 \\
+          --ws.port=8548 \\
+          --ws.origins=* \\
+          --ws.api=net,web3,eth,debug,txpool,arb \\
+          --metrics \\
+          --metrics-server.addr=0.0.0.0 \\
+          --metrics-server.port=9642
+    # Do NOT use --init.dev-init — that flag is for local devnodes only, not Orbit chains
+    environment:
+      - NITRO_NODE_CONFIG=/config/nodeConfig.json
+"""
+
+    if is_anytrust:
+        compose += f"""
+    depends_on:
+      das-server:
+        condition: service_started
+
+  # DAS (Data Availability Server) — must be running before nitro-node starts batch posting
+  # Generate BLS keys first: npm run generate:das-keys
+  das-server:
+    image: {nitro_image}
+    container_name: {chain_name}-das
+    restart: unless-stopped
+    ports:
+      - "9876:9876"   # DAS RPC (batch poster data submission)
+      - "9877:9877"   # DAS REST API
+    volumes:
+      - ./data/das:/home/user/das-data
+      - ./das-keys:/home/user/das-keys:ro
+    entrypoint: /usr/local/bin/daserver
+    command:
+      - --data-availability.local-file-storage.enable
+      - --data-availability.local-file-storage.data-dir=/home/user/das-data
+      - --data-availability.parent-chain-node-url=${{PARENT_CHAIN_RPC}}
+      - --data-availability.sequencer-inbox-address=${{SEQUENCER_INBOX_ADDRESS:-0x0000000000000000000000000000000000000000}}
+      - --data-availability.key.key-dir=/home/user/das-keys
+      - --enable-rest
+      - --rest-addr=0.0.0.0
+      - --rest-port=9877
+      - --log-level=3
+    env_file:
+      - .env
+"""
+
+    das_dirs = " data/das das-keys" if is_anytrust else ""
+    compose += f"""
+# Using bind mounts (./data/) instead of named volumes for easier inspection.
+# Create data directories before starting: mkdir -p data/arbitrum{das_dirs}
+"""
+
+    return compose
+
+
+# All templates indexed by type
+ORBIT_TEMPLATES: Dict[str, OrbitTemplate] = {
+    "chain_config": CHAIN_CONFIG_TEMPLATE,
+    "deploy_rollup": DEPLOY_ROLLUP_TEMPLATE,
+    "deploy_token_bridge": DEPLOY_TOKEN_BRIDGE_TEMPLATE,
+    "custom_gas_token": CUSTOM_GAS_TOKEN_TEMPLATE,
+    "validator_management": VALIDATOR_MANAGEMENT_TEMPLATE,
+    "governance": GOVERNANCE_TEMPLATE,
+    "node_config": NODE_CONFIG_TEMPLATE,
+    "anytrust_config": ANYTRUST_CONFIG_TEMPLATE,
+    "orchestration": ORCHESTRATION_TEMPLATE,
+}
+
+
+def select_orbit_template(prompt: str) -> OrbitTemplate:
+    """Select the best Orbit template based on prompt keywords."""
+    lower_prompt = prompt.lower()
+
+    if any(kw in lower_prompt for kw in [
+        "deploy rollup", "create rollup", "launch chain", "deploy chain",
+        "deploy a new", "deploy orbit", "createrollup",
+    ]):
+        return DEPLOY_ROLLUP_TEMPLATE
+
+    if any(kw in lower_prompt for kw in ["token bridge", "bridge deploy", "create bridge"]):
+        return DEPLOY_TOKEN_BRIDGE_TEMPLATE
+
+    if any(kw in lower_prompt for kw in ["custom gas", "native token", "gas token", "erc20 gas"]):
+        return CUSTOM_GAS_TOKEN_TEMPLATE
+
+    if any(kw in lower_prompt for kw in ["validator", "batch poster", "sequencer"]):
+        return VALIDATOR_MANAGEMENT_TEMPLATE
+
+    if any(kw in lower_prompt for kw in ["governance", "upgrade", "executor", "admin"]):
+        return GOVERNANCE_TEMPLATE
+
+    if any(kw in lower_prompt for kw in ["node config", "nitro", "node setup"]):
+        return NODE_CONFIG_TEMPLATE
+
+    if any(kw in lower_prompt for kw in ["anytrust", "dac", "keyset", "data availability"]):
+        return ANYTRUST_CONFIG_TEMPLATE
+
+    if any(kw in lower_prompt for kw in ["full", "scaffold", "orchestrate", "complete"]):
+        return ORCHESTRATION_TEMPLATE
+
+    if any(kw in lower_prompt for kw in ["chain config", "prepare config", "configure chain"]):
+        return CHAIN_CONFIG_TEMPLATE
+
+    # Default to chain config as starting point
+    return CHAIN_CONFIG_TEMPLATE
+
+
+def get_orbit_template(name: str) -> Optional[OrbitTemplate]:
+    """Get a specific Orbit template by name."""
+    return ORBIT_TEMPLATES.get(name)
+
+
+def list_orbit_templates() -> List[OrbitTemplate]:
+    """List all available Orbit templates."""
+    return list(ORBIT_TEMPLATES.values())
+
+
+def validate_template_output(code: str, template_name: str = "") -> str:
+    """Validate that template output has no unresolved template tokens.
+
+    Checks for {{ and }} artifacts that indicate broken template rendering.
+    Raises ValueError if found, returns code unchanged if clean.
+    """
+    import re
+
+    # Check for Python format-string artifacts ({{ or }} not inside ${...})
+    # Allow ${...} patterns (valid shell/env var substitution in docker-compose)
+    # But flag {{ or }} outside of ${} context
+    artifacts = []
+    for match in re.finditer(r"\{\{|\}\}", code):
+        pos = match.start()
+        # Allow ${{ in docker-compose context (shell variable)
+        if pos > 0 and code[pos - 1] == "$":
+            continue
+        artifacts.append((match.start(), match.group()))
+
+    if artifacts:
+        positions = ", ".join(f'pos {p}: "{t}"' for p, t in artifacts[:5])
+        raise ValueError(
+            f"Template '{template_name}' has unresolved tokens: {positions}"
+        )
+    return code

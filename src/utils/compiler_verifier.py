@@ -271,6 +271,14 @@ ERROR_GUIDANCE = {
         "move constants above the impl block\n"
         "  - Use standalone const MY_VAL: U256 = U256::from_limbs(...);"
     ),
+    "E0428": (
+        "Duplicate definition. Common Stylus fixes:\n"
+        "  - Rust does not support function overloading — two fn with the "
+        "same name is a compile error\n"
+        "  - Keep only ONE definition of each function (the most complete one)\n"
+        "  - If you need variants, use different names (e.g. check_role, "
+        "check_role_with_admin)"
+    ),
 }
 
 
