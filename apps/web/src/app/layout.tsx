@@ -15,12 +15,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://arbuilder.app"),
   title: {
-    default: "ARBuilder - AI-Powered Stylus Development",
+    default: "ARBuilder - Accelerate Smart Contract Development on Arbitrum",
     template: "%s | ARBuilder",
   },
   description:
-    "Build Arbitrum Stylus smart contracts with AI-powered tools. Generate code, tests, and get instant answers to your development questions.",
+    "Ship smart contracts and dApps faster with 19 AI-powered MCP tools for Arbitrum. Stylus contracts, cross-chain bridging, full-stack scaffolding, and Orbit L3 deployment — inside Cursor, Claude Code, and VS Code.",
   keywords: [
     "Arbitrum",
     "Stylus",
@@ -30,24 +31,43 @@ export const metadata: Metadata = {
     "Blockchain",
     "AI",
     "Code Generation",
+    "MCP",
+    "Model Context Protocol",
+    "Orbit",
+    "L3",
+    "Cross-Chain",
+    "Bridging",
+    "dApp",
+    "Cursor",
+    "Claude Code",
+    "WASM",
   ],
-  authors: [{ name: "ARBuilder Team" }],
+  authors: [{ name: "Quantum3 Labs" }],
   openGraph: {
-    title: "ARBuilder - AI-Powered Stylus Development",
+    title: "ARBuilder - Accelerate Smart Contract Development on Arbitrum",
     description:
-      "Build Arbitrum Stylus smart contracts with AI-powered tools.",
+      "Ship smart contracts and dApps faster with 19 AI-powered MCP tools. Stylus contracts, bridging, full-stack scaffolding, and Orbit L3 deployment. Free to start.",
     type: "website",
     locale: "en_US",
+    url: "https://arbuilder.app",
+    siteName: "ARBuilder",
   },
   twitter: {
     card: "summary_large_image",
-    title: "ARBuilder - AI-Powered Stylus Development",
+    title: "ARBuilder - Accelerate Smart Contract Development on Arbitrum",
     description:
-      "Build Arbitrum Stylus smart contracts with AI-powered tools.",
+      "Ship smart contracts and dApps faster with 19 AI-powered MCP tools. Stylus contracts, bridging, full-stack scaffolding, and Orbit L3 deployment.",
   },
   robots: {
     index: true,
     follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+    },
+  },
+  alternates: {
+    canonical: "https://arbuilder.app",
   },
 };
 
@@ -67,6 +87,31 @@ export default function RootLayout({
     <html lang="en" className="scroll-smooth">
       <head>
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "SoftwareApplication",
+              name: "ARBuilder",
+              description:
+                "Accelerate smart contract and dApp development on Arbitrum. 19 AI-powered MCP tools for Stylus contracts, cross-chain bridging, full-stack scaffolding, and Orbit L3 chain deployment.",
+              url: "https://arbuilder.app",
+              applicationCategory: "DeveloperApplication",
+              operatingSystem: "Cross-platform",
+              offers: {
+                "@type": "Offer",
+                price: "0",
+                priceCurrency: "USD",
+              },
+              author: {
+                "@type": "Organization",
+                name: "Quantum3 Labs",
+                url: "https://github.com/Quantum3-Labs",
+              },
+            }),
+          }}
+        />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased min-h-screen bg-white text-gray-900`}
