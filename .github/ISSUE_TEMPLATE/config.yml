@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Arbitrum Discord
+    url: https://discord.gg/arbitrum
+    about: Join the #stylus channel for general discussion
+  - name: Documentation
+    url: https://arbuilder.app
+    about: Check the hosted service and docs

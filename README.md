@@ -1,5 +1,14 @@
 # ARBuilder
 
+[![GitHub stars](https://img.shields.io/github/stars/Quantum3-Labs/ARBuilder?style=social)](https://github.com/Quantum3-Labs/ARBuilder)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![MCP Tools](https://img.shields.io/badge/MCP_Tools-19-blue)](https://github.com/Quantum3-Labs/ARBuilder)
+[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
+
+<a href="https://glama.ai/mcp/servers/Quantum3-Labs/ARBuilder">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/Quantum3-Labs/ARBuilder/badge" />
+</a>
+
 AI-powered development assistant for the Arbitrum ecosystem. ARBuilder transforms natural language prompts into:
 
 - **Stylus smart contracts** (Rust)
@@ -7,91 +16,21 @@ AI-powered development assistant for the Arbitrum ecosystem. ARBuilder transform
 - **Full-stack dApps** (contracts + backend + indexer + oracle + frontend + wallet integration)
 - **Orbit chain deployment assistance**
 
-## Architecture
+### Demo
 
-ARBuilder uses a **Retrieval-Augmented Generation (RAG)** pipeline with hybrid search (vector + BM25 + cross-encoder reranking) to provide context-aware code generation. Available as a hosted service at [arbuilder.app](https://arbuilder.app) or self-hosted via MCP server.
+[![Watch the tutorial](https://img.youtube.com/vi/T0bGSYwjMeo/maxresdefault.jpg)](https://youtu.be/T0bGSYwjMeo)
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                            ARBuilder                                    │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  DATA PIPELINE                                                          │
-│  ┌──────────┐    ┌──────────┐    ┌───────────┐    ┌──────────────────┐ │
-│  │ Scraper  │───▶│Processor │───▶│ Embedder  │───▶│    ChromaDB      │ │
-│  │ crawl4ai │    │ 3-layer  │    │ BGE-M3    │    │ (local vectors)  │ │
-│  │ + GitHub │    │ filters  │    │ 1024-dim  │    │                  │ │
-│  └──────────┘    └──────────┘    └───────────┘    └────────┬─────────┘ │
-│                                                             │           │
-│  RETRIEVAL                                                  │           │
-│  ┌──────────────────────────────────────────────────────────▼─────────┐ │
-│  │                    Hybrid Search Engine                             │ │
-│  │  ┌──────────┐    ┌──────────┐    ┌───────────┐                    │ │
-│  │  │  Vector  │    │   BM25   │    │CrossEncoder│   RRF Fusion      │ │
-│  │  │  Search  │───▶│ Keywords │───▶│ Reranker  │──▶ + MMR           │ │
-│  │  └──────────┘    └──────────┘    └───────────┘                    │ │
-│  └───────────────────────────────────────────────────────────────────┘ │
-│                                         │                               │
-│  GENERATION                             ▼                               │
-│  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │                      MCP Server (19 tools)                        │  │
-│  │                                                                   │  │
-│  │  M1: Stylus        M2: SDK           M3: dApp Builder            │  │
-│  │  ┌─────────────┐   ┌─────────────┐   ┌──────────────────────┐   │  │
-│  │  │ generate_    │   │ generate_   │   │ generate_backend     │   │  │
-│  │  │ stylus_code  │   │ bridge_code │   │ generate_frontend    │   │  │
-│  │  │ ask_stylus   │   │ generate_   │   │ generate_indexer     │   │  │
-│  │  │ get_context  │   │ messaging   │   │ generate_oracle      │   │  │
-│  │  │ gen_tests    │   │ ask_bridging│   │ orchestrate_dapp     │   │  │
-│  │  │ get_workflow │   │             │   │                      │   │  │
-│  │  │ validate_code│   │             │   │                      │   │  │
-│  │  └─────────────┘   └─────────────┘   └──────────────────────┘   │  │
-│  │                                                                   │  │
-│  │  M4: Orbit Chain                                                  │  │
-│  │  ┌──────────────────────┐                                        │  │
-│  │  │ generate_orbit_config│                                        │  │
-│  │  │ generate_orbit_deploy│                                        │  │
-│  │  │ gen_validator_setup  │                                        │  │
-│  │  │ ask_orbit            │                                        │  │
-│  │  │ orchestrate_orbit    │                                        │  │
-│  │  └──────────────────────┘                                        │  │
-│  └───────────────────────────────────────────────────────────────────┘  │
-│                           │                                             │
-│  IDE INTEGRATION          ▼                                             │
-│  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │  Cursor / VS Code / Claude Desktop / Any MCP Client              │  │
-│  │  <- via local stdio or remote mcp-remote proxy ->                │  │
-│  └───────────────────────────────────────────────────────────────────┘  │
-│                                                                         │
-│  HOSTED SERVICE (Cloudflare Workers)                                    │
-│  ┌──────────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────────┐  │
-│  │  Workers AI  │  │ Vectorize│  │    D1    │  │      KV         │  │
-│  │  BGE-M3 +    │  │ 1024-dim │  │  Users   │  │   Source registry│  │
-│  │  Reranker    │  │  index   │  │  API keys│  │   + Ingest state │  │
-│  └──────────────┘  └──────────┘  └──────────┘  └──────────────────┘  │
-│                                                                       │
-│  INGESTION PIPELINE (Worker-native, cron every 6h)                    │
-│  ┌──────────┐    ┌──────────┐    ┌───────────┐    ┌──────────────┐  │
-│  │ scraper  │───▶│ chunker  │───▶│ Workers AI│───▶│  Vectorize   │  │
-│  │ HTML/    │    │ doc+code │    │  BGE-M3   │    │   upsert     │  │
-│  │ GitHub   │    │ splitter │    │ embedding │    │              │  │
-│  └──────────┘    └──────────┘    └───────────┘    └──────────────┘  │
-│                       │                ▲                             │
-│                       │ >30 files      │ embed messages              │
-│                       ▼                │                             │
-│              ┌─────────────────────────┴──┐                         │
-│              │    CF Queue (async path)    │                         │
-│              │  embed │ continue │finalize │                         │
-│              └────────────────────────────┘                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+### Quick Start
 
-## TL;DR - Quick Start
+**Hosted (no setup):**
 
-**Option 1: Hosted Service (Easiest)**
 ```bash
-# No local setup needed - just configure your IDE
-# Add to ~/.cursor/mcp.json:
+# Claude Code
+claude mcp add arbbuilder -- npx -y mcp-remote https://arbuilder.app/mcp --header "Authorization: Bearer YOUR_API_KEY"
+```
+
+Or add to `~/.cursor/mcp.json` (Cursor / VS Code):
+```json
 {
   "mcpServers": {
     "arbbuilder": {
@@ -104,33 +43,102 @@ ARBuilder uses a **Retrieval-Augmented Generation (RAG)** pipeline with hybrid s
 ```
 Get your API key at [arbuilder.app](https://arbuilder.app)
 
-**Option 2: Self-Hosted**
-```bash
-# 1. Clone and setup
-git clone https://github.com/Quantum3-Labs/ARBuilder.git
-cd ARBuilder
-conda env create -f environment.yml
-conda activate arbbuilder
+**Self-hosted** — see [Setup](#setup) below.
 
-# 2. Configure API key
-cp .env.example .env
-# Edit .env and add your OPENROUTER_API_KEY and NVIDIA_API_KEY
+### Table of Contents
 
-# 3. Generate vector database (required)
-python -m src.embeddings.vectordb
+- [Architecture](#architecture)
+- [Project Structure](#project-structure)
+- [Setup](#setup)
+- [Quick Start (IDE Integration)](#quick-start-ide-integration)
+- [Usage](#usage)
+- [API Access](#api-access)
+- [MCP Capabilities](#mcp-capabilities)
+- [User Guide](#user-guide)
+- [Milestones](#milestones)
+- [Development](#development)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
 
-# 4. Test MCP server
-python -m src.mcp.server
-# Should show: "Capabilities: 19 tools, 11 resources, 5 prompts"
+## Architecture
 
-# 5. Configure Cursor IDE (~/.cursor/mcp.json) - see Setup section below
+ARBuilder uses a **Retrieval-Augmented Generation (RAG)** pipeline with hybrid search (vector + BM25 + cross-encoder reranking) to provide context-aware code generation. Available as a hosted service at [arbuilder.app](https://arbuilder.app) or self-hosted via MCP server.
+
 ```
-
-## Tutorial Video
-
-Watch the tutorial to see ARBuilder in action:
-
-[Tutorial Video](https://drive.google.com/file/d/1gLfXvwNyYeVfLY2g6WQySDyOcNDxmOP2/view?usp=share_link)
+┌─────────────────────────────────────────────────────────────────────────┐
+│                            ARBuilder                                    │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  DATA PIPELINE                                                          │
+│  ┌──────────┐    ┌──────────┐    ┌───────────┐    ┌──────────────────┐  │
+│  │ Scraper  │───▶│Processor │───▶│ Embedder  │───▶│    ChromaDB      │  │
+│  │ crawl4ai │    │ 3-layer  │    │ BGE-M3    │    │ (local vectors)  │  │
+│  │ + GitHub │    │ filters  │    │ 1024-dim  │    │                  │  │
+│  └──────────┘    └──────────┘    └───────────┘    └────────┬─────────┘  │
+│                                                            │            │
+│  RETRIEVAL                                                 │            │
+│  ┌──────────────────────────────────────────────────────────▼─────────┐ │
+│  │                    Hybrid Search Engine                            │ │
+│  │  ┌──────────┐    ┌──────────┐    ┌────────────┐                    │ │
+│  │  │  Vector  │    │   BM25   │    │CrossEncoder│   RRF Fusion       │ │
+│  │  │  Search  │───▶│ Keywords │───▶│ Reranker   │──▶ + MMR           │ │
+│  │  └──────────┘    └──────────┘    └────────────┘                    │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                         │                               │
+│  GENERATION                             ▼                               │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │                      MCP Server (19 tools)                        │  │
+│  │                                                                   │  │
+│  │  M1: Stylus        M2: SDK           M3: dApp Builder             │  │
+│  │  ┌──────────────┐   ┌─────────────┐   ┌──────────────────────┐    │  │
+│  │  │ generate_    │   │ generate_   │   │ generate_backend     │    │  │
+│  │  │ stylus_code  │   │ bridge_code │   │ generate_frontend    │    │  │
+│  │  │ ask_stylus   │   │ generate_   │   │ generate_indexer     │    │  │
+│  │  │ get_context  │   │ messaging   │   │ generate_oracle      │    │  │
+│  │  │ gen_tests    │   │ ask_bridging│   │ orchestrate_dapp     │    │  │
+│  │  │ get_workflow │   │             │   │                      │    │  │
+│  │  │ validate_code│   │             │   │                      │    │  │
+│  │  └──────────────┘   └─────────────┘   └──────────────────────┘    │  │
+│  │                                                                   │  │
+│  │  M4: Orbit Chain                                                  │  │
+│  │  ┌──────────────────────┐                                         │  │
+│  │  │ generate_orbit_config│                                         │  │
+│  │  │ generate_orbit_deploy│                                         │  │
+│  │  │ gen_validator_setup  │                                         │  │
+│  │  │ ask_orbit            │                                         │  │
+│  │  │ orchestrate_orbit    │                                         │  │
+│  │  └──────────────────────┘                                         │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                           │                                             │
+│  IDE INTEGRATION          ▼                                             │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │  Cursor / VS Code / Claude Desktop / Any MCP Client               │  │
+│  │  <- via local stdio or remote mcp-remote proxy ->                 │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                                                                         │
+│  HOSTED SERVICE (Cloudflare Workers)                                    │
+│  ┌──────────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────────┐     │
+│  │  Workers AI  │  │ Vectorize│  │    D1    │  │      KV          │     │
+│  │  BGE-M3 +    │  │ 1024-dim │  │  Users   │  │   Source registry│     │
+│  │  Reranker    │  │  index   │  │  API keys│  │   + Ingest state │     │
+│  └──────────────┘  └──────────┘  └──────────┘  └──────────────────┘     │
+│                                                                         │
+│  INGESTION PIPELINE (Worker-native, cron every 6h)                      │
+│  ┌──────────┐    ┌──────────┐    ┌───────────┐    ┌──────────────┐      │
+│  │ scraper  │───▶│ chunker  │───▶│ Workers AI│───▶│  Vectorize   │      │
+│  │ HTML/    │    │ doc+code │    │  BGE-M3   │    │   upsert     │      │
+│  │ GitHub   │    │ splitter │    │ embedding │    │              │      │
+│  └──────────┘    └──────────┘    └───────────┘    └──────────────┘      │
+│                       │                ▲                                │
+│                       │ >30 files      │ embed messages                 │
+│                       ▼                │                                │
+│              ┌─────────────────────────┴───┐                            │
+│              │    CF Queue (async path)    │                            │
+│              │  embed │ continue │finalize │                            │
+│              └─────────────────────────────┘                            │
+└─────────────────────────────────────────────────────────────────────────┘
+```
 
 ## Project Structure
 
@@ -1050,6 +1058,10 @@ python -m src.embeddings.vectordb --reset
 | `remediate` | Manual only | Auto-removes archived/deleted repos from `sources.json` |
 | `sync-sources` | Weekly + manual | Syncs `sources.json` to CF KV registry |
 | `create-issue` | When problems found | Creates GitHub issue with maintenance label |
+
+## Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to get started.
 
 ## License
 
