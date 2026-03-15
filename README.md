@@ -4,6 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![MCP Tools](https://img.shields.io/badge/MCP_Tools-19-blue)](https://github.com/Quantum3-Labs/ARBuilder)
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
+[![ARBuilder MCP server](https://glama.ai/mcp/servers/Quantum3-Labs/ARBuilder/badges/score.svg)](https://glama.ai/mcp/servers/Quantum3-Labs/ARBuilder)
 
 <a href="https://glama.ai/mcp/servers/Quantum3-Labs/ARBuilder">
   <img width="380" height="200" src="https://glama.ai/mcp/servers/Quantum3-Labs/ARBuilder/badge" />
