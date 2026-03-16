@@ -791,8 +791,28 @@ Returns: Commands for checking balance, deploying, and verifying
 | M1 | Stylus Smart Contract Builder | ✅ Complete |
 | M2 | Arbitrum SDK Integration (Bridging & Messaging) | ✅ Complete |
 | M3 | Full dApp Builder (Backend + Frontend + Indexer + Oracle + Orchestration) | ✅ Complete |
-| M4 | Orbit Chain Integration (Config, Deployment, Validators, Q&A, Orchestration) | In Progress |
+| M4 | Orbit Chain Integration (Config, Deployment, Validators, Q&A, Orchestration) | ✅ Complete |
 | M5 | Unified AI Assistant | Planned |
+
+### M1: Stylus Smart Contract Builder
+
+AI-powered Stylus contract development with RAG-based context retrieval:
+
+- **Context Search**: Hybrid search (vector + BM25 + cross-encoder reranking) over Stylus docs and code examples
+- **Code Generation**: Generate production-ready Stylus contracts from natural language, with 7 built-in templates (Counter, VendingMachine, SimpleERC20, AccessControl, DeFiVault, StakingRewards, NftRegistry)
+- **Test Generation**: Generate unit, integration, and fuzz tests for Stylus contracts
+- **Q&A Assistant**: RAG-powered answers to Stylus development questions with code fix post-processing
+- **Workflow Guides**: Step-by-step build, deploy, and test workflow guidance
+- **Code Validation**: Docker-based `cargo check` with up to 3 auto-fix attempts and Stylus-specific error guidance
+- **SDK 0.10.0**: Full support for the latest Stylus SDK (alloy 1.0.1, Rust 1.91.0, `self.vm()` API)
+
+```bash
+# Example: Generate a Stylus contract
+echo '{"method": "tools/call", "id": 1, "params": {"name": "generate_stylus_code", "arguments": {"prompt": "Create an ERC20 token with mint and burn"}}}' | python -m src.mcp.server
+
+# Example: Ask a Stylus question
+echo '{"method": "tools/call", "id": 1, "params": {"name": "ask_stylus", "arguments": {"question": "How do I use mappings in Stylus?"}}}' | python -m src.mcp.server
+```
 
 ### M2: Arbitrum SDK Integration
 
