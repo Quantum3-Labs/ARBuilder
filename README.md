@@ -219,6 +219,13 @@ ArbBuilder/
 ├── docs/
 │   └── mcp_tools_spec.md # MCP tools specification
 ├── apps/web/               # Hosted service (Cloudflare Workers + Next.js)
+│   ├── src/app/
+│   │   ├── layout.tsx      # Root layout + SEO meta + JSON-LD structured data
+│   │   ├── page.tsx        # Landing page (M1-M4 feature sections)
+│   │   ├── robots.ts       # robots.txt generation
+│   │   ├── sitemap.ts      # sitemap.xml generation
+│   │   ├── llms.txt/       # LLM discovery endpoint
+│   │   └── playground/     # Interactive tool playground (18 hosted tools)
 │   ├── src/lib/
 │   │   ├── scraper.ts      # Web doc scraping (HTMLRewriter)
 │   │   ├── github.ts       # GitHub repo scraping (Trees/Contents API)
