@@ -83,9 +83,7 @@ export default function DashboardLayout({
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-8">
               <Link href="/" className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">AR</span>
-                </div>
+                <img src="/logo.png" alt="ARBuilder" className="w-8 h-8 rounded-lg" />
                 <span className="text-xl font-bold text-gray-900 hidden sm:block">
                   ARBuilder
                 </span>

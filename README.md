@@ -1,5 +1,9 @@
 # ARBuilder
 
+<p align="center">
+  <img src="assets/logo.png" alt="ARBuilder Logo" width="120" />
+</p>
+
 [![GitHub stars](https://img.shields.io/github/stars/Quantum3-Labs/ARBuilder?style=social)](https://github.com/Quantum3-Labs/ARBuilder)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![MCP Tools](https://img.shields.io/badge/MCP_Tools-19-blue)](https://github.com/Quantum3-Labs/ARBuilder)

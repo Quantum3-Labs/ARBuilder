@@ -152,9 +152,7 @@ export default function LoginPage() {
 
         <div className="sm:mx-auto sm:w-full sm:max-w-md animate-fade-in-up">
           <Link href="/" className="flex justify-center items-center gap-2">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center">
-              <span className="text-white font-bold">AR</span>
-            </div>
+            <img src="/logo.png" alt="ARBuilder" className="w-10 h-10 rounded-xl" />
             <h1 className="text-2xl font-bold text-gray-900">ARBuilder</h1>
           </Link>
           <h2 className="mt-8 text-center text-2xl sm:text-3xl font-bold text-gray-900">
