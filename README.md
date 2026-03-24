@@ -218,6 +218,7 @@ ArbBuilder/
 │   │   ├── test_generate_tests.py
 │   │   ├── test_m2_e2e.py    # M2 end-to-end tests
 │   │   ├── test_m3_tools.py  # M3 full dApp tests
+│   │   ├── test_orbit_tools.py  # M4 orbit tests
 │   │   └── benchmark.py      # Evaluation framework
 │   └── test_retrieval.py # Retrieval quality tests
 ├── docs/
