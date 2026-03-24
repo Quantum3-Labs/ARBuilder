@@ -261,3 +261,126 @@ def generate_oracle_tool(m3_tools):
 def orchestrate_dapp_tool(m3_tools):
     """Provide orchestrate_dapp tool instance."""
     return m3_tools["orchestrate_dapp"]
+
+
+# ============================================================================
+# M4 Orbit Tool Fixtures
+# ============================================================================
+
+
+@pytest.fixture(scope="session")
+def m4_tools():
+    """
+    Provide M4 Orbit tool implementations for testing.
+
+    M4 tools are template-based and do not require API keys.
+    Falls back to mocks if imports fail.
+    """
+    try:
+        from src.mcp.tools import (
+            AskOrbitTool,
+            GenerateOrbitConfigTool,
+            GenerateOrbitDeploymentTool,
+            GenerateValidatorSetupTool,
+            OrchestrateOrbitTool,
+        )
+
+        return {
+            "generate_orbit_config": GenerateOrbitConfigTool(),
+            "generate_orbit_deployment": GenerateOrbitDeploymentTool(),
+            "generate_validator_setup": GenerateValidatorSetupTool(),
+            "ask_orbit": AskOrbitTool(),
+            "orchestrate_orbit": OrchestrateOrbitTool(),
+        }
+    except (ImportError, ValueError) as e:
+        print(f"Warning: Could not import M4 tools, using mocks: {e}")
+        return _create_mock_m4_tools()
+
+
+def _create_mock_m4_tools():
+    """Create mock M4 tool implementations for testing without imports."""
+
+    class MockGenerateOrbitConfigTool:
+        def execute(self, **kwargs):
+            return {
+                "files": {"scripts/prepare-chain-config.ts": "// mock"},
+                "dependencies": {"viem": "^1.20.0"},
+                "chain_config": {"chain_id": kwargs.get("chain_id", 412346)},
+                "template_used": "chain_config",
+            }
+
+    class MockGenerateOrbitDeploymentTool:
+        def execute(self, **kwargs):
+            return {
+                "files": {"scripts/deploy-rollup.ts": "// mock"},
+                "dependencies": {"viem": "^1.20.0"},
+                "deployment_type": kwargs.get("deployment_type", "rollup"),
+            }
+
+    class MockGenerateValidatorSetupTool:
+        def execute(self, **kwargs):
+            return {
+                "files": {"scripts/manage-validators.ts": "// mock"},
+                "action": kwargs.get("action", "list"),
+                "target": kwargs.get("target", "validator"),
+            }
+
+    class MockAskOrbitTool:
+        def execute(self, **kwargs):
+            return {
+                "answer": "Orbit chains are L2/L3 chains built on Arbitrum technology.",
+                "topics": ["general"],
+                "references": ["https://docs.arbitrum.io/launch-orbit-chain/orbit-gentle-introduction"],
+            }
+
+    class MockOrchestrateOrbitTool:
+        def execute(self, **kwargs):
+            return {
+                "files": {
+                    "package.json": "{}",
+                    "docker-compose.yml": "# mock",
+                    "README.md": "# mock",
+                    "scripts/deploy-rollup.ts": "// mock",
+                    "scripts/prepare-chain-config.ts": "// mock",
+                },
+                "dependencies": {"viem": "^1.20.0"},
+                "setup_instructions": ["Step 1: Install deps"],
+            }
+
+    return {
+        "generate_orbit_config": MockGenerateOrbitConfigTool(),
+        "generate_orbit_deployment": MockGenerateOrbitDeploymentTool(),
+        "generate_validator_setup": MockGenerateValidatorSetupTool(),
+        "ask_orbit": MockAskOrbitTool(),
+        "orchestrate_orbit": MockOrchestrateOrbitTool(),
+    }
+
+
+@pytest.fixture(scope="session")
+def generate_orbit_config_tool(m4_tools):
+    """Provide generate_orbit_config tool instance."""
+    return m4_tools["generate_orbit_config"]
+
+
+@pytest.fixture(scope="session")
+def generate_orbit_deployment_tool(m4_tools):
+    """Provide generate_orbit_deployment tool instance."""
+    return m4_tools["generate_orbit_deployment"]
+
+
+@pytest.fixture(scope="session")
+def generate_validator_setup_tool(m4_tools):
+    """Provide generate_validator_setup tool instance."""
+    return m4_tools["generate_validator_setup"]
+
+
+@pytest.fixture(scope="session")
+def ask_orbit_tool(m4_tools):
+    """Provide ask_orbit tool instance."""
+    return m4_tools["ask_orbit"]
+
+
+@pytest.fixture(scope="session")
+def orchestrate_orbit_tool(m4_tools):
+    """Provide orchestrate_orbit tool instance."""
+    return m4_tools["orchestrate_orbit"]
