@@ -656,9 +656,10 @@ Includes package.json, tsconfig.json, .env.example, setup.sh, and deploy.sh."""
             "\n"
             "main().catch(console.error);\n"
         )
+        # Replace PARENT_ first — CHAIN_ID_PLACEHOLDER is a substring of PARENT_CHAIN_ID_PLACEHOLDER
+        code = code.replace("PARENT_CHAIN_ID_PLACEHOLDER", str(parent_chain_id))
         code = code.replace("CHAIN_ID_PLACEHOLDER", str(chain_id))
         code = code.replace("CHAIN_NAME_PLACEHOLDER", chain_name)
-        code = code.replace("PARENT_CHAIN_ID_PLACEHOLDER", str(parent_chain_id))
         return code
 
     @staticmethod
