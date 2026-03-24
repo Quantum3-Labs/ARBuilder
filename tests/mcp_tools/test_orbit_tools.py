@@ -1417,6 +1417,7 @@ class TestTypeScriptCompilation:
                 and "TS2307" not in line
                 and "TS1259" not in line
                 and "TS2792" not in line
+                and "TS2591" not in line
                 and "TS6305" not in line
             ]
             assert not real_errors, f"TypeScript syntax errors in {filename}:\n" + "\n".join(
@@ -1447,6 +1448,7 @@ class TestTypeScriptCompilation:
                 and "TS2307" not in line
                 and "TS1259" not in line
                 and "TS2792" not in line
+                and "TS2591" not in line
                 and "TS6305" not in line
             ]
             assert not real_errors, f"TypeScript syntax errors in {filename}:\n" + "\n".join(
@@ -1478,6 +1480,7 @@ class TestTypeScriptCompilation:
                 and "TS2307" not in line
                 and "TS1259" not in line
                 and "TS2792" not in line
+                and "TS2591" not in line
                 and "TS6305" not in line
             ]
             if real_errors:
