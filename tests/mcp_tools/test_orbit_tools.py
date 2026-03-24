@@ -16,10 +16,13 @@ import json
 import os
 import subprocess
 import tempfile
-import textwrap
 
 import pytest
 
+from src.mcp.tools.generate_orbit_deployment import (
+    ROLLUP_CREATOR_ADDRESSES,
+    TOKEN_BRIDGE_CREATOR_ADDRESSES,
+)
 from src.templates.orbit_templates import (
     ORBIT_DEPENDENCIES,
     ORBIT_TEMPLATES,
@@ -28,11 +31,6 @@ from src.templates.orbit_templates import (
     select_orbit_template,
     validate_template_output,
 )
-from src.mcp.tools.generate_orbit_deployment import (
-    ROLLUP_CREATOR_ADDRESSES,
-    TOKEN_BRIDGE_CREATOR_ADDRESSES,
-)
-
 
 # ============================================================================
 # Template Infrastructure Tests
@@ -45,9 +43,15 @@ class TestOrbitTemplateInfrastructure:
     def test_all_nine_templates_exist(self):
         """Verify all 9 orbit templates are registered."""
         expected = [
-            "chain_config", "deploy_rollup", "deploy_token_bridge",
-            "custom_gas_token", "validator_management", "governance",
-            "node_config", "anytrust_config", "orchestration",
+            "chain_config",
+            "deploy_rollup",
+            "deploy_token_bridge",
+            "custom_gas_token",
+            "validator_management",
+            "governance",
+            "node_config",
+            "anytrust_config",
+            "orchestration",
         ]
         for name in expected:
             assert name in ORBIT_TEMPLATES, f"Missing template: {name}"
@@ -62,7 +66,12 @@ class TestOrbitTemplateInfrastructure:
 
     def test_parent_chain_rpcs_all_present(self):
         """Verify all supported parent chains have RPC URLs."""
-        expected_chains = ["arbitrum-one", "arbitrum-sepolia", "ethereum-mainnet", "ethereum-sepolia"]
+        expected_chains = [
+            "arbitrum-one",
+            "arbitrum-sepolia",
+            "ethereum-mainnet",
+            "ethereum-sepolia",
+        ]
         for chain in expected_chains:
             assert chain in PARENT_CHAIN_RPCS, f"Missing RPC for {chain}"
             assert PARENT_CHAIN_RPCS[chain].startswith("http")
@@ -106,8 +115,10 @@ class TestOrbitTemplateInfrastructure:
         ]
         for prompt, expected_name in cases:
             template = select_orbit_template(prompt)
-            assert template.name == ORBIT_TEMPLATES[expected_name].name, \
-                f"Prompt '{prompt}' selected '{template.name}', expected '{ORBIT_TEMPLATES[expected_name].name}'"
+            expected = ORBIT_TEMPLATES[expected_name].name
+            assert template.name == expected, (
+                f"'{prompt}' -> '{template.name}', want '{expected}'"
+            )
 
     def test_validate_template_output_clean(self):
         """Test that clean code passes validation."""
@@ -161,7 +172,11 @@ class TestDockerCompose:
 
         # The comment warns against dev-init, but the actual entrypoint must not use it
         lines = compose.split("\n")
-        command_lines = [l.strip() for l in lines if l.strip().startswith("--") or l.strip().startswith("exec")]
+        command_lines = [
+            line.strip()
+            for line in lines
+            if line.strip().startswith("--") or line.strip().startswith("exec")
+        ]
         for line in command_lines:
             assert "--init.dev-init" not in line, "dev-init flag must not appear in node command"
 
@@ -281,7 +296,11 @@ class TestGenerateOrbitConfig:
 
         # Should reference native token
         files_str = str(result["files"])
-        assert "0x1234567890abcdef1234567890abcdef12345678" in files_str or "nativeToken" in files_str or "NATIVE_TOKEN" in files_str
+        assert (
+            "0x1234567890abcdef1234567890abcdef12345678" in files_str
+            or "nativeToken" in files_str
+            or "NATIVE_TOKEN" in files_str
+        )
 
     def test_custom_owner(self, tool):
         """Test configuration with custom owner address."""
@@ -360,7 +379,12 @@ class TestGenerateOrbitConfig:
         template_used = result.get("template_used", "")
         files = result.get("files", {})
         files_str = str(files)
-        assert "anytrust" in template_used.lower() or "AnyTrust" in files_str or "DAC" in files_str or "keyset" in files_str.lower()
+        assert (
+            "anytrust" in template_used.lower()
+            or "AnyTrust" in files_str
+            or "DAC" in files_str
+            or "keyset" in files_str.lower()
+        )
 
 
 # ============================================================================
@@ -477,7 +501,9 @@ class TestGenerateOrbitDeployment:
         )
 
         files = result.get("files", {})
-        deploy_files = [v for k, v in files.items() if "deploy" in k.lower() and "rollup" in k.lower()]
+        deploy_files = [
+            v for k, v in files.items() if "deploy" in k.lower() and "rollup" in k.lower()
+        ]
         assert len(deploy_files) > 0
         deploy_code = deploy_files[0]
         assert "createRollup" in deploy_code
@@ -491,7 +517,9 @@ class TestGenerateOrbitDeployment:
         )
 
         files = result.get("files", {})
-        deploy_files = [v for k, v in files.items() if "deploy" in k.lower() and "rollup" in k.lower()]
+        deploy_files = [
+            v for k, v in files.items() if "deploy" in k.lower() and "rollup" in k.lower()
+        ]
         deploy_code = deploy_files[0] if deploy_files else ""
         assert "deployment.json" in deploy_code
 
@@ -581,7 +609,10 @@ class TestGenerateValidatorSetup:
         assert "files" in result
 
         files_str = str(result["files"])
-        assert "0x3333333333333333333333333333333333333333" in files_str or "validator" in files_str.lower()
+        assert (
+            "0x3333333333333333333333333333333333333333" in files_str
+            or "validator" in files_str.lower()
+        )
 
     def test_remove_validator(self, tool):
         """Test removing a validator."""
@@ -647,7 +678,11 @@ class TestGenerateValidatorSetup:
         files = result.get("files", {})
         all_code = str(files)
         # Should use UpgradeExecutor for permissioned operations
-        assert "UpgradeExecutor" in all_code or "upgradeExecutor" in all_code or "executeCall" in all_code
+        assert (
+            "UpgradeExecutor" in all_code
+            or "upgradeExecutor" in all_code
+            or "executeCall" in all_code
+        )
 
     def test_validator_script_has_correct_abis(self, tool):
         """Test that validator management includes Rollup and SequencerInbox ABIs."""
@@ -662,7 +697,11 @@ class TestGenerateValidatorSetup:
         files = result.get("files", {})
         all_code = str(files)
         # Should include key ABI functions
-        assert "setValidator" in all_code or "isValidator" in all_code or "validator" in all_code.lower()
+        assert (
+            "setValidator" in all_code
+            or "isValidator" in all_code
+            or "validator" in all_code.lower()
+        )
 
     def test_batch_poster_uses_sequencer_inbox(self, tool):
         """Test that batch poster management references SequencerInbox."""
@@ -676,7 +715,11 @@ class TestGenerateValidatorSetup:
 
         files = result.get("files", {})
         all_code = str(files)
-        assert "BatchPoster" in all_code or "batchPoster" in all_code or "batch_poster" in all_code.lower()
+        assert (
+            "BatchPoster" in all_code
+            or "batchPoster" in all_code
+            or "batch_poster" in all_code.lower()
+        )
 
 
 # ============================================================================
@@ -713,7 +756,9 @@ class TestAskOrbit:
         assert "answer" in result
         # Should mention deployment-related concepts
         answer_lower = result["answer"].lower()
-        assert "deploy" in answer_lower or "rollup" in answer_lower or "createrollup" in answer_lower
+        assert (
+            "deploy" in answer_lower or "rollup" in answer_lower or "createrollup" in answer_lower
+        )
 
     def test_config_question(self, tool):
         """Test config-related question."""
@@ -841,7 +886,11 @@ class TestOrchestrateOrbit:
         # AnyTrust should have DAS-related files
         files = result.get("files", {})
         files_str = str(files)
-        assert "anytrust" in files_str.lower() or "das" in files_str.lower() or "keyset" in files_str.lower()
+        assert (
+            "anytrust" in files_str.lower()
+            or "das" in files_str.lower()
+            or "keyset" in files_str.lower()
+        )
 
     def test_scaffold_with_custom_gas_token(self, tool):
         """Test scaffolding with custom gas token."""
@@ -858,7 +907,11 @@ class TestOrchestrateOrbit:
 
         # Should have token-related files
         files_str = str(result["files"])
-        assert "token" in files_str.lower() or "NATIVE_TOKEN" in files_str or "0xaaaa" in files_str.lower()
+        assert (
+            "token" in files_str.lower()
+            or "NATIVE_TOKEN" in files_str
+            or "0xaaaa" in files_str.lower()
+        )
 
     def test_scaffold_with_validators(self, tool):
         """Test scaffolding with validator addresses."""
@@ -1046,7 +1099,11 @@ class TestOrchestrateOrbit:
 
         files = result.get("files", {})
         filenames_str = str(list(files.keys()))
-        assert "das" in filenames_str.lower() or "keyset" in filenames_str.lower() or "anytrust" in filenames_str.lower()
+        assert (
+            "das" in filenames_str.lower()
+            or "keyset" in filenames_str.lower()
+            or "anytrust" in filenames_str.lower()
+        )
 
     def test_scaffold_chain_config_in_result(self, tool):
         """Test that result includes complete chain config metadata."""
@@ -1115,6 +1172,7 @@ class TestDockerComposeValidation:
         compose = generate_docker_compose("test-chain", 412346, 421614, False)
         try:
             import yaml
+
             parsed = yaml.safe_load(compose)
         except ImportError:
             # Fall back to basic structure check if PyYAML not available
@@ -1135,6 +1193,7 @@ class TestDockerComposeValidation:
         compose = generate_docker_compose("test-chain", 412347, 421614, True)
         try:
             import yaml
+
             parsed = yaml.safe_load(compose)
         except ImportError:
             assert "das-server:" in compose
@@ -1153,6 +1212,7 @@ class TestDockerComposeValidation:
         compose = generate_docker_compose("test-chain", 412346, 421614, False)
         try:
             import yaml
+
             parsed = yaml.safe_load(compose)
         except ImportError:
             pytest.skip("PyYAML not available")
@@ -1255,7 +1315,9 @@ class TestTypeScriptCompilation:
         try:
             result = subprocess.run(
                 ["npx", "tsc", "--version"],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True,
+                text=True,
+                timeout=30,
                 cwd=os.path.join(os.path.dirname(__file__), "../../apps/web"),
             )
             if result.returncode == 0:
@@ -1294,7 +1356,9 @@ class TestTypeScriptCompilation:
 
         result = subprocess.run(
             ["npx", "tsc", "--noEmit", "-p", "tsconfig.json"],
-            capture_output=True, text=True, timeout=60,
+            capture_output=True,
+            text=True,
+            timeout=60,
             cwd=tmpdir,
         )
 
@@ -1317,15 +1381,19 @@ class TestTypeScriptCompilation:
             returncode, output = self._compile_ts_syntax_check(code, os.path.basename(filename))
             # Filter out import resolution errors (expected since we don't install deps)
             real_errors = [
-                line for line in output.split("\n")
+                line
+                for line in output.split("\n")
                 if "error TS" in line
                 and "Cannot find module" not in line
                 and "TS2307" not in line  # Cannot find module
                 and "TS1259" not in line  # Module can only be default-imported
                 and "TS2792" not in line  # Cannot find module (type-only)
+                and "TS2591" not in line  # Cannot find name 'process' (needs @types/node)
                 and "TS6305" not in line  # Output file not specified
             ]
-            assert not real_errors, f"TypeScript syntax errors in {filename}:\n" + "\n".join(real_errors)
+            assert not real_errors, f"TypeScript syntax errors in {filename}:\n" + "\n".join(
+                real_errors
+            )
 
     def test_deploy_rollup_compiles(self, m4_tools, tsc_available):
         """Test generated deploy-rollup TypeScript has no syntax errors."""
@@ -1342,7 +1410,8 @@ class TestTypeScriptCompilation:
         for filename, code in ts_files.items():
             returncode, output = self._compile_ts_syntax_check(code, os.path.basename(filename))
             real_errors = [
-                line for line in output.split("\n")
+                line
+                for line in output.split("\n")
                 if "error TS" in line
                 and "Cannot find module" not in line
                 and "TS2307" not in line
@@ -1350,7 +1419,9 @@ class TestTypeScriptCompilation:
                 and "TS2792" not in line
                 and "TS6305" not in line
             ]
-            assert not real_errors, f"TypeScript syntax errors in {filename}:\n" + "\n".join(real_errors)
+            assert not real_errors, f"TypeScript syntax errors in {filename}:\n" + "\n".join(
+                real_errors
+            )
 
     def test_validator_setup_compiles(self, m4_tools, tsc_available):
         """Test generated validator management TypeScript has no syntax errors."""
@@ -1369,7 +1440,8 @@ class TestTypeScriptCompilation:
         for filename, code in ts_files.items():
             returncode, output = self._compile_ts_syntax_check(code, os.path.basename(filename))
             real_errors = [
-                line for line in output.split("\n")
+                line
+                for line in output.split("\n")
                 if "error TS" in line
                 and "Cannot find module" not in line
                 and "TS2307" not in line
@@ -1377,7 +1449,9 @@ class TestTypeScriptCompilation:
                 and "TS2792" not in line
                 and "TS6305" not in line
             ]
-            assert not real_errors, f"TypeScript syntax errors in {filename}:\n" + "\n".join(real_errors)
+            assert not real_errors, f"TypeScript syntax errors in {filename}:\n" + "\n".join(
+                real_errors
+            )
 
     def test_orchestrate_all_scripts_compile(self, m4_tools, tsc_available):
         """Test ALL generated scripts from orchestrate_orbit compile."""
@@ -1397,7 +1471,8 @@ class TestTypeScriptCompilation:
         for filename, code in ts_files.items():
             returncode, output = self._compile_ts_syntax_check(code, os.path.basename(filename))
             real_errors = [
-                line for line in output.split("\n")
+                line
+                for line in output.split("\n")
                 if "error TS" in line
                 and "Cannot find module" not in line
                 and "TS2307" not in line
@@ -1408,7 +1483,7 @@ class TestTypeScriptCompilation:
             if real_errors:
                 failures.append(f"{filename}:\n  " + "\n  ".join(real_errors))
 
-        assert not failures, f"TypeScript syntax errors in generated files:\n" + "\n".join(failures)
+        assert not failures, "TypeScript syntax errors in generated files:\n" + "\n".join(failures)
 
 
 class TestGeneratedEnvFiles:
@@ -1471,7 +1546,9 @@ class TestGeneratedSetupScripts:
             f.flush()
             bash_result = subprocess.run(
                 ["bash", "-n", f.name],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             os.unlink(f.name)
 
@@ -1496,7 +1573,9 @@ class TestGeneratedSetupScripts:
             f.flush()
             bash_result = subprocess.run(
                 ["bash", "-n", f.name],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             os.unlink(f.name)
 
