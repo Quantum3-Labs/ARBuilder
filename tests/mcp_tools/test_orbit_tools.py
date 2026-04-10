@@ -1340,7 +1340,7 @@ class TestTypeScriptCompilation:
             "compilerOptions": {
                 "target": "ES2020",
                 "module": "ES2020",
-                "moduleResolution": "node",
+                "moduleResolution": "node16",
                 "skipLibCheck": True,
                 "noEmit": True,
                 "strict": False,
@@ -1390,6 +1390,7 @@ class TestTypeScriptCompilation:
                 and "TS2792" not in line  # Cannot find module (type-only)
                 and "TS2591" not in line  # Cannot find name 'process' (needs @types/node)
                 and "TS6305" not in line  # Output file not specified
+                and "TS5107" not in line  # Deprecated moduleResolution option
             ]
             assert not real_errors, f"TypeScript syntax errors in {filename}:\n" + "\n".join(
                 real_errors
@@ -1419,6 +1420,7 @@ class TestTypeScriptCompilation:
                 and "TS2792" not in line
                 and "TS2591" not in line
                 and "TS6305" not in line
+                and "TS5107" not in line  # Deprecated moduleResolution option
             ]
             assert not real_errors, f"TypeScript syntax errors in {filename}:\n" + "\n".join(
                 real_errors
@@ -1450,6 +1452,7 @@ class TestTypeScriptCompilation:
                 and "TS2792" not in line
                 and "TS2591" not in line
                 and "TS6305" not in line
+                and "TS5107" not in line  # Deprecated moduleResolution option
             ]
             assert not real_errors, f"TypeScript syntax errors in {filename}:\n" + "\n".join(
                 real_errors
@@ -1482,6 +1485,7 @@ class TestTypeScriptCompilation:
                 and "TS2792" not in line
                 and "TS2591" not in line
                 and "TS6305" not in line
+                and "TS5107" not in line  # Deprecated moduleResolution option
             ]
             if real_errors:
                 failures.append(f"{filename}:\n  " + "\n  ".join(real_errors))
