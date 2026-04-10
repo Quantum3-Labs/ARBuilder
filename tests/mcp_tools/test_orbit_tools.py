@@ -1339,8 +1339,8 @@ class TestTypeScriptCompilation:
         tsconfig = {
             "compilerOptions": {
                 "target": "ES2020",
-                "module": "ES2020",
-                "moduleResolution": "node16",
+                "module": "Node16",
+                "moduleResolution": "Node16",
                 "skipLibCheck": True,
                 "noEmit": True,
                 "strict": False,
