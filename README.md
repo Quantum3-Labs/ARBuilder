@@ -95,7 +95,7 @@ ARBuilder uses a **Retrieval-Augmented Generation (RAG)** pipeline with hybrid s
 │  ┌───────────────────────────────────────────────────────────────────┐  │
 │  │                      MCP Server (19 tools)                        │  │
 │  │                                                                   │  │
-│  │  M1: Stylus        M2: SDK           M3: dApp Builder             │  │
+│  │  Stylus Contracts   Arbitrum-SDK       Full dApp Builder          │  │
 │  │  ┌──────────────┐   ┌─────────────┐   ┌──────────────────────┐    │  │
 │  │  │ generate_    │   │ generate_   │   │ generate_backend     │    │  │
 │  │  │ stylus_code  │   │ bridge_code │   │ generate_frontend    │    │  │
@@ -106,7 +106,7 @@ ARBuilder uses a **Retrieval-Augmented Generation (RAG)** pipeline with hybrid s
 │  │  │ validate_code│   │             │   │                      │    │  │
 │  │  └──────────────┘   └─────────────┘   └──────────────────────┘    │  │
 │  │                                                                   │  │
-│  │  M4: Orbit Chain                                                  │  │
+│  │  Orbit Chain                                                      │  │
 │  │  ┌──────────────────────┐                                         │  │
 │  │  │ generate_orbit_config│                                         │  │
 │  │  │ generate_orbit_deploy│                                         │  │
@@ -496,7 +496,7 @@ ARBBUILDER_ADMIN_SECRET=xxx npx tsx scripts/sync_sources.ts --dry-run
 ARBBUILDER_ADMIN_SECRET=xxx npx tsx scripts/sync_sources.ts --remove-stale
 ```
 
-**Stylus (M1)** — 17 docs + 19 repos
+**Stylus Contracts/projects ** — 17 docs + 19 repos
 - Official documentation: [docs.arbitrum.io](https://docs.arbitrum.io/stylus/stylus-overview) (7 pages + gas-metering)
 - **All Stylus repos sourced from [ARBuilder-Forks](https://github.com/ARBuilder-Forks)** for resilience against upstream deletions
 - 6 forks with SDK 0.10.0 branches: hello-world, vending-machine, erc6909, fortune-generator, ethbuc2025-gyges, WalletNaming
@@ -525,18 +525,18 @@ ARBBUILDER_ADMIN_SECRET=xxx npx tsx scripts/sync_sources.ts --remove-stale
 - **Version-aware generation**: `generate_stylus_code` and `ask_stylus` accept `target_version` to produce code for any supported SDK version
 - **Version-aware retrieval**: Vector search boosts chunks matching the requested SDK version
 
-**Arbitrum SDK (M2)** — 6 docs + 5 repos
+**Arbitrum SDK** — 6 docs + 5 repos
 - [arbitrum-sdk](https://github.com/OffchainLabs/arbitrum-sdk), [arbitrum-tutorials](https://github.com/OffchainLabs/arbitrum-tutorials)
 - 3 community repos: arbitrum-api, orbit-bridging, cross-messaging
 - Official bridging and messaging documentation (6 pages)
 
-**Full dApp Builder (M3)** — 30 docs + 11 repos
+**Full dApp Builder** — 30 docs + 11 repos
 - Backend: NestJS (5 docs), Express (3 docs), nestjs/nest, arbitrum-token-bridge
 - Frontend: wagmi (5 docs), viem (4 docs), RainbowKit (4 docs), DaisyUI (5 docs) + 5 repos
 - Indexer: The Graph (5 docs), graph-tooling, messari/subgraphs
 - Oracle: Chainlink (4 docs), smart-contract-examples, chainlink
 
-**Orbit SDK (M4)** — 5 Python MCP tools + 9 TypeScript templates
+**Orbit SDK** — 5 Python MCP tools + 9 TypeScript templates
 - Tools: `generate_orbit_config`, `generate_orbit_deployment`, `generate_validator_setup`, `ask_orbit`, `orchestrate_orbit`
 - Templates: Chain Config, Deploy Rollup, Deploy Token Bridge, Custom Gas Token, Validator Management, Governance, Node Config, AnyTrust Config, Orchestration
 - Uses `@arbitrum/chain-sdk` ^0.25.0 + `viem` ^1.20.0 for `prepareChainConfig()`, `createRollup()`, `createTokenBridge()`, `prepareNodeConfig()`
@@ -591,7 +591,7 @@ ARBuilder exposes a full MCP server with **19 tools**, **11 resources**, and **5
 
 ### Tools
 
-**M1: Stylus Development (6 tools)**
+**Stylus Development (6 tools)**
 
 | Tool | Description |
 |------|-------------|
@@ -602,7 +602,7 @@ ARBuilder exposes a full MCP server with **19 tools**, **11 resources**, and **5
 | `get_workflow` | Build/deploy/test workflow guidance |
 | `validate_stylus_code` | Compile-check code via Docker cargo check with Stylus-specific fix guidance |
 
-**M2: Arbitrum SDK - Bridging & Messaging (3 tools)**
+**Arbitrum SDK - Bridging & Messaging (3 tools)**
 
 | Tool | Description |
 |------|-------------|
@@ -610,7 +610,7 @@ ARBuilder exposes a full MCP server with **19 tools**, **11 resources**, and **5
 | `generate_messaging_code` | Generate cross-chain messaging code (L1<->L2, L2<->L3) |
 | `ask_bridging` | Q&A about bridging patterns and SDK usage |
 
-**M3: Full dApp Builder (5 tools)**
+**Full dApp Builder (5 tools)**
 
 | Tool | Description |
 |------|-------------|
@@ -620,7 +620,7 @@ ARBuilder exposes a full MCP server with **19 tools**, **11 resources**, and **5
 | `generate_oracle` | Generate Chainlink oracle integrations |
 | `orchestrate_dapp` | Scaffold complete dApps with multiple components |
 
-**M4: Orbit Chain Integration (5 tools)**
+**Orbit Chain Integration (5 tools)**
 
 | Tool | Description |
 |------|-------------|
@@ -653,7 +653,7 @@ cargo stylus deploy --private-key-path=./key.txt --endpoint=https://sepolia-roll
 
 MCP Resources provide static knowledge that AI IDEs can load automatically:
 
-**M1: Stylus Resources**
+**Stylus Resources**
 
 | Resource URI | Description |
 |--------------|-------------|
@@ -664,13 +664,13 @@ MCP Resources provide static knowledge that AI IDEs can load automatically:
 | `stylus://config/networks` | Arbitrum network configurations |
 | `stylus://rules/coding` | Stylus coding guidelines and patterns |
 
-**M2: Arbitrum SDK Resources**
+**Arbitrum SDK Resources**
 
 | Resource URI | Description |
 |--------------|-------------|
 | `arbitrum://rules/sdk` | Arbitrum SDK bridging and messaging guidelines |
 
-**M3: Full dApp Builder Resources**
+**Full dApp Builder Resources**
 
 | Resource URI | Description |
 |--------------|-------------|
@@ -796,17 +796,9 @@ AI uses: get_workflow tool
 Returns: Commands for checking balance, deploying, and verifying
 ```
 
-## Milestones
+## Features
 
-| Milestone | Description | Status |
-|-----------|-------------|--------|
-| M1 | Stylus Smart Contract Builder | ✅ Complete |
-| M2 | Arbitrum SDK Integration (Bridging & Messaging) | ✅ Complete |
-| M3 | Full dApp Builder (Backend + Frontend + Indexer + Oracle + Orchestration) | ✅ Complete |
-| M4 | Orbit Chain Integration (Config, Deployment, Validators, Q&A, Orchestration) | ✅ Complete |
-| M5 | Final Report + Metrics | Planned |
-
-### M1: Stylus Smart Contract Builder
+### Stylus Smart Contract Builder
 
 AI-powered Stylus contract development with RAG-based context retrieval:
 
@@ -826,7 +818,7 @@ echo '{"method": "tools/call", "id": 1, "params": {"name": "generate_stylus_code
 echo '{"method": "tools/call", "id": 1, "params": {"name": "ask_stylus", "arguments": {"question": "How do I use mappings in Stylus?"}}}' | python -m src.mcp.server
 ```
 
-### M2: Arbitrum SDK Integration
+### Arbitrum SDK Integration
 
 Cross-chain bridging and messaging support:
 
@@ -841,7 +833,7 @@ Cross-chain bridging and messaging support:
 echo '{"method": "tools/call", "id": 1, "params": {"name": "generate_bridge_code", "arguments": {"bridge_type": "eth_deposit", "amount": "0.5"}}}' | python -m src.mcp.server
 ```
 
-### M3: Full dApp Builder
+### Full dApp Builder
 
 Complete dApp scaffolding with all components:
 
@@ -892,7 +884,7 @@ echo '{"method": "tools/call", "params": {"name": "generate_backend", "arguments
 echo '{"method": "tools/call", "params": {"name": "generate_frontend", "arguments": {"prompt": "Create token dashboard", "contract_abi": "[...]"}}}' | python -m src.mcp.server
 ```
 
-### M4: Orbit Chain Integration
+### Orbit Chain Integration
 
 Orbit chain deployment and management support:
 
