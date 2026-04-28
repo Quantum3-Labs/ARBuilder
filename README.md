@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/quantum3-labs-arbuilder-badge.png)](https://mseep.ai/app/quantum3-labs-arbuilder)
+
 # ARBuilder
 
 <p align="center">
