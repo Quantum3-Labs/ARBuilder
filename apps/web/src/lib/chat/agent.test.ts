@@ -91,6 +91,28 @@ describe("runAgentNonStreaming", () => {
     expect(out.usage.total_tokens).toBe(15 + 23);
   });
 
+  it("preserves finish_reason='length' when continuation cap is hit", async () => {
+    // 3 length-only continuations + a final one still length → finish_reason = length
+    const lengthChunk = makeStream([
+      {
+        choices: [{ index: 0, delta: { content: "x" }, finish_reason: "length" }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      },
+    ]);
+    const mock = streamChatCompletion as unknown as ReturnType<typeof vi.fn>;
+    // 3 attempts, all hit length, then iterateOnce returns acc with finish_reason="length",
+    // tool_calls is empty so loop exits.
+    mock.mockImplementation(() => lengthChunk());
+
+    const out = await runAgentNonStreaming(
+      [{ role: "user", content: "go" }],
+      fakeEnv,
+      { temperature: 0.3, max_tokens: 100 },
+    );
+    expect(out.finish_reason).toBe("length");
+    expect(out.content).toBe("xxx"); // 3 continuations of "x"
+  });
+
   it("continues across finish_reason='length'", async () => {
     const part1 = makeStream([
       {

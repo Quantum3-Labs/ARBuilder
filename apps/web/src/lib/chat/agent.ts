@@ -94,19 +94,12 @@ function rewriteChunkForOutput(
     };
     finish_reason?: null | string;
   }> | undefined;
-  if (!choices || choices.length === 0) {
-    if (raw.usage) {
-      return {
-        id: streamId,
-        object: "chat.completion.chunk",
-        created: createdAt,
-        model: OUTPUT_MODEL_NAME,
-        choices: [],
-        usage: raw.usage as ChatUsage,
-      };
-    }
-    return null;
-  }
+
+  // Suppress per-call usage chunks from upstream — the agent emits a single
+  // consolidated usage chunk at the very end. Forwarding upstream usage would
+  // make clients see partial usage values mid-stream.
+  if (!choices || choices.length === 0) return null;
+
   const c = choices[0];
   const outDelta: ChatCompletionChunk["choices"][0]["delta"] = {};
   if (c.delta?.role) outDelta.role = c.delta.role as ChatCompletionChunk["choices"][0]["delta"]["role"];
@@ -126,7 +119,6 @@ function rewriteChunkForOutput(
       delta: outDelta,
       finish_reason: (c.finish_reason ?? null) as ChatCompletionChunk["choices"][0]["finish_reason"],
     }],
-    usage: raw.usage as ChatUsage | undefined,
   };
 }
 
@@ -294,12 +286,16 @@ export async function* runAgentStreaming(
   }
 
   // Final consolidated usage chunk before [DONE].
+  // OpenAI-canonical pattern: empty choices array + usage. The actual
+  // finish_reason was already announced inside the iteration's last chunk
+  // (or the budget-cutoff chunk above) — emitting it again here would
+  // duplicate the terminal signal.
   const usageChunk: ChatCompletionChunk = {
     id: streamId,
     object: "chat.completion.chunk",
     created: createdAt,
     model: OUTPUT_MODEL_NAME,
-    choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+    choices: [],
     usage: totalUsage,
   };
   yield usageChunk;
