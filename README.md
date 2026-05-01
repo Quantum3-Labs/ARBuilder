@@ -563,6 +563,26 @@ https://arbuilder.app/mcp
 - Usage tracked per API key
 - Rate limited per free tier (100 calls/day)
 
+### Chat Completions API (OpenAI-compatible)
+
+Conversational endpoint backed by a ReAct agent over 14 of the MCP tools, callable from any OpenAI SDK:
+
+```
+POST https://arbuilder.app/api/v1/chat/completions
+Authorization: Bearer arb_<your-key>
+```
+
+- Model: `arbbuilder-chat` (backed by `openai/gpt-oss-120b` via OpenRouter)
+- Streaming and non-streaming, OpenAI message + SSE shape
+- Native function calling — agent decides which tools to invoke; tool calls visible in `delta.tool_calls`
+- Chain-of-thought passthrough via `reasoning_content`
+- Stateless: clients send full message history each turn
+- Auto length-continuation across `finish_reason: "length"`
+- Limits: 6 ReAct iterations / 200K turn token budget / 32K char tool-result cap
+- Excludes the 4 large project scaffolders (`generate_backend`, `generate_frontend`, `orchestrate_dapp`, `orchestrate_orbit`) — call those directly via `/api/v1/tools/<name>` or MCP
+
+Full reference: [`docs/api/chat-completions.md`](docs/api/chat-completions.md). Try it in the playground at [`/playground/chat`](https://arbuilder.app/playground/chat).
+
 ### Transparency Page
 
 View all ingested sources and code templates at [arbuilder.app/transparency](https://arbuilder.app/transparency).
