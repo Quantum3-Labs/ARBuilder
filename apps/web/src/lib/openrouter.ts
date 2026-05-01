@@ -44,6 +44,20 @@ export const MODELS = {
   FALLBACK: "qwen/qwen3.5-flash-02-23",
 } as const;
 
+/**
+ * Per-model maximum output token caps (upstream provider ceilings).
+ * Used by the chat endpoint to honor the model's true max while letting
+ * client requests cap below it.
+ */
+export const MODEL_MAX_OUTPUT_TOKENS: Record<string, number> = {
+  "openai/gpt-oss-120b": 32768,
+};
+
+export function getMaxTokens(model: string, requested?: number): number {
+  const cap = MODEL_MAX_OUTPUT_TOKENS[model] ?? 4096;
+  return requested && requested > 0 ? Math.min(requested, cap) : cap;
+}
+
 const EMPTY_RESPONSE: ChatCompletionResponse = {
   content: "",
   model: "unknown",
@@ -754,4 +768,104 @@ For Foundry tests:
     temperature: 0.2,
     maxTokens: 8192,
   });
+}
+
+/**
+ * Streaming chat completion with native tool calling and reasoning passthrough.
+ *
+ * Yields parsed OpenRouter SSE chunks (already JSON-decoded from `data: ...`).
+ * The chat agent layer re-encodes them into our outbound /v1/chat/completions
+ * stream after rewriting `delta.reasoning` → `delta.reasoning_content`.
+ *
+ * Errors are thrown synchronously before yielding any chunk if the upstream
+ * returns a non-2xx status.
+ */
+export interface StreamingCallParams {
+  apiKey: string;
+  model: string;
+  messages: Array<{
+    role: string;
+    content: string | null;
+    name?: string;
+    tool_call_id?: string;
+    tool_calls?: unknown;
+  }>;
+  tools?: unknown[]; // OpenAI-shape tool defs
+  tool_choice?: unknown;
+  temperature?: number;
+  max_tokens: number;
+  stop?: string | string[];
+  signal?: AbortSignal;
+}
+
+export async function* streamChatCompletion(
+  params: StreamingCallParams,
+): AsyncGenerator<Record<string, unknown>, void, void> {
+  const body: Record<string, unknown> = {
+    model: params.model,
+    messages: params.messages,
+    stream: true,
+    temperature: params.temperature ?? 0.3,
+    max_tokens: params.max_tokens,
+    // Ask OpenRouter to surface chain-of-thought (gpt-oss-120b honors this).
+    reasoning: { effort: "medium" },
+  };
+  if (params.tools && params.tools.length > 0) body.tools = params.tools;
+  if (params.tool_choice) body.tool_choice = params.tool_choice;
+  if (params.stop) body.stop = params.stop;
+
+  const response = await fetch(OPENROUTER_API_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${params.apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://arbuilder.app",
+      "X-Title": "ARBuilder",
+    },
+    body: JSON.stringify(body),
+    signal: params.signal,
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`OpenRouter HTTP ${response.status}: ${errText.slice(0, 500)}`);
+  }
+  if (!response.body) {
+    throw new Error("OpenRouter returned no response body");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // SSE frames are separated by \n\n; each frame may contain multiple
+      // "data: ..." lines and possibly comments (": ...").
+      let frameEnd: number;
+      while ((frameEnd = buffer.indexOf("\n\n")) !== -1) {
+        const frame = buffer.slice(0, frameEnd);
+        buffer = buffer.slice(frameEnd + 2);
+
+        for (const rawLine of frame.split("\n")) {
+          const line = rawLine.trim();
+          if (!line || line.startsWith(":")) continue;
+          if (!line.startsWith("data:")) continue;
+          const data = line.slice(5).trim();
+          if (data === "[DONE]") return;
+          try {
+            yield JSON.parse(data) as Record<string, unknown>;
+          } catch {
+            // skip malformed chunk
+          }
+        }
+      }
+    }
+  } finally {
+    try { reader.releaseLock(); } catch { /* ignore */ }
+  }
 }

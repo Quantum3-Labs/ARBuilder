@@ -783,26 +783,34 @@ export default function PlaygroundPage() {
               <span className="text-xl font-bold text-gray-900 hidden sm:block">ARBuilder</span>
             </Link>
             <span className="text-gray-300 hidden sm:block">/</span>
-            <span className="text-gray-600 font-medium">Playground</span>
+            <span className="text-gray-600 font-medium">Playground · Tools</span>
           </div>
-          {sessionUser ? (
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-gray-600 hidden sm:block">{sessionUser.email}</span>
-              <Link
-                href="/dashboard/keys"
-                className="text-blue-600 hover:text-blue-700 font-medium transition-colors text-sm"
-              >
-                Manage Keys
-              </Link>
-            </div>
-          ) : (
+          <div className="flex items-center gap-3">
             <Link
-              href="/login"
-              className="text-blue-600 hover:text-blue-700 font-medium transition-colors"
+              href="/playground/chat"
+              className="px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
             >
-              Sign In
+              Switch to Chat →
             </Link>
-          )}
+            {sessionUser ? (
+              <>
+                <span className="text-sm text-gray-600 hidden sm:block">{sessionUser.email}</span>
+                <Link
+                  href="/dashboard/keys"
+                  className="text-blue-600 hover:text-blue-700 font-medium transition-colors text-sm"
+                >
+                  Manage Keys
+                </Link>
+              </>
+            ) : (
+              <Link
+                href="/login"
+                className="text-blue-600 hover:text-blue-700 font-medium transition-colors"
+              >
+                Sign In
+              </Link>
+            )}
+          </div>
         </div>
       </header>
 

@@ -472,3 +472,7 @@ DEFAULT_EMBEDDING=baai/bge-m3
 - Use conventional commits: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`
 - Include `Co-Authored-By: Claude` for AI-assisted commits
 - Update README.md for architectural changes
+
+## Chat Endpoint (OpenAI-compatible)
+
+`POST /api/v1/chat/completions` exposes a ReAct agent over 14 of the MCP tools as an OpenAI-compatible endpoint. Backed by `openai/gpt-oss-120b` via OpenRouter, supports streaming + non-streaming, native function calling, chain-of-thought passthrough via `reasoning_content`, and length-continuation across `finish_reason: "length"`. See `docs/api/chat-completions.md`. Playground UI at `/playground/chat`.

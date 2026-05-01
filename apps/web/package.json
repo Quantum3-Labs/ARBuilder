@@ -10,7 +10,9 @@
 		"deploy": "opennextjs-cloudflare build && wrangler deploy -c wrangler.jsonc",
 		"upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
 		"preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-		"cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts"
+		"cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts",
+		"test": "vitest run",
+		"test:watch": "vitest"
 	},
 	"dependencies": {
 		"@auth/d1-adapter": "^1.11.1",
@@ -19,6 +21,8 @@
 		"next-auth": "^5.0.0-beta.30",
 		"react": "19.1.4",
 		"react-dom": "19.1.4",
+		"react-markdown": "^10.1.0",
+		"remark-gfm": "^4.0.1",
 		"resend": "^6.6.0"
 	},
 	"devDependencies": {
@@ -32,6 +36,7 @@
 		"eslint-config-next": "15.4.6",
 		"tailwindcss": "^4",
 		"typescript": "^5",
+		"vitest": "^2.1.9",
 		"wrangler": "^4.56.0"
 	}
 }

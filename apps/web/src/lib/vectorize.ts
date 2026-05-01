@@ -141,8 +141,9 @@ export async function rerankResults(
 
   // Map back the scores to results
   const reranked: SearchResult[] = [];
-  if (response.response) {
-    for (const item of response.response) {
+  const items = (response as { response?: Array<{ id: number; score: number }> }).response;
+  if (items) {
+    for (const item of items) {
       if (item.id !== undefined && item.score !== undefined) {
         const result = results[item.id];
         if (result) {

@@ -24,7 +24,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd apps/web
-          npm install
+          npm install --legacy-peer-deps
 
       - name: Type check
         run: |
