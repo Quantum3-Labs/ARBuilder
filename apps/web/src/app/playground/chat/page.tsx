@@ -49,6 +49,7 @@ export default function ChatPlaygroundPage() {
   const [userKeys, setUserKeys] = useState<ApiKey[]>([]);
   const [authMode, setAuthMode] = useState<AuthMode>("session");
   const [apiKey, setApiKey] = useState("");
+  const [selectedKeyId, setSelectedKeyId] = useState<string>("manual");
 
   useEffect(() => {
     async function init() {
@@ -61,7 +62,9 @@ export default function ChatPlaygroundPage() {
           const keysRes = await fetch("/api/keys");
           if (keysRes.ok) {
             const keysData = (await keysRes.json()) as { keys: ApiKey[] };
-            setUserKeys(keysData.keys || []);
+            const keys = keysData.keys || [];
+            setUserKeys(keys);
+            if (keys.length > 0) setSelectedKeyId(keys[0].id);
           }
         } else {
           setAuthMode("apikey");
@@ -294,8 +297,8 @@ export default function ChatPlaygroundPage() {
           />
         </div>
       )}
-      {!sessionLoading && sessionUser && userKeys.length > 0 && (
-        <div className="bg-white border-b border-gray-100 px-4 py-2 flex items-center gap-2 justify-end max-w-5xl mx-auto w-full">
+      {!sessionLoading && sessionUser && (
+        <div className="bg-white border-b border-gray-100 px-4 py-2 flex items-center gap-2 justify-end max-w-5xl mx-auto w-full flex-wrap">
           <span className="text-xs text-gray-500">Auth:</span>
           <button
             onClick={() => setAuthMode("session")}
@@ -305,7 +308,35 @@ export default function ChatPlaygroundPage() {
             onClick={() => setAuthMode("apikey")}
             className={`text-xs px-2 py-1 rounded ${authMode === "apikey" ? "bg-blue-100 text-blue-700" : "text-gray-500 hover:bg-gray-100"}`}
           >API Key</button>
-          {authMode === "apikey" && (
+          {authMode === "apikey" && userKeys.length > 0 && (
+            <>
+              <select
+                value={selectedKeyId}
+                onChange={(e) => {
+                  setSelectedKeyId(e.target.value);
+                  if (e.target.value !== "manual") setApiKey("");
+                }}
+                className="text-xs border border-gray-200 rounded px-2 py-1 bg-white"
+              >
+                {userKeys.map((k) => (
+                  <option key={k.id} value={k.id}>{k.name || k.keyPrefix}</option>
+                ))}
+                <option value="manual">Enter key manually...</option>
+              </select>
+              {selectedKeyId === "manual" ? (
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="arb_..."
+                  className="text-xs border border-gray-200 rounded px-2 py-1 w-48"
+                />
+              ) : (
+                <span className="text-xs text-gray-400">(uses session — key shown for tracking)</span>
+              )}
+            </>
+          )}
+          {authMode === "apikey" && userKeys.length === 0 && (
             <input
               type="password"
               value={apiKey}
