@@ -5,7 +5,7 @@ OpenAI-compatible chat completions endpoint backed by a ReAct agent over ARBuild
 ## Endpoint
 
 ```
-POST https://<your-arbbuilder-host>/api/v1/chat/completions
+POST https://arbuilder.app/api/v1/chat/completions
 ```
 
 ## Authentication
@@ -152,7 +152,7 @@ If a turn hits the iteration cap, the agent runs one final no-tools wrap-up call
 ### Curl, non-streaming
 
 ```bash
-curl -X POST https://api.arbuilder.app/api/v1/chat/completions \
+curl -X POST https://arbuilder.app/api/v1/chat/completions \
   -H "Authorization: Bearer arb_xxxxx" \
   -H "Content-Type: application/json" \
   -d '{
@@ -166,7 +166,7 @@ curl -X POST https://api.arbuilder.app/api/v1/chat/completions \
 ### Curl, streaming
 
 ```bash
-curl -N -X POST https://api.arbuilder.app/api/v1/chat/completions \
+curl -N -X POST https://arbuilder.app/api/v1/chat/completions \
   -H "Authorization: Bearer arb_xxxxx" \
   -H "Content-Type: application/json" \
   -d '{
@@ -183,7 +183,7 @@ from openai import OpenAI
 
 client = OpenAI(
     api_key="arb_xxxxx",
-    base_url="https://api.arbuilder.app/api/v1",
+    base_url="https://arbuilder.app/api/v1",
 )
 
 resp = client.chat.completions.create(
@@ -220,7 +220,7 @@ import OpenAI from "openai";
 
 const client = new OpenAI({
   apiKey: "arb_xxxxx",
-  baseURL: "https://api.arbuilder.app/api/v1",
+  baseURL: "https://arbuilder.app/api/v1",
 });
 
 const stream = await client.chat.completions.create({
