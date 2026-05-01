@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { runTool, type ToolEnv, type ToolResult } from "@/lib/tools/dispatch";
+import { enforceRateLimit, rateLimitHeaders } from "@/lib/rateLimit";
 
 // MCP Protocol Types
 interface JsonRpcRequest {
@@ -633,7 +634,7 @@ const SERVER_INFO = {
 async function validateApiKey(
   request: NextRequest,
   db: D1Database
-): Promise<{ valid: boolean; keyId?: string; userId?: string; error?: string }> {
+): Promise<{ valid: boolean; keyId?: string; userId?: string; tier?: string; error?: string }> {
   const authHeader = request.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
     return { valid: false, error: "Missing or invalid Authorization header" };
@@ -654,10 +655,10 @@ async function validateApiKey(
   // Look up the key
   const keyRecord = await db
     .prepare(
-      `SELECT id, user_id FROM api_keys WHERE key_hash = ? AND revoked_at IS NULL`
+      `SELECT id, user_id, rate_limit_tier FROM api_keys WHERE key_hash = ? AND revoked_at IS NULL`
     )
     .bind(keyHash)
-    .first<{ id: string; user_id: string }>();
+    .first<{ id: string; user_id: string; rate_limit_tier: string | null }>();
 
   if (!keyRecord) {
     return { valid: false, error: "Invalid or revoked API key" };
@@ -669,7 +670,12 @@ async function validateApiKey(
     .bind(new Date().toISOString(), keyRecord.id)
     .run();
 
-  return { valid: true, keyId: keyRecord.id, userId: keyRecord.user_id };
+  return {
+    valid: true,
+    keyId: keyRecord.id,
+    userId: keyRecord.user_id,
+    tier: keyRecord.rate_limit_tier ?? "free",
+  };
 }
 
 // Log usage to database
@@ -720,9 +726,11 @@ async function processRequest(
     VECTORIZE: VectorizeIndex;
     AI: Ai;
     DB: D1Database;
+    KV: KVNamespace;
     OPENROUTER_API_KEY?: string;
   },
-  apiKeyId?: string
+  apiKeyId?: string,
+  tier: string = "free"
 ): Promise<JsonRpcResponse> {
   try {
     switch (request.method) {
@@ -772,6 +780,22 @@ async function processRequest(
               message: "Missing tool name",
             },
           };
+        }
+
+        // Per-call rate limit (skip for unauthenticated paths — those will fail on auth before reaching here).
+        if (apiKeyId) {
+          const decision = await enforceRateLimit(env.KV, `key:${apiKeyId}`, "tool", tier);
+          if (!decision.allowed) {
+            return {
+              jsonrpc: "2.0",
+              id: request.id,
+              error: {
+                code: -32002,
+                message: `Daily tool rate limit exceeded (${decision.limit}/day on tier '${decision.tier}'). Try again in ${decision.resetSeconds}s.`,
+                data: { limit: decision.limit, used: decision.used, resetSeconds: decision.resetSeconds, tier: decision.tier },
+              },
+            };
+          }
         }
 
         const startTime = Date.now();
@@ -881,15 +905,17 @@ export async function POST(request: NextRequest) {
       VECTORIZE: env.VECTORIZE,
       AI: env.AI,
       DB: env.DB,
+      KV: env.KV,
       OPENROUTER_API_KEY: env.OPENROUTER_API_KEY,
     };
+    const tier = authResult.tier ?? "free";
 
     // Handle single request or batch
     if (Array.isArray(body)) {
       // Batch request
       const responses = await Promise.all(
         body.map((req: JsonRpcRequest) =>
-          processRequest(req, envObj, authResult.keyId)
+          processRequest(req, envObj, authResult.keyId, tier)
         )
       );
       return NextResponse.json(responses);
@@ -898,7 +924,8 @@ export async function POST(request: NextRequest) {
       const response = await processRequest(
         body as JsonRpcRequest,
         envObj,
-        authResult.keyId
+        authResult.keyId,
+        tier
       );
       return NextResponse.json(response);
     }

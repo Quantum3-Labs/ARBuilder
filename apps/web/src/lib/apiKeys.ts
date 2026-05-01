@@ -13,6 +13,7 @@ export interface ApiKey {
   createdAt: string;
   lastUsedAt: string | null;
   revokedAt: string | null;
+  rateLimitTier?: string;
 }
 
 export interface ApiKeyWithSecret extends ApiKey {
@@ -98,7 +99,8 @@ export async function listApiKeys(
   const result = await db
     .prepare(
       `SELECT id, user_id as userId, key_prefix as keyPrefix, name,
-              created_at as createdAt, last_used_at as lastUsedAt, revoked_at as revokedAt
+              created_at as createdAt, last_used_at as lastUsedAt, revoked_at as revokedAt,
+              rate_limit_tier as rateLimitTier
        FROM api_keys
        WHERE user_id = ? AND revoked_at IS NULL
        ORDER BY created_at DESC`

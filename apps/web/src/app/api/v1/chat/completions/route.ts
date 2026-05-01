@@ -12,6 +12,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { validateRequest } from "@/lib/auth/validateRequest";
 import { runAgentNonStreaming, runAgentStreaming } from "@/lib/chat/agent";
 import { encodeSSEChunk, encodeSSEDone, encodeSSEError } from "@/lib/chat/streaming";
+import { enforceRateLimit, rateLimitHeaders, subjectFor } from "@/lib/rateLimit";
 import type {
   ChatCompletionRequest,
   ChatCompletionResponse,
@@ -26,9 +27,10 @@ function errorResponse(
   type: string,
   status: number,
   code?: string,
+  extraHeaders?: Record<string, string>,
 ): NextResponse {
   const body: OpenAIErrorBody = { error: { message, type, code: code ?? null } };
-  return NextResponse.json(body, { status });
+  return NextResponse.json(body, { status, headers: extraHeaders });
 }
 
 async function logChatUsage(
@@ -74,6 +76,23 @@ export async function POST(request: NextRequest) {
       "invalid_api_key",
       401,
     );
+  }
+
+  // Rate limit — per-key for arb_ keys, per-user for session auth, bypass for admin.
+  const subj = subjectFor(auth);
+  let rlHeaders: Record<string, string> = {};
+  if (subj) {
+    const decision = await enforceRateLimit(env.KV, subj.subject, "chat", subj.tier);
+    rlHeaders = rateLimitHeaders(decision);
+    if (!decision.allowed) {
+      return errorResponse(
+        `Daily chat rate limit exceeded (${decision.limit}/day on tier '${decision.tier}'). Try again in ${decision.resetSeconds}s.`,
+        "rate_limit_exceeded",
+        429,
+        undefined,
+        rlHeaders,
+      );
+    }
   }
 
   // Parse body.
@@ -159,6 +178,7 @@ export async function POST(request: NextRequest) {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
+        ...rlHeaders,
       },
     });
   }
@@ -187,7 +207,7 @@ export async function POST(request: NextRequest) {
         env.DB, apiKeyId, result.toolCallNames, result.usage.total_tokens, Date.now() - start, true,
       );
     }
-    return NextResponse.json(response);
+    return NextResponse.json(response, { headers: rlHeaders });
   } catch (e) {
     const msg = (e as Error).message || String(e);
     if (apiKeyId) {

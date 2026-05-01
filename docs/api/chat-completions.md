@@ -129,15 +129,34 @@ OpenAI shape:
 |---|---|---|
 | 400 | `invalid_request_error` | Body missing `messages` or invalid JSON. |
 | 401 | `invalid_api_key` | Missing or invalid `Authorization` header. |
-| 429 | `rate_limit_exceeded` | OpenRouter upstream rate limit. |
+| 429 | `rate_limit_exceeded` | Daily quota for the key's tier exhausted. Response carries `Retry-After` and `X-RateLimit-*` headers. |
 | 500 | `internal_error` | Server misconfiguration (missing OpenRouter key) or pre-stream failure. |
 | 502 | `upstream_error` | OpenRouter returned a non-retryable 4xx/5xx. |
 
 Mid-stream errors are surfaced as a `data:` frame, not an HTTP status change.
 
-## Limits
+## Rate limits
 
-| Limit | Value |
+Per-key daily quota. Counters reset at UTC midnight. Every response carries:
+
+- `X-RateLimit-Limit` — daily cap for this category (`chat`)
+- `X-RateLimit-Remaining` — calls left today
+- `X-RateLimit-Reset` — seconds until reset
+- `X-RateLimit-Tier` — your tier (`free`, `pro`, `unlimited`)
+
+A 429 additionally carries `Retry-After: <seconds>`.
+
+| Tier | Chat / day | Tools / day |
+|---|---|---|
+| `free` (default) | 30 | 100 |
+| `pro` | 300 | 1000 |
+| `unlimited` | 10 000 | 10 000 |
+
+To request a higher tier, ping the admin — tier is bumped per key from the admin dashboard. Session-auth requests (playground) always count under `free` per user.
+
+## Per-turn caps
+
+| Cap | Value |
 |---|---|
 | Max ReAct iterations per turn | 6 |
 | Max length-continuations per iteration | 3 |

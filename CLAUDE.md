@@ -169,6 +169,16 @@ ruff check .
 - **abi_extractor.py**: Regex-based ABI extraction from Stylus Rust code (no Docker needed)
 - **compiler_verifier.py**: Docker-based `cargo check` with structured error parsing and LLM fix loop
 
+### Rate Limits (`apps/web/src/lib/rateLimit.ts`)
+- Per-day, per-key (or per-user for session auth) quotas backed by KV counters at `rl:{subject}:{category}:{YYYY-MM-DD}` with 48h TTL.
+- Tiers (code-defined; only the name lives in `api_keys.rate_limit_tier`):
+  - `free` (default): 30 chat / 100 tool per day
+  - `pro`: 300 chat / 1000 tool per day
+  - `unlimited`: 10K / 10K (effectively uncapped)
+- Enforcement points: `/api/v1/chat/completions`, every `/api/v1/tools/*` route, and `tools/call` on `/mcp`. Admin requests (`AUTH_SECRET` Bearer) bypass.
+- Headers on every response: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `X-RateLimit-Tier`. 429 also carries `Retry-After`.
+- Tier management: `GET/PATCH /api/admin/rate-limits` (admin secret), surfaced in `/dashboard/admin` under the "Rate Limits" tab.
+
 ### Worker-Native Ingestion Pipeline (`apps/web/src/lib/`)
 - **scraper.ts**: Web documentation scraping via HTMLRewriter + regex HTML-to-markdown
 - **github.ts**: GitHub repo scraping via Trees API + Contents API (no tarball)

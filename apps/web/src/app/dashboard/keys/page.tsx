@@ -8,6 +8,7 @@ interface ApiKey {
   name: string | null;
   createdAt: string;
   lastUsedAt: string | null;
+  rateLimitTier?: string;
 }
 
 export default function ApiKeysPage() {
@@ -257,6 +258,20 @@ export default function ApiKeysPage() {
                     </code>
                     {key.name && (
                       <span className="text-sm font-medium text-gray-700">{key.name}</span>
+                    )}
+                    {key.rateLimitTier && (
+                      <span
+                        className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                          key.rateLimitTier === "unlimited"
+                            ? "bg-purple-50 text-purple-700"
+                            : key.rateLimitTier === "pro"
+                            ? "bg-blue-50 text-blue-700"
+                            : "bg-gray-100 text-gray-600"
+                        }`}
+                        title="Daily rate-limit tier — contact support to upgrade"
+                      >
+                        {key.rateLimitTier}
+                      </span>
                     )}
                   </div>
                   <div className="text-sm text-gray-500 mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
