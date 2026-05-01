@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface SessionUser {
   id: string;
@@ -383,7 +385,78 @@ export default function ChatPlaygroundPage() {
                     ))}
                   </div>
                 )}
-                <div className="whitespace-pre-wrap text-sm">{m.content || (m.streaming ? "…" : "")}</div>
+                {m.role === "assistant" ? (
+                  m.content ? (
+                    <div className="text-sm chat-md">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          code({ className, children, ...props }: React.ComponentPropsWithoutRef<"code"> & { inline?: boolean }) {
+                            const isInline = (props as { inline?: boolean }).inline;
+                            if (isInline) {
+                              return (
+                                <code className="bg-gray-100 text-pink-600 px-1 py-0.5 rounded text-xs font-mono">
+                                  {children}
+                                </code>
+                              );
+                            }
+                            return (
+                              <pre className="bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto text-xs my-2">
+                                <code className={className}>{children}</code>
+                              </pre>
+                            );
+                          },
+                          a({ href, children }) {
+                            return (
+                              <a href={href} target="_blank" rel="noreferrer" className="text-blue-600 underline">
+                                {children}
+                              </a>
+                            );
+                          },
+                          ul({ children }) {
+                            return <ul className="list-disc list-outside ml-5 my-2 space-y-1">{children}</ul>;
+                          },
+                          ol({ children }) {
+                            return <ol className="list-decimal list-outside ml-5 my-2 space-y-1">{children}</ol>;
+                          },
+                          li({ children }) {
+                            return <li className="leading-relaxed">{children}</li>;
+                          },
+                          h1({ children }) {
+                            return <h1 className="text-lg font-bold mt-3 mb-2">{children}</h1>;
+                          },
+                          h2({ children }) {
+                            return <h2 className="text-base font-bold mt-3 mb-2">{children}</h2>;
+                          },
+                          h3({ children }) {
+                            return <h3 className="text-sm font-bold mt-2 mb-1">{children}</h3>;
+                          },
+                          p({ children }) {
+                            return <p className="my-2 leading-relaxed">{children}</p>;
+                          },
+                          blockquote({ children }) {
+                            return <blockquote className="border-l-4 border-gray-200 pl-3 italic text-gray-600 my-2">{children}</blockquote>;
+                          },
+                          table({ children }) {
+                            return <table className="border-collapse border border-gray-200 my-2 text-xs">{children}</table>;
+                          },
+                          th({ children }) {
+                            return <th className="border border-gray-200 px-2 py-1 bg-gray-50 font-semibold text-left">{children}</th>;
+                          },
+                          td({ children }) {
+                            return <td className="border border-gray-200 px-2 py-1">{children}</td>;
+                          },
+                        }}
+                      >
+                        {m.content}
+                      </ReactMarkdown>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-400">{m.streaming ? "…" : ""}</div>
+                  )
+                ) : (
+                  <div className="whitespace-pre-wrap text-sm">{m.content}</div>
+                )}
               </div>
             </div>
           ))}
