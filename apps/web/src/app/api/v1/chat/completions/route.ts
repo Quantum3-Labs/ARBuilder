@@ -85,8 +85,10 @@ export async function POST(request: NextRequest) {
     const decision = await enforceRateLimit(env.KV, subj.subject, "chat", subj.tier);
     rlHeaders = rateLimitHeaders(decision);
     if (!decision.allowed) {
+      const denyWindow = decision.exceededWindow === "minute" ? decision.minute : decision.day;
+      const label = decision.exceededWindow === "minute" ? "per-minute" : "per-day";
       return errorResponse(
-        `Daily chat rate limit exceeded (${decision.limit}/day on tier '${decision.tier}'). Try again in ${decision.resetSeconds}s.`,
+        `Chat rate limit exceeded (${label}: ${denyWindow.limit} on tier '${decision.tier}'). Try again in ${denyWindow.resetSeconds}s.`,
         "rate_limit_exceeded",
         429,
         undefined,

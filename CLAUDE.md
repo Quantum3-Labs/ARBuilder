@@ -170,13 +170,14 @@ ruff check .
 - **compiler_verifier.py**: Docker-based `cargo check` with structured error parsing and LLM fix loop
 
 ### Rate Limits (`apps/web/src/lib/rateLimit.ts`)
-- Per-day, per-key (or per-user for session auth) quotas backed by KV counters at `rl:{subject}:{category}:{YYYY-MM-DD}` with 48h TTL.
+- Two-window enforcement (per-minute burst + per-day total), per-key (or per-user for session auth), per-category (chat and tool counters are independent). Whichever window is exhausted first triggers 429.
+- KV keys: `rl:{subject}:{category}:m:{YYYY-MM-DDTHH:MM}` (TTL 120s) and `rl:{subject}:{category}:d:{YYYY-MM-DD}` (TTL 48h).
 - Tiers (code-defined; only the name lives in `api_keys.rate_limit_tier`):
-  - `free` (default): 30 chat / 100 tool per day
-  - `pro`: 300 chat / 1000 tool per day
-  - `unlimited`: 10K / 10K (effectively uncapped)
+  - `free` (default): 100/min, 1000/day
+  - `pro`: 500/min, 10000/day
+  - `unlimited`: 10K/min, 1M/day (effectively uncapped)
 - Enforcement points: `/api/v1/chat/completions`, every `/api/v1/tools/*` route, and `tools/call` on `/mcp`. Admin requests (`AUTH_SECRET` Bearer) bypass.
-- Headers on every response: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `X-RateLimit-Tier`. 429 also carries `Retry-After`.
+- Headers on every response: bottleneck `X-RateLimit-Limit/-Remaining/-Reset`, plus per-window `-Minute` and `-Day` variants, plus `X-RateLimit-Tier`. 429 also carries `Retry-After` for the denying window.
 - Tier management: `GET/PATCH /api/admin/rate-limits` (admin secret), surfaced in `/dashboard/admin` under the "Rate Limits" tab.
 
 ### Worker-Native Ingestion Pipeline (`apps/web/src/lib/`)

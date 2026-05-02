@@ -137,20 +137,22 @@ Mid-stream errors are surfaced as a `data:` frame, not an HTTP status change.
 
 ## Rate limits
 
-Per-key daily quota. Counters reset at UTC midnight. Every response carries:
+Two windows, both enforced per key per category (chat and tool counters are independent). The minute window catches abuse bursts; the day window caps total cost. Whichever window is exhausted first triggers a 429 — clients should respect `Retry-After`.
 
-- `X-RateLimit-Limit` — daily cap for this category (`chat`)
-- `X-RateLimit-Remaining` — calls left today
-- `X-RateLimit-Reset` — seconds until reset
+| Tier | Per-minute (each category) | Per-day (each category) |
+|---|---|---|
+| `free` (default) | 100 | 1000 |
+| `pro` | 500 | 10 000 |
+| `unlimited` | 10 000 | 1 000 000 |
+
+Headers on every response:
+
+- `X-RateLimit-Limit` / `-Remaining` / `-Reset` — bottleneck window (whichever has fewer calls left)
+- `X-RateLimit-Limit-Minute` / `-Remaining-Minute` / `-Reset-Minute`
+- `X-RateLimit-Limit-Day` / `-Remaining-Day` / `-Reset-Day`
 - `X-RateLimit-Tier` — your tier (`free`, `pro`, `unlimited`)
 
-A 429 additionally carries `Retry-After: <seconds>`.
-
-| Tier | Chat / day | Tools / day |
-|---|---|---|
-| `free` (default) | 30 | 100 |
-| `pro` | 300 | 1000 |
-| `unlimited` | 10 000 | 10 000 |
+A 429 additionally carries `Retry-After: <seconds>` for the window that denied the request.
 
 To request a higher tier, ping the admin — tier is bumped per key from the admin dashboard. Session-auth requests (playground) always count under `free` per user.
 

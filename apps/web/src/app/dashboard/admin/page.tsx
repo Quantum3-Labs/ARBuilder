@@ -538,7 +538,7 @@ interface RateLimitKey {
   keyPrefix: string;
   name: string | null;
   tier: string;
-  limits: { chat: number; tool: number };
+  limits: { perMinute: number; perDay: number };
   createdAt: string;
   lastUsedAt: string | null;
   revokedAt: string | null;
@@ -589,7 +589,7 @@ function RateLimitsPanel({ adminSecret }: { adminSecret: string }) {
         body: JSON.stringify({ keyId, tier }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as { limits: { chat: number; tool: number } };
+      const data = (await res.json()) as { limits: { perMinute: number; perDay: number } };
       setKeys((prev) =>
         prev.map((k) => (k.id === keyId ? { ...k, tier, limits: data.limits } : k)),
       );
@@ -618,10 +618,10 @@ function RateLimitsPanel({ adminSecret }: { adminSecret: string }) {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Rate Limit Tiers</h1>
           <p className="text-gray-600 mt-1 text-sm">
-            Per-key daily quotas. Tiers:{" "}
-            <span className="font-mono">free</span> = 30 chat / 100 tool,{" "}
-            <span className="font-mono">pro</span> = 300 / 1000,{" "}
-            <span className="font-mono">unlimited</span> = 10K / 10K. Counters reset at UTC midnight.
+            Per-key two-window quotas (burst per UTC minute + total per UTC day), applied separately to chat and tool calls. Tiers:{" "}
+            <span className="font-mono">free</span> = 100/min, 1000/day;{" "}
+            <span className="font-mono">pro</span> = 500/min, 10K/day;{" "}
+            <span className="font-mono">unlimited</span> = 10K/min, 1M/day.
           </p>
         </div>
         <button

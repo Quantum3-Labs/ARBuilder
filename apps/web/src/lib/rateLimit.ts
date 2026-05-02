@@ -1,34 +1,37 @@
 /**
- * KV-backed daily rate limits keyed by API key (or userId for session auth).
+ * Two-window rate limiter: per-minute burst + per-day total.
  *
- * Counters live at `rl:{subject}:{category}:{YYYY-MM-DD}` with a 48h TTL so
- * day-rollover gracefully expires. Admin requests bypass entirely. Each tool
- * route + the chat route calls `enforceRateLimit()` once after auth.
+ * Both windows must allow a request; whichever is exhausted first triggers
+ * the 429. Counters are KV-backed, keyed per subject (API key id, or user
+ * id for session auth) and per category (chat or tool). Admin Bearer auth
+ * bypasses entirely.
  *
- * Tiers are intentionally code-defined (not in the DB) so they can be tuned
- * without a migration; api_keys.rate_limit_tier just stores the name.
+ *   minute counter:  rl:{subject}:{category}:m:{YYYY-MM-DDTHH:MM}  TTL 120s
+ *   daily counter:   rl:{subject}:{category}:d:{YYYY-MM-DD}        TTL 48h
+ *
+ * KV is eventually consistent across regions, so a small overshoot is
+ * possible under bursty traffic. That's acceptable for a quota.
  */
 
 export type RateLimitCategory = "chat" | "tool";
 export type RateLimitTier = "free" | "pro" | "unlimited";
 
 interface TierLimits {
-  chat: number;
-  tool: number;
+  /** Burst limit per UTC minute. */
+  perMinute: number;
+  /** Total per UTC day. */
+  perDay: number;
 }
 
 /**
- * Daily quota per tier per category. Tuned to match worst-case OpenRouter
- * spend on `openai/gpt-oss-120b` (chat ReAct loop is the dominant cost).
- *
- *   free: ~$1.50/key/day worst case (chat-heavy)
- *   pro:  ~$15/key/day worst case
- *   unlimited: effectively uncapped
+ * Per-tier limits. Applied identically to both `chat` and `tool` categories
+ * (each category maintains its own counters). Tuned to allow normal API usage
+ * while putting a worst-case daily cost ceiling on each free key.
  */
 const TIER_LIMITS: Record<RateLimitTier, TierLimits> = {
-  free: { chat: 30, tool: 100 },
-  pro: { chat: 300, tool: 1000 },
-  unlimited: { chat: 10000, tool: 10000 },
+  free: { perMinute: 100, perDay: 1000 },
+  pro: { perMinute: 500, perDay: 10000 },
+  unlimited: { perMinute: 10000, perDay: 1000000 },
 };
 
 export function getLimitsForTier(tier: string): TierLimits {
@@ -37,17 +40,28 @@ export function getLimitsForTier(tier: string): TierLimits {
 
 export interface RateLimitDecision {
   allowed: boolean;
-  limit: number;
-  remaining: number;
-  used: number;
-  /** Seconds until counter resets (next UTC midnight). */
-  resetSeconds: number;
+  /** Which window denied the request, if any. */
+  exceededWindow?: "minute" | "day";
   category: RateLimitCategory;
   tier: string;
+  minute: { limit: number; remaining: number; used: number; resetSeconds: number };
+  day: { limit: number; remaining: number; used: number; resetSeconds: number };
 }
 
-function todayKey(): string {
+function minuteKey(): string {
+  return new Date().toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM"
+}
+
+function dayKey(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function secondsUntilNextUtcMinute(): number {
+  const now = new Date();
+  const next = new Date(now);
+  next.setUTCSeconds(0, 0);
+  next.setUTCMinutes(next.getUTCMinutes() + 1);
+  return Math.max(1, Math.floor((next.getTime() - now.getTime()) / 1000));
 }
 
 function secondsUntilNextUtcMidnight(): number {
@@ -57,15 +71,9 @@ function secondsUntilNextUtcMidnight(): number {
 }
 
 /**
- * Read-and-increment the daily counter for `subject` in `category`.
- *
- * Returns a decision before mutation: if the request is over the limit, the
- * counter is NOT incremented (so a flood of denied requests doesn't push the
- * number arbitrarily high). On allow, increments by 1 and writes back with a
- * 48-hour TTL.
- *
- * KV is eventually consistent across regions — a small overshoot is possible
- * under bursty traffic, which is acceptable for a per-day quota.
+ * Check both windows, deny if either is over the limit, otherwise increment
+ * both. On deny, neither counter is incremented (so a flood of denied requests
+ * doesn't push either number arbitrarily high).
  */
 export async function enforceRateLimit(
   kv: KVNamespace,
@@ -73,52 +81,70 @@ export async function enforceRateLimit(
   category: RateLimitCategory,
   tier: string,
 ): Promise<RateLimitDecision> {
-  const limits = getLimitsForTier(tier);
-  const limit = limits[category];
-  const day = todayKey();
-  const key = `rl:${subject}:${category}:${day}`;
+  const { perMinute, perDay } = getLimitsForTier(tier);
+  const mKey = `rl:${subject}:${category}:m:${minuteKey()}`;
+  const dKey = `rl:${subject}:${category}:d:${dayKey()}`;
+  const minResetSec = secondsUntilNextUtcMinute();
+  const dayResetSec = secondsUntilNextUtcMidnight();
 
-  const raw = await kv.get(key);
-  const used = raw ? parseInt(raw, 10) || 0 : 0;
+  const [mRaw, dRaw] = await Promise.all([kv.get(mKey), kv.get(dKey)]);
+  const mUsed = mRaw ? parseInt(mRaw, 10) || 0 : 0;
+  const dUsed = dRaw ? parseInt(dRaw, 10) || 0 : 0;
 
-  if (used >= limit) {
+  const overMinute = mUsed >= perMinute;
+  const overDay = dUsed >= perDay;
+
+  if (overMinute || overDay) {
     return {
       allowed: false,
-      limit,
-      remaining: 0,
-      used,
-      resetSeconds: secondsUntilNextUtcMidnight(),
+      exceededWindow: overMinute ? "minute" : "day",
       category,
       tier,
+      minute: { limit: perMinute, remaining: Math.max(0, perMinute - mUsed), used: mUsed, resetSeconds: minResetSec },
+      day: { limit: perDay, remaining: Math.max(0, perDay - dUsed), used: dUsed, resetSeconds: dayResetSec },
     };
   }
 
-  // 48h TTL — survives day rollover so late requests on the prior day
-  // don't double-count, then auto-expires.
-  await kv.put(key, String(used + 1), { expirationTtl: 60 * 60 * 48 });
+  // Increment both (best-effort parallel; KV is eventually consistent, small overshoot is acceptable).
+  await Promise.all([
+    kv.put(mKey, String(mUsed + 1), { expirationTtl: 120 }),
+    kv.put(dKey, String(dUsed + 1), { expirationTtl: 60 * 60 * 48 }),
+  ]);
 
   return {
     allowed: true,
-    limit,
-    remaining: limit - (used + 1),
-    used: used + 1,
-    resetSeconds: secondsUntilNextUtcMidnight(),
     category,
     tier,
+    minute: { limit: perMinute, remaining: perMinute - (mUsed + 1), used: mUsed + 1, resetSeconds: minResetSec },
+    day: { limit: perDay, remaining: perDay - (dUsed + 1), used: dUsed + 1, resetSeconds: dayResetSec },
   };
 }
 
 /**
- * Standard rate-limit response headers, matching the Cloudflare/Stripe convention.
+ * Standard rate-limit response headers. Reports both windows so clients can
+ * see which one is closer to exhaustion. The single-valued headers
+ * (X-RateLimit-Limit / -Remaining / -Reset) reflect the *bottleneck* —
+ * whichever window has fewer remaining calls — for clients that only check
+ * the canonical names. Retry-After on a 429 uses the bottleneck window.
  */
 export function rateLimitHeaders(d: RateLimitDecision): Record<string, string> {
+  const bottleneck = d.minute.remaining <= d.day.remaining ? d.minute : d.day;
   const headers: Record<string, string> = {
-    "X-RateLimit-Limit": String(d.limit),
-    "X-RateLimit-Remaining": String(d.remaining),
-    "X-RateLimit-Reset": String(d.resetSeconds),
+    "X-RateLimit-Limit": String(bottleneck.limit),
+    "X-RateLimit-Remaining": String(bottleneck.remaining),
+    "X-RateLimit-Reset": String(bottleneck.resetSeconds),
     "X-RateLimit-Tier": d.tier,
+    "X-RateLimit-Limit-Minute": String(d.minute.limit),
+    "X-RateLimit-Remaining-Minute": String(d.minute.remaining),
+    "X-RateLimit-Reset-Minute": String(d.minute.resetSeconds),
+    "X-RateLimit-Limit-Day": String(d.day.limit),
+    "X-RateLimit-Remaining-Day": String(d.day.remaining),
+    "X-RateLimit-Reset-Day": String(d.day.resetSeconds),
   };
-  if (!d.allowed) headers["Retry-After"] = String(d.resetSeconds);
+  if (!d.allowed) {
+    const denyWindow = d.exceededWindow === "minute" ? d.minute : d.day;
+    headers["Retry-After"] = String(denyWindow.resetSeconds);
+  }
   return headers;
 }
 
@@ -144,12 +170,7 @@ export function subjectFor(auth: { keyId: string | null; userId: string | null; 
 
 /**
  * One-shot helper for `/api/v1/tools/*` routes. Returns either a 429 response
- * (when over limit) or a `headers` map to attach to the success response.
- *
- * Usage:
- *   const rl = await checkToolRateLimit(env.KV, auth);
- *   if ("response" in rl) return rl.response;
- *   return NextResponse.json(result, { headers: rl.headers });
+ * (when over either limit) or a `headers` map to attach to the success response.
  */
 export async function checkToolRateLimit(
   kv: KVNamespace,
@@ -160,12 +181,15 @@ export async function checkToolRateLimit(
   const decision = await enforceRateLimit(kv, subj.subject, "tool", subj.tier);
   const headers = rateLimitHeaders(decision);
   if (!decision.allowed) {
+    const denyWindow = decision.exceededWindow === "minute" ? decision.minute : decision.day;
+    const windowLabel = decision.exceededWindow === "minute" ? "per-minute" : "per-day";
     const body = {
-      error: `Daily tool rate limit exceeded (${decision.limit}/day on tier '${decision.tier}'). Try again in ${decision.resetSeconds}s.`,
+      error: `Tool rate limit exceeded (${windowLabel}: ${denyWindow.limit} on tier '${decision.tier}'). Try again in ${denyWindow.resetSeconds}s.`,
       type: "rate_limit_exceeded",
-      limit: decision.limit,
-      used: decision.used,
-      resetSeconds: decision.resetSeconds,
+      window: decision.exceededWindow,
+      limit: denyWindow.limit,
+      used: denyWindow.used,
+      resetSeconds: denyWindow.resetSeconds,
       tier: decision.tier,
     };
     return {

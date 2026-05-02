@@ -786,13 +786,21 @@ async function processRequest(
         if (apiKeyId) {
           const decision = await enforceRateLimit(env.KV, `key:${apiKeyId}`, "tool", tier);
           if (!decision.allowed) {
+            const denyWindow = decision.exceededWindow === "minute" ? decision.minute : decision.day;
+            const label = decision.exceededWindow === "minute" ? "per-minute" : "per-day";
             return {
               jsonrpc: "2.0",
               id: request.id,
               error: {
                 code: -32002,
-                message: `Daily tool rate limit exceeded (${decision.limit}/day on tier '${decision.tier}'). Try again in ${decision.resetSeconds}s.`,
-                data: { limit: decision.limit, used: decision.used, resetSeconds: decision.resetSeconds, tier: decision.tier },
+                message: `Tool rate limit exceeded (${label}: ${denyWindow.limit} on tier '${decision.tier}'). Try again in ${denyWindow.resetSeconds}s.`,
+                data: {
+                  window: decision.exceededWindow,
+                  limit: denyWindow.limit,
+                  used: denyWindow.used,
+                  resetSeconds: denyWindow.resetSeconds,
+                  tier: decision.tier,
+                },
               },
             };
           }

@@ -60,19 +60,22 @@ export async function GET(request: NextRequest) {
       .bind(since)
       .all<KeyRow>();
 
-    const keys = (result.results ?? []).map((r) => ({
-      id: r.id,
-      userId: r.user_id,
-      userEmail: r.user_email,
-      keyPrefix: r.key_prefix,
-      name: r.name,
-      tier: r.rate_limit_tier,
-      limits: getLimitsForTier(r.rate_limit_tier),
-      createdAt: r.created_at,
-      lastUsedAt: r.last_used_at,
-      revokedAt: r.revoked_at,
-      calls24h: r.calls_24h,
-    }));
+    const keys = (result.results ?? []).map((r) => {
+      const lim = getLimitsForTier(r.rate_limit_tier);
+      return {
+        id: r.id,
+        userId: r.user_id,
+        userEmail: r.user_email,
+        keyPrefix: r.key_prefix,
+        name: r.name,
+        tier: r.rate_limit_tier,
+        limits: { perMinute: lim.perMinute, perDay: lim.perDay },
+        createdAt: r.created_at,
+        lastUsedAt: r.last_used_at,
+        revokedAt: r.revoked_at,
+        calls24h: r.calls_24h,
+      };
+    });
 
     return NextResponse.json({ tiers: VALID_TIERS, keys });
   } catch (e) {
@@ -111,11 +114,12 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Key not found" }, { status: 404 });
     }
 
+    const lim = getLimitsForTier(body.tier);
     return NextResponse.json({
       ok: true,
       keyId: body.keyId,
       tier: body.tier,
-      limits: getLimitsForTier(body.tier),
+      limits: { perMinute: lim.perMinute, perDay: lim.perDay },
     });
   } catch (e) {
     console.error("admin/rate-limits PATCH failed:", e);
