@@ -129,15 +129,67 @@ OpenAI shape:
 |---|---|---|
 | 400 | `invalid_request_error` | Body missing `messages` or invalid JSON. |
 | 401 | `invalid_api_key` | Missing or invalid `Authorization` header. |
-| 429 | `rate_limit_exceeded` | OpenRouter upstream rate limit. |
+| 429 | `rate_limit_exceeded` | Daily quota for the key's tier exhausted. Response carries `Retry-After` and `X-RateLimit-*` headers. |
 | 500 | `internal_error` | Server misconfiguration (missing OpenRouter key) or pre-stream failure. |
 | 502 | `upstream_error` | OpenRouter returned a non-retryable 4xx/5xx. |
 
 Mid-stream errors are surfaced as a `data:` frame, not an HTTP status change.
 
-## Limits
+## Rate limits
 
-| Limit | Value |
+Two windows, both enforced per key per category (chat and tool counters are independent). The minute window catches abuse bursts; the day window caps total cost. Whichever window is exhausted first triggers a 429 — clients should respect `Retry-After`.
+
+| Tier | Per-minute (each category) | Per-day (each category) |
+|---|---|---|
+| `free` (default) | 100 | 1000 |
+| `pro` | 500 | 10 000 |
+| `unlimited` | 10 000 | 1 000 000 |
+
+Headers on every response:
+
+- `X-RateLimit-Limit` / `-Remaining` / `-Reset` — bottleneck window (whichever has fewer calls left)
+- `X-RateLimit-Limit-Minute` / `-Remaining-Minute` / `-Reset-Minute`
+- `X-RateLimit-Limit-Day` / `-Remaining-Day` / `-Reset-Day`
+- `X-RateLimit-Tier` — your tier (`free`, `pro`, `unlimited`)
+
+A 429 additionally carries `Retry-After: <seconds>` for the window that denied the request.
+
+To request a higher tier, ping the admin — tier is bumped per key from the admin dashboard. Session-auth requests (playground) always count under `free` per user.
+
+### Checking usage without burning a slot
+
+```
+GET /api/v1/usage
+Authorization: Bearer arb_xxxxx
+```
+
+Returns the current rate-limit state for the calling key. This endpoint does **not** increment counters, so polling it is free.
+
+```json
+{
+  "tier": "free",
+  "admin": false,
+  "chat": {
+    "minute": { "limit": 100, "remaining": 99, "used": 1, "resetSeconds": 12 },
+    "day":    { "limit": 1000, "remaining": 999, "used": 1, "resetSeconds": 74012 }
+  },
+  "tool": {
+    "minute": { "limit": 100, "remaining": 100, "used": 0, "resetSeconds": 12 },
+    "day":    { "limit": 1000, "remaining": 1000, "used": 0, "resetSeconds": 74012 }
+  },
+  "recent": {
+    "calls24h": 17,
+    "lastCallAt": "2026-05-02T10:23:45.000Z",
+    "successRate": 1.0
+  }
+}
+```
+
+`recent` is sourced from `usage_logs` over the last 24h and is only populated for API-key auth (session-auth requests don't have a `keyId` to filter on, so `recent` is `null`).
+
+## Per-turn caps
+
+| Cap | Value |
 |---|---|
 | Max ReAct iterations per turn | 6 |
 | Max length-continuations per iteration | 3 |

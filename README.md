@@ -561,7 +561,7 @@ https://arbuilder.app/mcp
 
 - Requires `arb_` API key from dashboard
 - Usage tracked per API key
-- Rate limited per free tier (100 calls/day)
+- Rate limited per tier with two windows (burst per minute + total per day). Free tier: 100 req/min and 1000 req/day, applied separately to chat and tool calls. Admin can promote keys to `pro` (500/min, 10K/day) or `unlimited` from the admin dashboard. Every response carries `X-RateLimit-*` headers.
 
 ### Chat Completions API (OpenAI-compatible)
 

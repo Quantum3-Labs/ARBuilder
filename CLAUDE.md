@@ -169,6 +169,18 @@ ruff check .
 - **abi_extractor.py**: Regex-based ABI extraction from Stylus Rust code (no Docker needed)
 - **compiler_verifier.py**: Docker-based `cargo check` with structured error parsing and LLM fix loop
 
+### Rate Limits (`apps/web/src/lib/rateLimit.ts`)
+- Two-window enforcement (per-minute burst + per-day total), per-key (or per-user for session auth), per-category (chat and tool counters are independent). Whichever window is exhausted first triggers 429.
+- KV keys: `rl:{subject}:{category}:m:{YYYY-MM-DDTHH:MM}` (TTL 120s) and `rl:{subject}:{category}:d:{YYYY-MM-DD}` (TTL 48h).
+- Tiers (code-defined; only the name lives in `api_keys.rate_limit_tier`):
+  - `free` (default): 100/min, 1000/day
+  - `pro`: 500/min, 10000/day
+  - `unlimited`: 10K/min, 1M/day (effectively uncapped)
+- Enforcement points: `/api/v1/chat/completions`, every `/api/v1/tools/*` route, and `tools/call` on `/mcp`. Admin requests (`AUTH_SECRET` Bearer) bypass.
+- Headers on every response: bottleneck `X-RateLimit-Limit/-Remaining/-Reset`, plus per-window `-Minute` and `-Day` variants, plus `X-RateLimit-Tier`. 429 also carries `Retry-After` for the denying window.
+- `GET /api/v1/usage` returns current counter state without incrementing — for client-side planning.
+- Tier management: `GET/PATCH /api/admin/rate-limits` (admin secret), surfaced in `/dashboard/admin` under the "Rate Limits" tab.
+
 ### Worker-Native Ingestion Pipeline (`apps/web/src/lib/`)
 - **scraper.ts**: Web documentation scraping via HTMLRewriter + regex HTML-to-markdown
 - **github.ts**: GitHub repo scraping via Trees API + Contents API (no tarball)

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 interface ApiKey {
   id: string;
@@ -8,10 +8,27 @@ interface ApiKey {
   name: string | null;
   createdAt: string;
   lastUsedAt: string | null;
+  rateLimitTier?: string;
+}
+
+interface WindowState {
+  limit: number;
+  remaining: number;
+  used: number;
+  resetSeconds: number;
+}
+
+interface KeyUsage {
+  tier: string;
+  limits: { perMinute: number; perDay: number };
+  chat: { minute: WindowState; day: WindowState };
+  tool: { minute: WindowState; day: WindowState };
+  recent: { calls24h: number; lastCallAt: string | null; successRate: number | null };
 }
 
 export default function ApiKeysPage() {
   const [keys, setKeys] = useState<ApiKey[]>([]);
+  const [usage, setUsage] = useState<Record<string, KeyUsage>>({});
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
@@ -19,11 +36,7 @@ export default function ApiKeysPage() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    fetchKeys();
-  }, []);
-
-  async function fetchKeys() {
+  const fetchKeys = useCallback(async () => {
     try {
       const res = await fetch("/api/keys");
       const data = (await res.json()) as { keys?: ApiKey[] };
@@ -33,7 +46,25 @@ export default function ApiKeysPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
+
+  const fetchUsage = useCallback(async () => {
+    try {
+      const res = await fetch("/api/keys/usage");
+      if (!res.ok) return;
+      const data = (await res.json()) as { usage: Record<string, KeyUsage> };
+      setUsage(data.usage || {});
+    } catch {
+      // Non-fatal — widget just won't render until next poll succeeds.
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchKeys();
+    fetchUsage();
+    const id = setInterval(fetchUsage, 15_000);
+    return () => clearInterval(id);
+  }, [fetchKeys, fetchUsage]);
 
   async function createKey() {
     setCreating(true);
@@ -52,6 +83,7 @@ export default function ApiKeysPage() {
       setNewKey(data.key);
       setNewKeyName("");
       fetchKeys();
+      fetchUsage();
     } catch {
       setError("Failed to create API key");
     } finally {
@@ -66,6 +98,7 @@ export default function ApiKeysPage() {
       const res = await fetch(`/api/keys/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to revoke key");
       fetchKeys();
+      fetchUsage();
     } catch {
       setError("Failed to revoke API key");
     }
@@ -258,11 +291,26 @@ export default function ApiKeysPage() {
                     {key.name && (
                       <span className="text-sm font-medium text-gray-700">{key.name}</span>
                     )}
+                    {key.rateLimitTier && (
+                      <span
+                        className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                          key.rateLimitTier === "unlimited"
+                            ? "bg-purple-50 text-purple-700"
+                            : key.rateLimitTier === "pro"
+                            ? "bg-blue-50 text-blue-700"
+                            : "bg-gray-100 text-gray-600"
+                        }`}
+                        title="Daily rate-limit tier — contact support to upgrade"
+                      >
+                        {key.rateLimitTier}
+                      </span>
+                    )}
                   </div>
                   <div className="text-sm text-gray-500 mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
                     <span>Created: {formatDate(key.createdAt)}</span>
                     <span>Last used: {formatDate(key.lastUsedAt)}</span>
                   </div>
+                  {usage[key.id] && <UsageWidget u={usage[key.id]} />}
                 </div>
                 <button
                   onClick={() => revokeKey(key.id)}
@@ -275,6 +323,53 @@ export default function ApiKeysPage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function UsageWidget({ u }: { u: KeyUsage }) {
+  return (
+    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+      <UsageBars label="Chat" cat={u.chat} />
+      <UsageBars label="Tool" cat={u.tool} />
+      <div className="sm:col-span-2 text-gray-500 mt-1">
+        24h: {u.recent.calls24h} call{u.recent.calls24h === 1 ? "" : "s"}
+        {u.recent.successRate !== null && (
+          <> · {Math.round(u.recent.successRate * 100)}% success</>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function UsageBars({
+  label,
+  cat,
+}: {
+  label: string;
+  cat: { minute: WindowState; day: WindowState };
+}) {
+  return (
+    <div className="border border-gray-100 rounded-lg p-2 bg-gray-50">
+      <div className="font-medium text-gray-700 mb-1">{label}</div>
+      <Bar window="min" used={cat.minute.used} limit={cat.minute.limit} />
+      <Bar window="day" used={cat.day.used} limit={cat.day.limit} />
+    </div>
+  );
+}
+
+function Bar({ window: w, used, limit }: { window: "min" | "day"; used: number; limit: number }) {
+  const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
+  const color = pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-yellow-500" : "bg-green-500";
+  return (
+    <div className="flex items-center gap-2 mt-0.5">
+      <span className="w-8 text-gray-400">{w === "min" ? "/min" : "/day"}</span>
+      <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+        <div className={`h-full ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className="w-16 text-right tabular-nums text-gray-600">
+        {used} / {limit}
+      </span>
     </div>
   );
 }

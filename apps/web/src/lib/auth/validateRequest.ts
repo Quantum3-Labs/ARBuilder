@@ -16,6 +16,8 @@ export interface AuthResult {
   userId: string | null;
   keyId: string | null;
   isAdmin: boolean;
+  /** Rate limit tier; only set for API-key auth. Session auth uses 'free' implicitly. */
+  rateLimitTier?: string;
 }
 
 export interface AuthError {
@@ -58,11 +60,11 @@ export async function validateRequest(
 
       const result = await db
         .prepare(
-          `SELECT id, user_id as userId FROM api_keys
+          `SELECT id, user_id as userId, rate_limit_tier as rateLimitTier FROM api_keys
            WHERE key_hash = ? AND revoked_at IS NULL`
         )
         .bind(keyHash)
-        .first<{ id: string; userId: string }>();
+        .first<{ id: string; userId: string; rateLimitTier: string | null }>();
 
       if (result) {
         // Update last used timestamp
@@ -76,6 +78,7 @@ export async function validateRequest(
           userId: result.userId,
           keyId: result.id,
           isAdmin: false,
+          rateLimitTier: result.rateLimitTier ?? "free",
         };
       }
 

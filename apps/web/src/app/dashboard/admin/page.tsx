@@ -44,6 +44,9 @@ export default function AdminPage() {
   const [adminSecret, setAdminSecret] = useState("");
   const [isAuthed, setIsAuthed] = useState(false);
 
+  // View tabs
+  const [view, setView] = useState<"sources" | "rateLimits">("sources");
+
   // Filters
   const [categoryFilter, setCategoryFilter] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("");
@@ -196,6 +199,34 @@ export default function AdminPage() {
 
   return (
     <div className="space-y-6">
+      {/* Tabs */}
+      <div className="flex gap-2 border-b border-gray-200">
+        <button
+          onClick={() => setView("sources")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+            view === "sources"
+              ? "border-blue-600 text-blue-600"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          RAG Sources
+        </button>
+        <button
+          onClick={() => setView("rateLimits")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+            view === "rateLimits"
+              ? "border-blue-600 text-blue-600"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          Rate Limits
+        </button>
+      </div>
+
+      {view === "rateLimits" ? (
+        <RateLimitsPanel adminSecret={adminSecret} />
+      ) : (
+      <>
       {/* Header */}
       <div className="flex justify-between items-start">
         <div>
@@ -492,6 +523,193 @@ export default function AdminPage() {
               {stats.deprecatedCount} source(s) use deprecated SDK versions
             </p>
           )}
+        </div>
+      )}
+      </>
+      )}
+    </div>
+  );
+}
+
+interface RateLimitKey {
+  id: string;
+  userId: string;
+  userEmail: string | null;
+  keyPrefix: string;
+  name: string | null;
+  tier: string;
+  limits: { perMinute: number; perDay: number };
+  createdAt: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  calls24h: number;
+}
+
+function RateLimitsPanel({ adminSecret }: { adminSecret: string }) {
+  const [keys, setKeys] = useState<RateLimitKey[]>([]);
+  const [tiers, setTiers] = useState<string[]>(["free", "pro", "unlimited"]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
+  const [tierFilter, setTierFilter] = useState<string>("");
+
+  const load = useCallback(async () => {
+    if (!adminSecret) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/rate-limits", {
+        headers: { "X-Admin-Secret": adminSecret },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { tiers: string[]; keys: RateLimitKey[] };
+      setKeys(data.keys);
+      setTiers(data.tiers);
+    } catch (e) {
+      setError(`Failed to load: ${e}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [adminSecret]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const updateTier = async (keyId: string, tier: string) => {
+    setSavingId(keyId);
+    try {
+      const res = await fetch("/api/admin/rate-limits", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Secret": adminSecret,
+        },
+        body: JSON.stringify({ keyId, tier }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { limits: { perMinute: number; perDay: number } };
+      setKeys((prev) =>
+        prev.map((k) => (k.id === keyId ? { ...k, tier, limits: data.limits } : k)),
+      );
+    } catch (e) {
+      setError(`Update failed: ${e}`);
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const filtered = keys.filter((k) => {
+    if (tierFilter && k.tier !== tierFilter) return false;
+    if (!filter) return true;
+    const f = filter.toLowerCase();
+    return (
+      (k.userEmail ?? "").toLowerCase().includes(f) ||
+      (k.name ?? "").toLowerCase().includes(f) ||
+      k.keyPrefix.toLowerCase().includes(f) ||
+      k.id.toLowerCase().includes(f)
+    );
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Rate Limit Tiers</h1>
+          <p className="text-gray-600 mt-1 text-sm">
+            Per-key two-window quotas (burst per UTC minute + total per UTC day), applied separately to chat and tool calls. Tiers:{" "}
+            <span className="font-mono">free</span> = 100/min, 1000/day;{" "}
+            <span className="font-mono">pro</span> = 500/min, 10K/day;{" "}
+            <span className="font-mono">unlimited</span> = 10K/min, 1M/day.
+          </p>
+        </div>
+        <button
+          onClick={load}
+          className="text-sm px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50"
+        >
+          Refresh
+        </button>
+      </div>
+
+      <div className="flex gap-2">
+        <input
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="Filter by email, name, prefix, or id..."
+          className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg"
+        />
+        <select
+          value={tierFilter}
+          onChange={(e) => setTierFilter(e.target.value)}
+          className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white"
+        >
+          <option value="">All tiers</option>
+          {tiers.map((t) => (
+            <option key={t} value={t}>{t}</option>
+          ))}
+        </select>
+      </div>
+
+      {error && <div className="bg-red-50 border border-red-100 text-red-700 px-4 py-2 rounded-lg text-sm">{error}</div>}
+
+      {loading ? (
+        <p className="text-gray-500 text-sm">Loading…</p>
+      ) : (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-gray-600 text-xs uppercase">
+              <tr>
+                <th className="px-4 py-2 text-left">User / Key</th>
+                <th className="px-4 py-2 text-left">Prefix</th>
+                <th className="px-4 py-2 text-left">Tier</th>
+                <th className="px-4 py-2 text-right">24h Calls</th>
+                <th className="px-4 py-2 text-left">Last Used</th>
+                <th className="px-4 py-2 text-left">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((k) => (
+                <tr key={k.id} className="border-t border-gray-100">
+                  <td className="px-4 py-2">
+                    <div className="font-medium text-gray-900">{k.userEmail || k.userId}</div>
+                    <div className="text-xs text-gray-500">{k.name || "(unnamed key)"}</div>
+                  </td>
+                  <td className="px-4 py-2 font-mono text-xs">{k.keyPrefix}…</td>
+                  <td className="px-4 py-2">
+                    <select
+                      value={k.tier}
+                      onChange={(e) => updateTier(k.id, e.target.value)}
+                      disabled={savingId === k.id || !!k.revokedAt}
+                      className="text-xs border border-gray-200 rounded px-2 py-1 bg-white disabled:opacity-50"
+                    >
+                      {tiers.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="px-4 py-2 text-right font-mono text-xs">{k.calls24h}</td>
+                  <td className="px-4 py-2 text-xs text-gray-500">
+                    {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : "—"}
+                  </td>
+                  <td className="px-4 py-2">
+                    {k.revokedAt ? (
+                      <span className="text-xs text-red-600">revoked</span>
+                    ) : (
+                      <span className="text-xs text-green-600">active</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-6 text-center text-gray-400 text-sm">
+                    No keys match.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
