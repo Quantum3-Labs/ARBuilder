@@ -178,6 +178,7 @@ ruff check .
   - `unlimited`: 10K/min, 1M/day (effectively uncapped)
 - Enforcement points: `/api/v1/chat/completions`, every `/api/v1/tools/*` route, and `tools/call` on `/mcp`. Admin requests (`AUTH_SECRET` Bearer) bypass.
 - Headers on every response: bottleneck `X-RateLimit-Limit/-Remaining/-Reset`, plus per-window `-Minute` and `-Day` variants, plus `X-RateLimit-Tier`. 429 also carries `Retry-After` for the denying window.
+- `GET /api/v1/usage` returns current counter state without incrementing — for client-side planning.
 - Tier management: `GET/PATCH /api/admin/rate-limits` (admin secret), surfaced in `/dashboard/admin` under the "Rate Limits" tab.
 
 ### Worker-Native Ingestion Pipeline (`apps/web/src/lib/`)

@@ -169,6 +169,49 @@ export function subjectFor(auth: { keyId: string | null; userId: string | null; 
 }
 
 /**
+ * Read-only snapshot of current usage for `subject` in `category`. Does NOT
+ * increment counters — used by GET /api/v1/usage so callers can plan around
+ * the limits without burning a slot.
+ */
+export async function peekUsage(
+  kv: KVNamespace,
+  subject: string,
+  category: RateLimitCategory,
+  tier: string,
+): Promise<RateLimitDecision> {
+  const { perMinute, perDay } = getLimitsForTier(tier);
+  const mKey = `rl:${subject}:${category}:m:${minuteKey()}`;
+  const dKey = `rl:${subject}:${category}:d:${dayKey()}`;
+
+  const [mRaw, dRaw] = await Promise.all([kv.get(mKey), kv.get(dKey)]);
+  const mUsed = mRaw ? parseInt(mRaw, 10) || 0 : 0;
+  const dUsed = dRaw ? parseInt(dRaw, 10) || 0 : 0;
+
+  const overMinute = mUsed >= perMinute;
+  const overDay = dUsed >= perDay;
+  const allowed = !(overMinute || overDay);
+
+  return {
+    allowed,
+    exceededWindow: allowed ? undefined : overMinute ? "minute" : "day",
+    category,
+    tier,
+    minute: {
+      limit: perMinute,
+      remaining: Math.max(0, perMinute - mUsed),
+      used: mUsed,
+      resetSeconds: secondsUntilNextUtcMinute(),
+    },
+    day: {
+      limit: perDay,
+      remaining: Math.max(0, perDay - dUsed),
+      used: dUsed,
+      resetSeconds: secondsUntilNextUtcMidnight(),
+    },
+  };
+}
+
+/**
  * One-shot helper for `/api/v1/tools/*` routes. Returns either a 429 response
  * (when over either limit) or a `headers` map to attach to the success response.
  */

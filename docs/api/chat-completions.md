@@ -156,6 +156,37 @@ A 429 additionally carries `Retry-After: <seconds>` for the window that denied t
 
 To request a higher tier, ping the admin — tier is bumped per key from the admin dashboard. Session-auth requests (playground) always count under `free` per user.
 
+### Checking usage without burning a slot
+
+```
+GET /api/v1/usage
+Authorization: Bearer arb_xxxxx
+```
+
+Returns the current rate-limit state for the calling key. This endpoint does **not** increment counters, so polling it is free.
+
+```json
+{
+  "tier": "free",
+  "admin": false,
+  "chat": {
+    "minute": { "limit": 100, "remaining": 99, "used": 1, "resetSeconds": 12 },
+    "day":    { "limit": 1000, "remaining": 999, "used": 1, "resetSeconds": 74012 }
+  },
+  "tool": {
+    "minute": { "limit": 100, "remaining": 100, "used": 0, "resetSeconds": 12 },
+    "day":    { "limit": 1000, "remaining": 1000, "used": 0, "resetSeconds": 74012 }
+  },
+  "recent": {
+    "calls24h": 17,
+    "lastCallAt": "2026-05-02T10:23:45.000Z",
+    "successRate": 1.0
+  }
+}
+```
+
+`recent` is sourced from `usage_logs` over the last 24h and is only populated for API-key auth (session-auth requests don't have a `keyId` to filter on, so `recent` is `null`).
+
 ## Per-turn caps
 
 | Cap | Value |
