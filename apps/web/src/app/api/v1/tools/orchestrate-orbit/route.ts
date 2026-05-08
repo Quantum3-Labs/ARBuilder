@@ -3,6 +3,7 @@ import { orchestrateOrbit } from "@/lib/tools/orchestrateOrbit";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { validateRequest } from "@/lib/auth/validateRequest";
 import { checkToolRateLimit } from "@/lib/rateLimit";
+import { evaluateCors, preflightResponse } from "@/lib/cors";
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,6 +12,8 @@ export async function POST(request: NextRequest) {
     if (!auth.success) return auth.response;
     const rl = await checkToolRateLimit(env.KV, auth);
     if ("response" in rl) return rl.response;
+    const cors = evaluateCors(request, auth.allowedOrigins);
+    if (!cors.ok) return cors.response;
 
     const body = (await request.json()) as {
       prompt?: string;
@@ -41,7 +44,7 @@ export async function POST(request: NextRequest) {
       batchPosters: body.batchPosters,
     });
 
-    return NextResponse.json(result, { headers: rl.headers });
+    return NextResponse.json(result, { headers: { ...rl.headers, ...cors.headers } });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("Error in orchestrateOrbit:", message, error);
@@ -50,4 +53,8 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+export async function OPTIONS(request: NextRequest) {
+  return preflightResponse(request, "POST, OPTIONS");
 }

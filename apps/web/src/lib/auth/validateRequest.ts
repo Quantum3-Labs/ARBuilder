@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hashApiKey } from "@/lib/apiKeys";
 import { verifyJWT } from "@/lib/jwt";
+import { parseAllowedOrigins } from "@/lib/cors";
 
 export interface AuthResult {
   success: true;
@@ -18,6 +19,8 @@ export interface AuthResult {
   isAdmin: boolean;
   /** Rate limit tier; only set for API-key auth. Session auth uses 'free' implicitly. */
   rateLimitTier?: string;
+  /** CORS allowlist; only set for API-key auth. null = unrestricted. */
+  allowedOrigins?: string[] | null;
 }
 
 export interface AuthError {
@@ -60,11 +63,13 @@ export async function validateRequest(
 
       const result = await db
         .prepare(
-          `SELECT id, user_id as userId, rate_limit_tier as rateLimitTier FROM api_keys
+          `SELECT id, user_id as userId, rate_limit_tier as rateLimitTier,
+                  allowed_origins as allowedOrigins
+           FROM api_keys
            WHERE key_hash = ? AND revoked_at IS NULL`
         )
         .bind(keyHash)
-        .first<{ id: string; userId: string; rateLimitTier: string | null }>();
+        .first<{ id: string; userId: string; rateLimitTier: string | null; allowedOrigins: string | null }>();
 
       if (result) {
         // Update last used timestamp
@@ -79,6 +84,7 @@ export async function validateRequest(
           keyId: result.id,
           isAdmin: false,
           rateLimitTier: result.rateLimitTier ?? "free",
+          allowedOrigins: parseAllowedOrigins(result.allowedOrigins),
         };
       }
 

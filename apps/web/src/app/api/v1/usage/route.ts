@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { validateRequest } from "@/lib/auth/validateRequest";
 import { peekUsage, subjectFor } from "@/lib/rateLimit";
+import { evaluateCors, preflightResponse } from "@/lib/cors";
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,6 +24,9 @@ export async function GET(request: NextRequest) {
 
     const auth = await validateRequest(request, env.DB, env.AUTH_SECRET);
     if (!auth.success) return auth.response;
+
+    const cors = evaluateCors(request, auth.allowedOrigins);
+    if (!cors.ok) return cors.response;
 
     const subj = subjectFor(auth);
     const tier = subj?.tier ?? (auth.isAdmin ? "unlimited" : "free");
@@ -37,7 +41,7 @@ export async function GET(request: NextRequest) {
         chat: { minute: placeholder.minute, day: placeholder.day },
         tool: { minute: placeholderTool.minute, day: placeholderTool.day },
         recent: null,
-      });
+      }, { headers: cors.headers });
     }
 
     const [chatUsage, toolUsage] = await Promise.all([
@@ -78,7 +82,7 @@ export async function GET(request: NextRequest) {
       chat: { minute: chatUsage.minute, day: chatUsage.day },
       tool: { minute: toolUsage.minute, day: toolUsage.day },
       recent,
-    });
+    }, { headers: cors.headers });
   } catch (e) {
     console.error("usage endpoint failed:", e);
     return NextResponse.json(
@@ -88,13 +92,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 204,
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    },
-  });
+export async function OPTIONS(request: NextRequest) {
+  return preflightResponse(request, "GET, OPTIONS");
 }

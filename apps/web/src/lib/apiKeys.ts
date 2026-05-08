@@ -14,6 +14,8 @@ export interface ApiKey {
   lastUsedAt: string | null;
   revokedAt: string | null;
   rateLimitTier?: string;
+  /** JSON-serialised string from D1; parse on the client. null = unrestricted. */
+  allowedOrigins?: string | null;
 }
 
 export interface ApiKeyWithSecret extends ApiKey {
@@ -100,7 +102,8 @@ export async function listApiKeys(
     .prepare(
       `SELECT id, user_id as userId, key_prefix as keyPrefix, name,
               created_at as createdAt, last_used_at as lastUsedAt, revoked_at as revokedAt,
-              rate_limit_tier as rateLimitTier
+              rate_limit_tier as rateLimitTier,
+              allowed_origins as allowedOrigins
        FROM api_keys
        WHERE user_id = ? AND revoked_at IS NULL
        ORDER BY created_at DESC`

@@ -9,6 +9,8 @@ interface ApiKey {
   createdAt: string;
   lastUsedAt: string | null;
   rateLimitTier?: string;
+  /** Raw JSON string from API; parsed in render. */
+  allowedOrigins?: string | null;
 }
 
 interface WindowState {
@@ -311,10 +313,15 @@ export default function ApiKeysPage() {
                     <span>Last used: {formatDate(key.lastUsedAt)}</span>
                   </div>
                   {usage[key.id] && <UsageWidget u={usage[key.id]} />}
+                  <OriginsEditor
+                    keyId={key.id}
+                    raw={key.allowedOrigins}
+                    onSaved={fetchKeys}
+                  />
                 </div>
                 <button
                   onClick={() => revokeKey(key.id)}
-                  className="text-red-600 hover:text-red-700 hover:bg-red-50 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors flex-shrink-0 self-start"
                 >
                   Revoke
                 </button>
@@ -370,6 +377,134 @@ function Bar({ window: w, used, limit }: { window: "min" | "day"; used: number; 
       <span className="w-16 text-right tabular-nums text-gray-600">
         {used} / {limit}
       </span>
+    </div>
+  );
+}
+
+function parseOrigins(raw: string | null | undefined): string[] | null {
+  if (raw == null) return null;
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter((s) => typeof s === "string") : null;
+  } catch {
+    return null;
+  }
+}
+
+function OriginsEditor({
+  keyId,
+  raw,
+  onSaved,
+}: {
+  keyId: string;
+  raw: string | null | undefined;
+  onSaved: () => void;
+}) {
+  const initial = parseOrigins(raw);
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState((initial ?? []).join("\n"));
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const restricted = initial !== null;
+  const origins = initial ?? [];
+
+  async function save(allowedOrigins: string[] | null) {
+    setSaving(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/keys/${keyId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allowedOrigins }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setEditing(false);
+      onSaved();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <div className="mt-3 text-xs flex flex-wrap items-center gap-2">
+        <span className="font-medium text-gray-600">Allowed origins:</span>
+        {!restricted ? (
+          <span className="text-gray-500 italic">Unrestricted (server-to-server only)</span>
+        ) : origins.length === 0 ? (
+          <span className="text-orange-600">Locked — no browser may use this key</span>
+        ) : (
+          origins.map((o) => (
+            <code key={o} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded font-mono">
+              {o}
+            </code>
+          ))
+        )}
+        <button
+          onClick={() => {
+            setText((initial ?? []).join("\n"));
+            setEditing(true);
+          }}
+          className="text-blue-600 hover:text-blue-700 underline"
+        >
+          Edit
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 text-xs space-y-2">
+      <div className="font-medium text-gray-600">Allowed origins (one per line, or `*` for any):</div>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={3}
+        placeholder="https://docs.example.com&#10;https://example.com"
+        className="w-full px-2 py-1.5 text-xs font-mono border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+      />
+      <p className="text-gray-500">
+        Empty list = locked (no browser allowed). Use{" "}
+        <button
+          type="button"
+          onClick={() => save(null)}
+          className="underline text-blue-600 hover:text-blue-700"
+          disabled={saving}
+        >
+          unrestricted
+        </button>{" "}
+        for server-to-server keys (default). CORS allowlist applies only to browser requests; server callers without an Origin header are never blocked.
+      </p>
+      {err && <p className="text-red-600">{err}</p>}
+      <div className="flex gap-2">
+        <button
+          onClick={() => {
+            const list = text
+              .split(/\s+/)
+              .map((s) => s.trim())
+              .filter(Boolean);
+            save(list);
+          }}
+          disabled={saving}
+          className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+        <button
+          onClick={() => {
+            setEditing(false);
+            setErr(null);
+          }}
+          disabled={saving}
+          className="px-3 py-1 border border-gray-200 rounded hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }
