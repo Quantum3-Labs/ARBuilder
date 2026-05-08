@@ -13,6 +13,7 @@ import { validateRequest } from "@/lib/auth/validateRequest";
 import { runAgentNonStreaming, runAgentStreaming } from "@/lib/chat/agent";
 import { encodeSSEChunk, encodeSSEDone, encodeSSEError } from "@/lib/chat/streaming";
 import { enforceRateLimit, rateLimitHeaders, subjectFor } from "@/lib/rateLimit";
+import { evaluateCors, preflightResponse } from "@/lib/cors";
 import type {
   ChatCompletionRequest,
   ChatCompletionResponse,
@@ -68,6 +69,14 @@ export async function POST(request: NextRequest) {
   const start = Date.now();
   const { env } = getCloudflareContext();
 
+  // Permissive CORS for pre-auth errors — we don't know the key yet, so we
+  // reflect Origin to keep the browser happy while still returning the real
+  // status code and body.
+  const reqOrigin = request.headers.get("Origin");
+  const preAuthCors: Record<string, string> = reqOrigin
+    ? { "Access-Control-Allow-Origin": reqOrigin, "Access-Control-Allow-Credentials": "true", Vary: "Origin" }
+    : { Vary: "Origin" };
+
   // Auth — same flow as /api/v1/tools/* and /mcp.
   const auth = await validateRequest(request, env.DB, env.AUTH_SECRET);
   if (!auth.success) {
@@ -75,8 +84,14 @@ export async function POST(request: NextRequest) {
       "Authentication required. Pass a valid `Authorization: Bearer arb_...` header.",
       "invalid_api_key",
       401,
+      undefined,
+      preAuthCors,
     );
   }
+
+  // CORS allowlist enforcement (browser-only).
+  const cors = evaluateCors(request, auth.allowedOrigins);
+  if (!cors.ok) return cors.response;
 
   // Rate limit — per-key for arb_ keys, per-user for session auth, bypass for admin.
   const subj = subjectFor(auth);
@@ -92,27 +107,31 @@ export async function POST(request: NextRequest) {
         "rate_limit_exceeded",
         429,
         undefined,
-        rlHeaders,
+        { ...rlHeaders, ...cors.headers },
       );
     }
   }
+  // Merge CORS headers into the rate-limit header bag for the success path.
+  rlHeaders = { ...rlHeaders, ...cors.headers };
 
   // Parse body.
   let body: ChatCompletionRequest;
   try {
     body = (await request.json()) as ChatCompletionRequest;
   } catch {
-    return errorResponse("Invalid JSON body.", "invalid_request_error", 400);
+    return errorResponse("Invalid JSON body.", "invalid_request_error", 400, undefined, rlHeaders);
   }
   if (!Array.isArray(body.messages) || body.messages.length === 0) {
     return errorResponse(
       "Missing required field 'messages' (must be a non-empty array).",
       "invalid_request_error",
       400,
+      undefined,
+      rlHeaders,
     );
   }
   if (!env.OPENROUTER_API_KEY) {
-    return errorResponse("OpenRouter not configured on this server.", "internal_error", 500);
+    return errorResponse("OpenRouter not configured on this server.", "internal_error", 500, undefined, rlHeaders);
   }
 
   const toolEnv: ToolEnv = {
@@ -215,18 +234,10 @@ export async function POST(request: NextRequest) {
     if (apiKeyId) {
       await logChatUsage(env.DB, apiKeyId, [], 0, Date.now() - start, false, msg);
     }
-    return errorResponse(msg, "internal_error", 500);
+    return errorResponse(msg, "internal_error", 500, undefined, rlHeaders);
   }
 }
 
-// CORS preflight.
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 204,
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    },
-  });
+export async function OPTIONS(request: NextRequest) {
+  return preflightResponse(request, "POST, OPTIONS");
 }

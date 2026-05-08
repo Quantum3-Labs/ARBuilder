@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { runTool, type ToolEnv, type ToolResult } from "@/lib/tools/dispatch";
 import { enforceRateLimit, rateLimitHeaders } from "@/lib/rateLimit";
+import { evaluateCors, preflightResponse, parseAllowedOrigins } from "@/lib/cors";
 
 // MCP Protocol Types
 interface JsonRpcRequest {
@@ -634,7 +635,7 @@ const SERVER_INFO = {
 async function validateApiKey(
   request: NextRequest,
   db: D1Database
-): Promise<{ valid: boolean; keyId?: string; userId?: string; tier?: string; error?: string }> {
+): Promise<{ valid: boolean; keyId?: string; userId?: string; tier?: string; allowedOrigins?: string[] | null; error?: string }> {
   const authHeader = request.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
     return { valid: false, error: "Missing or invalid Authorization header" };
@@ -655,10 +656,11 @@ async function validateApiKey(
   // Look up the key
   const keyRecord = await db
     .prepare(
-      `SELECT id, user_id, rate_limit_tier FROM api_keys WHERE key_hash = ? AND revoked_at IS NULL`
+      `SELECT id, user_id, rate_limit_tier, allowed_origins
+       FROM api_keys WHERE key_hash = ? AND revoked_at IS NULL`
     )
     .bind(keyHash)
-    .first<{ id: string; user_id: string; rate_limit_tier: string | null }>();
+    .first<{ id: string; user_id: string; rate_limit_tier: string | null; allowed_origins: string | null }>();
 
   if (!keyRecord) {
     return { valid: false, error: "Invalid or revoked API key" };
@@ -675,6 +677,7 @@ async function validateApiKey(
     keyId: keyRecord.id,
     userId: keyRecord.user_id,
     tier: keyRecord.rate_limit_tier ?? "free",
+    allowedOrigins: parseAllowedOrigins(keyRecord.allowed_origins),
   };
 }
 
@@ -906,6 +909,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // CORS allowlist enforcement (browser-only — server-to-server has no Origin header).
+    const cors = evaluateCors(request, authResult.allowedOrigins);
+    if (!cors.ok) return cors.response;
+
     // Parse request body
     const body = await request.json();
 
@@ -920,22 +927,20 @@ export async function POST(request: NextRequest) {
 
     // Handle single request or batch
     if (Array.isArray(body)) {
-      // Batch request
       const responses = await Promise.all(
         body.map((req: JsonRpcRequest) =>
           processRequest(req, envObj, authResult.keyId, tier)
         )
       );
-      return NextResponse.json(responses);
+      return NextResponse.json(responses, { headers: cors.headers });
     } else {
-      // Single request
       const response = await processRequest(
         body as JsonRpcRequest,
         envObj,
         authResult.keyId,
         tier
       );
-      return NextResponse.json(response);
+      return NextResponse.json(response, { headers: cors.headers });
     }
   } catch (error) {
     console.error("MCP endpoint error:", error);
@@ -953,16 +958,8 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Handle OPTIONS for CORS
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 204,
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    },
-  });
+export async function OPTIONS(request: NextRequest) {
+  return preflightResponse(request, "POST, OPTIONS");
 }
 
 // Handle GET for health check
